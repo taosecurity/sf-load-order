@@ -202,29 +202,38 @@ class Names(unittest.TestCase):
 
 
 class Console(unittest.TestCase):
-    def test_unshowable_characters_are_escaped_not_fatal(self):
+    def test_redirected_run_with_a_non_ansi_path_doesnt_crash(self):
+        """A real run with stdout piped and a path holding the Polish L: exit 2 with the RESULT line, never a crash.
+        The system picks the encoding (python -I ignores PYTHONIOENCODING): UTF-8 on Linux and macOS, the ANSI code
+        page on Windows, where the letter is escaped unless the code page has it (cp1250 does)."""
+        import locale
         import subprocess
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with tempfile.TemporaryDirectory() as t:
-            out = os.path.join(t, "Łukasz")
-            env = dict(os.environ, PYTHONIOENCODING="cp1252")
+            out = os.path.join(t, NAME)
             r = subprocess.run([sys.executable, "-I", os.path.join(here, "sf-load-order.py"), "--out", out,
-                                "--plugins-txt", os.path.join(out, "missing.txt")], capture_output=True, env=env)
+                                "--plugins-txt", os.path.join(out, "missing.txt")], capture_output=True)
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn(b"CANNOT CHECK", r.stdout)
-        # -I ignores PYTHONIOENCODING, so the system decides: Windows pipes use the ANSI code page (escaped),
-        # Linux and macOS use UTF-8 (written as is). Either way the run doesn't crash.
-        self.assertTrue(b"\\u0141ukasz" in r.stdout or "Łukasz".encode("utf-8") in r.stdout, r.stdout)
+        forms = {ESCAPED.encode("ascii"), NAME.encode("utf-8"),
+                 NAME.encode(locale.getpreferredencoding(False), "backslashreplace")}
+        self.assertTrue(any(f in r.stdout for f in forms), r.stdout)
 
-    def test_console_escape_on_a_cp1252_stream(self):
-        """The same rule in-process, on any system: a cp1252 stream escapes what it can't show."""
+    def test_main_escapes_on_a_cp1252_stream(self):
+        """Through main(), on any system: a cp1252 console gets an escape for the letter instead of a crash."""
         buf = io.BytesIO()
         stream = io.TextIOWrapper(buf, encoding="cp1252")
-        with mock.patch.object(sys, "stdout", stream), mock.patch.object(sys, "stderr", stream):
-            cli._utf8_console()
-            print("path Łukasz café")
-            stream.flush()
-        self.assertEqual(buf.getvalue().rstrip(b"\r\n"), b"path \\u0141ukasz caf\xe9")
+        with tempfile.TemporaryDirectory() as t:
+            missing = os.path.join(t, NAME, "missing.txt")
+            with mock.patch.object(sys, "stdout", stream), mock.patch.object(sys, "stderr", io.StringIO()):
+                code = cli.main(["--out", os.path.join(t, "out"), "--plugins-txt", missing])
+                stream.flush()
+        self.assertEqual(code, 2)
+        self.assertIn(ESCAPED.encode("ascii"), buf.getvalue())
+
+
+NAME = chr(0x141) + "ukasz"         # the Polish L with stroke, then "ukasz"
+ESCAPED = chr(92) + "u0141ukasz"    # what errors="backslashreplace" writes for NAME on a cp1252 console
 
 
 if __name__ == "__main__":
