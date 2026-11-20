@@ -1,0 +1,508 @@
+"""Recommended load order (section "recommend"): rate the order, look for a better one, write the files to apply.
+
+How the recommendation is made:
+  1. Start from the current enabled order (the order the game loads; LOOT's, if the player just sorted).
+  2. Apply the player's --picks first (ctx.results["picks"]): plugin X loads right after plugin Y. Plugins that need
+     X as a master move with it. A pick that would put a plugin above its own master is not applied.
+  3. Rate an order by the changes it throws away, from sf-mod-check's conflicts.json (ctx.results["records"]): each
+     lost field counts its weight (3 functional, 1 cosmetic, 0 bookkeeping or "No effect"), and official changes a
+     mod undoes count too. Lower is better.
+  4. For each pair whose advice is "patch candidate" or "pick a winner", try letting the losing plugin load after the
+     winner. Keep the move only if the score of the WHOLE order drops. Climb until a pass finds nothing better, then
+     restart the climb from its own result until a restart finds nothing better.
+Constraints: masters stay above the plugins that need them, a mod's plugins keep their order (Mod.plugins), and
+official plugins and BlueprintShips files stay where the game puts them.
+
+What the data can't tell (NOTES.md, C4 gaps 3 and 4): conflicts.json lists only the losses of the order it was run
+on. When a pair is flipped, the new loser's loss is known only in part: the "Choice" fields, where both plugins
+changed the same field. Fields only the old winner changed aren't written, so a flipped pair's cost is a lower
+bound (pair["cost_complete"] False) and the score of the recommended order is an ESTIMATE. With exact costs
+(cost_complete True), known_cost_if_flipped is the whole cost and a move can be rejected for raising the score.
+
+With no records data (--depth light, sf-mod-check missing, or the section skipped) the order can't be rated beyond
+masters and archives: only master order and picks are applied, and no record-based move is suggested.
+
+ctx.results["recommend"]:
+  {"order": [names in load order, official included], "moves": [{"plugin", "after", "reason"}],
+   "score_current", "score_recommended" (None without records data), "estimate": bool, "same_as_current": bool,
+   "rated": bool, "label": "your current order (LOOT's if you just sorted)", "flipped": [pair summaries],
+   "rejected": [{"loser", "winner", "why"}], "picks": {"applied": [...], "not_applied": [{"pick", "why"}]},
+   "archive_flips": [{"path", "before", "after"}], "remaining": [lost-change summaries for a merged patch],
+   "vs_loot": None or {"file", "moved", "moved_count", "score", "missing", "extra"} or {"file", "error"},
+   "files": {role: path}}
+"""
+import bisect
+import heapq
+import os
+
+from . import archives, inputs, log, records, writers
+from .model import Finding
+
+SECTION = "recommend"
+LABEL_CURRENT = "your current order (LOOT's if you just sorted)"
+ACTION = {"merge", "conflict"}
+ESTIMATE_WHY = ("an estimate: sf-mod-check's conflicts.json lists only the losses of the order it checked, so the "
+                "cost of a flipped pair is known only for fields both plugins changed")
+
+# field -> plain words for the report (from the private tracker's recommend.py)
+QUEST = "quest objects and NPCs added to the location"
+PLAIN = [
+    (lambda f: f.startswith("Added") and f.endswith(("References", "Npcs")), QUEST),
+    (lambda f: f in ("AmbienceSet", "Music", "AcousticSpace"), "music and ambient sound"),
+    (lambda f: f == "Climate", "weather"),
+    (lambda f: f == "Biome", "biome (plants, creatures, resources)"),
+    (lambda f: f in ("Lighting", "LightingTemplate", "ImageSpace", "EnvironmentMap", "XILS", "SkyLighting"),
+     "lighting"),
+    (lambda f: "Water" in f, "water"),
+    (lambda f: f in ("Location", "ParentLocation", "WorldLocationRadius"), "which location it belongs to"),
+    (lambda f: f in ("Flags", "MajorFlags"), "record flags"),
+    (lambda f: f == "Keywords", "keywords"),
+    (lambda f: f in ("Owner", "Ownership"), "ownership"),
+    (lambda f: f.startswith("Properties") or f == "VirtualMachineAdapter", "script settings"),
+    (lambda f: f in ("Name", "Description"), "name"),
+    (lambda f: f in ("MapData", "WorldMapOffset", "FNAM", "GNAM", "HNAM", "DistantLodMultiplier", "LandDefaults"),
+     "map and distance display"),
+    (lambda f: f in ("RequiredFaction", "ActorReactions"), "companion reactions"),
+    (lambda f: f == "MapInfos", "navmesh map"),
+    (lambda f: f == "Components", "attached components"),
+    (lambda f: f == "ActorFadeMult", "NPC fade distance"),
+]
+MAX_PASSES, MAX_RESTARTS = 50, 20
+NEAR_MIN, NEAR_SHARE = 10, 0.03  # near-tie rule: a saving under max(10, 3%) keeps the order (as the tracker does)
+
+
+def plain_field(f):
+    return next((t for test, t in PLAIN if test(f)), f)
+
+
+def plain(fields):
+    """Plain words for a list of field names (or records.py field dicts), weight-0 fields left out, no repeats."""
+    out = []
+    for f in fields:
+        if isinstance(f, dict):
+            if not f.get("weight"):
+                continue
+            f = f["field"]
+        elif records.weight(f) == 0:
+            continue
+        p = plain_field(f)
+        if p not in out:
+            out.append(p)
+    return out
+
+
+# ---------- ordering ----------
+def topo(current, edges):
+    """Stable topological sort: keep the current order wherever the edges (a before b) allow. None on a cycle."""
+    idx = {n.lower(): i for i, n in enumerate(current)}
+    succ = {n: set() for n in idx}
+    indeg = dict.fromkeys(idx, 0)
+    for a, b in edges:
+        a, b = a.lower(), b.lower()
+        if a in succ and b in succ and a != b and b not in succ[a]:
+            succ[a].add(b)
+            indeg[b] += 1
+    heap = [(idx[n], n) for n, d in indeg.items() if d == 0]
+    heapq.heapify(heap)
+    names = {n.lower(): n for n in current}
+    out = []
+    while heap:
+        _, n = heapq.heappop(heap)
+        out.append(names[n])
+        for m in succ[n]:
+            indeg[m] -= 1
+            if indeg[m] == 0:
+                heapq.heappush(heap, (idx[m], m))
+    return out if len(out) == len(current) else None
+
+
+def _ok(order, edges):
+    pos = {n.lower(): i for i, n in enumerate(order)}
+    return all(pos[a.lower()] < pos[b.lower()] for a, b in edges if a.lower() in pos and b.lower() in pos)
+
+
+def arrange(base, edges, picks):
+    """topo(base, edges), then each pick's plugin placed right after its `after` plugin where the edges allow (a
+    plugin whose master or mod sibling sits in between stays below; it is still after `after`)."""
+    order = topo(base, edges)
+    if order is None:
+        return None
+    for p in picks:
+        low = [n.lower() for n in order]
+        x, y = p["plugin"].lower(), p["after"].lower()
+        if x not in low or y not in low or low.index(x) == low.index(y) + 1:
+            continue
+        name = order[low.index(x)]
+        trial = [n for n in order if n.lower() != x]
+        trial.insert([n.lower() for n in trial].index(y) + 1, name)
+        if _ok(trial, edges):
+            order = trial
+    return order
+
+
+def moved(order, current):
+    """Plugins that really move: those outside the longest run kept in the current relative order (plugins that only
+    slide one place because another plugin moved past them don't count). Names missing from current are moved."""
+    cur = {n.lower(): i for i, n in enumerate(current)}
+    items = [(i, cur[n.lower()]) for i, n in enumerate(order) if n.lower() in cur]
+    tails, tail_v, prev = [], [], {}
+    for k, (i, v) in enumerate(items):
+        j = bisect.bisect_left(tail_v, v)
+        if j == len(tails):
+            tails.append(k)
+            tail_v.append(v)
+        else:
+            tails[j], tail_v[j] = k, v
+        prev[k] = tails[j - 1] if j else -1
+    keep, k = set(), tails[-1] if tails else -1
+    while k != -1:
+        keep.add(items[k][0])
+        k = prev[k]
+    return [n for i, n in enumerate(order) if i not in keep]
+
+
+# ---------- scoring ----------
+def _entry_weight(x):
+    return sum(f.get("weight") or 0 for f in x.get("fields") or [])
+
+
+def scorer(rec):
+    """score(order) -> (score, flipped pair indexes). Pairs between two mods count their gain_if_flipped (what the
+    loser loses now) while the loser loads first, and known_cost_if_flipped once it loads after the winner. Official
+    changes a mod undoes (official_undone) count always: no order of mods brings them back."""
+    pairs = rec.get("pairs") or []
+    fixed = sum(_entry_weight(rec["lost"][i]) for i in rec.get("official_undone") or [])
+
+    def score(order):
+        pos = {n.lower(): i for i, n in enumerate(order)}
+        total, flipped = fixed, []
+        for k, p in enumerate(pairs):
+            lw, ll = p["winner"].lower(), p["loser"].lower()
+            if ll in pos and lw in pos and pos[ll] > pos[lw]:
+                total += p.get("known_cost_if_flipped") or 0
+                flipped.append(k)
+            else:
+                total += p.get("gain_if_flipped") or 0
+        return total, flipped
+    return score
+
+
+# ---------- the pieces of run ----------
+def _add(ctx, level, text, fix=None, plugins=(), **data):
+    ctx.report.add(Finding(level, SECTION, text, fix, list(plugins), data))
+
+
+def _current(ctx):
+    eff = (ctx.results.get("order") or {}).get("effective")
+    return list(eff) if eff else ctx.load_order.enabled()
+
+
+def _fixed(lo, name):
+    return inputs.is_official(name) or name.lower().startswith("blueprintships-") or any(
+        p.official for p in lo.plugins if p.name.lower() == name.lower())
+
+
+def _edges(lo, movable):
+    """Constraint edges among the movable plugins: (master, plugin) and (earlier, later) within each mod."""
+    low = {n.lower(): n for n in movable}
+    pos = {n.lower(): i for i, n in enumerate(movable)}
+    edges, why = [], {}
+    for p in lo.plugins:
+        if p.name.lower() not in low:
+            continue
+        for m in p.masters or []:
+            if m.lower() in low:
+                edges.append((low[m.lower()], p.name))
+                w = why.setdefault(p.name.lower(), ("master", []))
+                if w[0] == "master":
+                    w[1].append(low[m.lower()])  # every movable master; the move reason names one that moved
+    for m in lo.mods or []:
+        mine = sorted({x.lower() for x in (m.plugins or []) if x.lower() in low}, key=pos.get)
+        for a, b in zip(mine, mine[1:]):
+            edges.append((low[a], low[b]))
+            why.setdefault(b, ("mod", m.name))
+    return edges, why
+
+
+def _picks(ctx, movable, edges):
+    applied, not_applied = [], []
+    low = {n.lower() for n in movable}
+    for p in ctx.results.get("picks") or []:
+        a, b = p["plugin"], p["after"]
+        if a.lower() not in low or b.lower() not in low:
+            why = "one of them isn't enabled (or is an official or BlueprintShips file the game places itself)"
+        elif topo(movable, edges + [(b, a)]) is None:
+            why = "it would put a plugin above its own master (or break a mod's own plugin order)"
+        else:
+            edges.append((b, a))
+            applied.append(p)
+            continue
+        not_applied.append({"pick": p, "why": why})
+        _add(ctx, "caution", f"Your pick {a} after {b} wasn't applied: {why}.",
+             "Change or remove the pick in your --picks file.", [a, b], entry=p.get("entry"))
+    return applied, not_applied
+
+
+def _full(current, movable_order, fixed):
+    """Put the movable plugins back into the slots between the fixed ones (official and BlueprintShips files keep
+    their positions)."""
+    it = iter(movable_order)
+    return [n if n.lower() in fixed else next(it) for n in current]
+
+
+def _pair_text(p, lost):
+    fields = [f for i in p["records"] for f in lost[i]["fields"]]
+    words = plain(fields)
+    return ", ".join(words[:5]) + (f" and {len(words) - 5} more" if len(words) > 5 else "") if words else "fields"
+
+
+def _read_loot(ctx, path):
+    try:
+        listed = inputs.read_plugins_list(path)
+    except inputs.InputError as e:
+        _add(ctx, "caution", f"The --loot-order file couldn't be read: {e}", file=path)
+        return None, str(e)
+    return [n for n, on in listed if on], None
+
+
+def run(ctx):
+    lo = ctx.load_order
+    rec = ctx.results.get("records")
+    rated = bool(rec and rec.get("lost") is not None)
+    current = _current(ctx)
+    fixed = {n.lower() for n in current if _fixed(lo, n)}
+    movable = [n for n in current if n.lower() not in fixed]
+    edges, edge_why = _edges(lo, movable)
+    applied, not_applied = _picks(ctx, movable, edges)
+    log.info(SECTION, f"{len(movable)} movable plugins, {len(edges)} constraint edges, {len(applied)} pick(s) applied, "
+                      f"records data {'yes' if rated else 'no'}")
+    order = arrange(movable, edges, applied)
+    if order is None:  # a master loop in the plugins themselves: leave the order alone
+        order = list(movable)
+        log.info(SECTION, "master loop among the plugins; order left as is")
+
+    score_cur = score_rec = None
+    flipped, flipped0, rejected, cands = [], set(), [], []
+    estimate = False
+    if rated:
+        pairs = rec.get("pairs") or []
+        score = scorer(rec)
+        score_cur, f0 = score(_full(current, movable, fixed))
+        flipped0 = set(f0)
+        best = score(_full(current, order, fixed))[0]
+        pos0 = {n.lower(): i for i, n in enumerate(movable)}
+        cands = [k for k, p in enumerate(pairs) if p.get("advice") in ACTION and not p.get("winner_official")
+                 and p["loser"].lower() in pos0 and p["winner"].lower() in pos0]
+        tried = {}
+
+        def climb(base, best):
+            ed, cur_order = list(edges), arrange(base, edges, applied)
+            for _ in range(MAX_PASSES):
+                changed = False
+                for k in cands:
+                    p = pairs[k]
+                    e = (p["winner"], p["loser"])
+                    if e in ed:
+                        continue
+                    o = arrange(base, ed + [e], applied)
+                    if o is None:
+                        tried[k] = "it would put a plugin above its own master, break a mod's own plugin order or " \
+                                   "undo one of your picks"
+                        continue
+                    s = score(_full(current, o, fixed))[0]
+                    if s < best:
+                        ed.append(e)
+                        cur_order, best, changed = o, s, True
+                        tried.pop(k, None)
+                    else:
+                        tried.setdefault(k, f"the whole order would lose as much or more (score {s} vs {best})")
+                if not changed:
+                    break
+            return cur_order, best
+
+        start = list(order)  # the current order with picks and master fixes only
+        for _ in range(MAX_RESTARTS):
+            o, s = climb(order, best)
+            if s >= best:
+                break
+            order, best = o, s
+        # Not worth another import (tracker rule, kept for consistency, master 2026-11-19): when the record moves save
+        # less than 3% (at least 10 points), keep the start order. The search is local, so near-ties shift with it.
+        start_score = score(_full(current, start, fixed))[0]
+        if order != start and start_score - best < max(NEAR_MIN, NEAR_SHARE * start_score):
+            log.info(SECTION, f"near tie: moves would save {start_score - best} of {start_score}; keeping the order")
+            dropped = set(score(_full(current, order, fixed))[1]) - set(score(_full(current, start, fixed))[1])
+            for k in dropped:
+                tried[k] = f"the saving is too small to be worth re-importing (score {best} vs {start_score})"
+            order = start
+        score_rec, flipped = score(_full(current, order, fixed))
+        newly = [k for k in flipped if k not in flipped0]
+        estimate = any(not pairs[k].get("cost_complete") for k in newly)
+        for k in cands:
+            if k in flipped:
+                continue
+            p = pairs[k]
+            rejected.append({"loser": p["loser"], "winner": p["winner"], "why": tried.get(k, "not tried")})
+            log.info(SECTION, f"kept {p['loser']} above {p['winner']}: {tried.get(k)}")
+    full = _full(current, order, fixed)
+    same = [n.lower() for n in full] == [n.lower() for n in current]
+
+    # explain the moves
+    flips_info = []
+    if rated:
+        pairs = rec["pairs"]
+        for k in flipped:
+            if k in flipped0:
+                continue
+            p = pairs[k]
+            flips_info.append({"loser": p["loser"], "winner": p["winner"], "records": len(p["records"]),
+                               "what": _pair_text(p, rec["lost"]),"gain": p.get("gain_if_flipped"),
+                               "cost": p.get("known_cost_if_flipped"), "cost_complete": bool(p.get("cost_complete"))})
+    pick_of = {p["plugin"].lower(): p for p in applied}
+    moves = []
+    mv = moved(order, movable)
+    mv_low = {x.lower() for x in mv}
+    for n in mv:
+        i = [x.lower() for x in full].index(n.lower())
+        after = full[i - 1] if i else None
+        low = n.lower()
+        f = next((x for x in flips_info if x["loser"].lower() == low), None)
+        g = next((x for x in flips_info if x["winner"].lower() == low), None)
+        if low in pick_of:
+            pk = pick_of[low]
+            reason = f"your pick: load after {pk['after']}" + (f" ({pk['why']})" if pk.get("why") else "")
+        elif f:
+            reason = (f"so its changes to {f['records']} record(s) ({f['what']}) win over {f['winner']}"
+                      + (" (estimated)" if not f["cost_complete"] else ""))
+        elif g:
+            reason = (f"so {g['loser']}'s changes to {g['records']} record(s) ({g['what']}) win over it"
+                      + (" (estimated)" if not g["cost_complete"] else ""))
+        elif low in edge_why and edge_why[low][0] == "master":
+            ms = edge_why[low][1]
+            hit = next((m for m in ms if m.lower() in mv_low), None)
+            reason = (f"it needs {hit} as a master, which moved" if hit else
+                      f"it must load after its master{'s' if len(ms) > 1 else ''} {', '.join(ms)}")
+        elif low in edge_why:
+            reason = f"it keeps its mod's own plugin order ({edge_why[low][1]})"
+        else:
+            reason = "its master order needed fixing" if not rated else "it moves along with the moves above"
+        moves.append({"plugin": n, "after": after, "reason": reason})
+
+    # archive winners that change
+    aflips = archives.flips(current, full, ctx.results.get("archives")) if not same else []
+    if aflips:
+        by = {}
+        for x in aflips:
+            by.setdefault((x["before"], x["after"]), []).append(x["path"])
+        parts = "; ".join(f"{b} -> {a}: {len(ps)} file(s), for example {ps[0]}" for (b, a), ps in sorted(by.items()))
+        _add(ctx, "caution", f"The recommended order also changes which mod's archived file the game uses for "
+                             f"{len(aflips)} file(s) (today's winner -> new winner: {parts}). The score counts "
+                             "records only.",
+             "After applying the order, check those textures, meshes or sounds look or sound right; if not, keep "
+             "your current order for those plugins.",
+             sorted({n for (b, a) in by for n in (b, a)}), flips=aflips[:200], count=len(aflips))
+
+    # what no order can keep: one merged-patch note
+    remaining = []
+    if rated:
+        pos = {n.lower(): i for i, n in enumerate(full)}
+        for k, p in enumerate(rec["pairs"]):
+            if p.get("advice") not in ACTION:
+                continue
+            flip = k in flipped
+            loser, winner = (p["winner"], p["loser"]) if flip else (p["loser"], p["winner"])
+            if loser.lower() not in pos or winner.lower() not in pos:
+                continue
+            for i in p["records"]:
+                x = rec["lost"][i]
+                # flipped: the old winner now loses its own changes where both changed a field (Choice), as far
+                # as the data shows
+                fs = [f for f in x["fields"] if f.get("weight") and (not flip or f["label"] == "Choice")]
+                if fs:
+                    remaining.append({"fk": x["fk"], "edid": x["edid"], "type": x["type"], "loser": loser,
+                                      "winner": winner, "weight": sum(f["weight"] for f in fs),
+                                      "fields": plain(fs), "official": False})
+        for i in rec.get("official_undone") or []:
+            x = rec["lost"][i]
+            fs = [f for f in x["fields"] if f.get("weight")]
+            if fs:
+                remaining.append({"fk": x["fk"], "edid": x["edid"], "type": x["type"], "loser": x["loser"],
+                                  "winner": x["winner"], "weight": sum(f["weight"] for f in fs),
+                                  "fields": plain(fs), "official": True})
+        remaining.sort(key=lambda r: (-r["weight"], r["edid"] or r["fk"]))
+    if remaining:
+        top = remaining[:8]
+        names = "; ".join(f"{r['type']} {r['edid'] or r['fk']} ({', '.join(r['fields'][:4])}: "
+                          f"{r['loser']} loses to {r['winner']})" for r in top)
+        quest = [r for r in remaining if QUEST in r["fields"]]
+        imp = (f" The important part: {len(quest)} location(s) where one mod's {QUEST} are dropped, which can stop a "
+               "quest or an NPC from appearing there.") if quest else ""
+        _add(ctx, "note", f"No load order keeps every change: {len(remaining)} record(s) still lose changes under the "
+                          f"recommended order. A merged patch would keep both sides' changes.{imp} The most important: "
+                          f"{names}" + (f"; and {len(remaining) - 8} more." if len(remaining) > 8 else "."),
+             "Make one merged patch for these records (in xEdit or another patch tool), load it after every plugin "
+             "it covers, and check it in game.",
+             sorted({n for r in remaining for n in (r["loser"], r["winner"])}),
+             records=[{k: r[k] for k in ("fk", "edid", "type", "loser", "winner", "weight", "fields", "official")}
+                      for r in remaining[:100]], count=len(remaining))
+
+    # compare with LOOT's order
+    vs_loot = None
+    lpath = getattr(ctx.args, "loot_order", None)
+    if lpath:
+        loot, err = _read_loot(ctx, lpath)
+        if err:
+            vs_loot = {"file": lpath, "error": err}
+        else:
+            seen_l = set()  # a name listed twice (in any case): the first line counts, as in the game's Plugins.txt
+            loot = [n for n in loot if not (n.lower() in seen_l or seen_l.add(n.lower()))]
+            lset = {n.lower() for n in loot}
+            ours = [n for n in full if n.lower() not in fixed]
+            common = [n for n in ours if n.lower() in lset]
+            loot_c = [n for n in loot if n.lower() in {x.lower() for x in common}]
+            mvl = moved(common, loot_c)
+            vs_loot = {"file": lpath, "moved": mvl, "moved_count": len(mvl),
+                       "missing": [n for n in ours if n.lower() not in lset],
+                       "extra": [n for n in loot if n.lower() not in {x.lower() for x in ours}
+                                 and not _fixed(lo, n)], "score": None}
+            if rated:  # LOOT's order of the plugins it names, the rest after them, fixed files in their slots
+                loot_full = _full(current, loot_c + [n for n in ours if n.lower() not in lset], fixed)
+                vs_loot["score"] = scorer(rec)(loot_full)[0]
+            log.info(SECTION, f"vs LOOT {lpath}: {len(mvl)} plugin(s) placed differently")
+
+    # the summary finding
+    if not rated:
+        text = ("The order can't be rated beyond masters and archives: there is no record-conflict data (run at "
+                "--depth medium with sf-mod-check 0.8.0 or later, or pass --conflicts), so no record-based move is "
+                "suggested.")
+        if not same:
+            text += f" {len(moves)} plugin(s) move only to fix master order or apply your picks."
+        _add(ctx, "note", text, None if same else "Apply the files in the output folder (HOW-TO-APPLY.txt).",
+             [m["plugin"] for m in moves])
+    elif same:
+        _add(ctx, "note", f"Keep {LABEL_CURRENT}: no move the data supports makes it lose less (loss score "
+                          f"{score_cur}, lower is better). The files written equal the current order.")
+    else:
+        est = f" The new score is {ESTIMATE_WHY}." if estimate else ""
+        _add(ctx, "note", f"The recommended order moves {len(moves)} plugin(s). Loss score (lower is better): "
+                          f"{LABEL_CURRENT} {score_cur}, recommended {score_rec}.{est}",
+             "Apply the files in the output folder (HOW-TO-APPLY.txt), after backing up your current order.",
+             [m["plugin"] for m in moves], estimate=estimate)
+    if rated and rec.get("differs"):
+        _add(ctx, "caution", "The record-conflict data was made for a different load order than this one, so the "
+                             "scores may be off.", "Run again without --conflicts so sf-mod-check checks this order.")
+
+    res ={"order": full, "moves": moves, "score_current": score_cur, "score_recommended": score_rec,
+           "estimate": estimate, "same_as_current": same, "rated": rated, "label": LABEL_CURRENT,
+           "flipped": flips_info, "rejected": rejected,
+           "picks": {"applied": applied, "not_applied": not_applied},
+           "archive_flips": aflips, "remaining": remaining, "vs_loot": vs_loot}
+    ctx.results[SECTION] = res
+    ctx.report.recommended = full
+    files = writers.write(ctx)
+    res["files"] = files
+    ctx.report.outputs.update(files)
+    log.info(SECTION, f"{len(moves)} move(s), score {score_cur} -> {score_rec}{' (estimate)' if estimate else ''}, "
+                      f"files {sorted(files)}")
+    return {"status": "done", "moves": len(moves), "score_current": score_cur, "score_recommended": score_rec,
+            "estimate": estimate, "same_as_current": same, "rated": rated}

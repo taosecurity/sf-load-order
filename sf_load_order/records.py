@@ -1,0 +1,599 @@
+"""Record conflicts, section "records": what sf-mod-check's `conflict` command finds, as ratings, pairs and findings.
+
+run(ctx) gets the data one of two ways:
+  --conflicts FILE   read a conflicts.json from an earlier `sf-mod-check conflict` run (any version that writes the
+                     keys below; nothing is run)
+  otherwise          find sf-mod-check (sfmodcheck.find), check it is 0.8.0 or later, write the load order as a
+                     Plugins.txt in ctx.work and run `conflict` into ctx.work\\conflict
+With no sf-mod-check the section is skipped and says where to get it.
+
+What conflicts.json holds (sf-mod-check src\\ConflictReport.cs, 0.8.0) and what that means here:
+  lost       one entry per (record, loser, winner): a plugin's change to a record that the game throws away because a
+             later plugin, which doesn't have it as a master (directly or through its masters), supplies the field.
+             Each field carries WinnerChangedToo and Differences / LoserChanges ({Text, Minor}). The field labels are
+             the ones sf-mod-check's report shows, worked out the same way (ConflictImpact.IsMinor):
+               No effect    the loser's changes, or the differences, are all Minor (list order, letter case,
+                            undocumented fields)
+               Choice       the winner changed that field on purpose too
+               Forwardable  the winner only carries an older value, so a patch can copy the lost value forward
+  itms, typeChanges, loadOrderProblems, Errors / UnreadableFields (records not compared), missingAssets,
+  archiveLimitWarnings, loadOrder (plugins sf-mod-check loaded, with Official and Masters).
+
+What it can't tell: the file lists only losses. A plugin's own edits that nobody undoes, and edits two mods make
+the same way, aren't listed, so a plugin with no entry is "neutral" in the sense "nothing of it is lost and it
+undoes nothing", not proven to add only new records (the private tracker's overrides list could tell those apart).
+It also has no cost of the other order (sf-mod-check works that out, ReorderCost, but doesn't write it), so a
+pair's flip cost below is only the part the Choice fields show.
+
+Ratings per enabled mod plugin (keys as the tracker's, labels in RATING_LABEL):
+  neutral       no lost-change entry names it and no ITM or type change of its is listed
+  neutral-here  it is in entries, but none that the order can change (built on it, same mod, same edit, it undoes
+                an official change, which no order fixes), or it has ITMs / type changes
+  matters       it is the loser or winner of a "patch candidate" or "pick a winner" pair between two mods
+  unchecked     sf-mod-check didn't load it (unreadable, a master missing, not in its load order)
+
+Pair advice (key, label): built "no action: built on it", samemod "no action: same mod", same "no action: same
+edit", merge "patch candidate", conflict "pick a winner". "built" can't come from sf-mod-check itself (it leaves
+out pairs where the winner has the loser as a master); it is kept for files made another way.
+
+ctx.results["records"] (for recommend, C6, and the report, C7):
+  {"source": "run"|"file", "file": conflicts.json path, "program": Program.to_dict() or None,
+   "exit": int|None, "result_line": str|None, "generated": str,
+   "load_order": [names sf-mod-check loaded, official included, in its order],
+   "plugins": {lower name: {"name", "rating", "label", "why", "pairs": [pair index], "lost_records": int,
+               "won_records": int, "undoes_official": int, "itms": int, "type_changes": int}},
+   "lost": [{"fk", "type", "edid", "loser", "winner", "loser_official", "winner_official", "outcome",
+             "fields": [{"field", "label", "weight", "winner_changed_too", "loser_value", "winner_value",
+                         "differences": [str]}]}],
+   "pairs": [{"loser", "winner", "winner_official", "advice", "label", "mod", "records": [index into lost],
+              "n": {"same", "merge", "conflict"}, "fields": {"Forwardable": n, "Choice": n, "No effect": n},
+              "gain_if_flipped": weighted sum of the loser's lost Forwardable + Choice fields,
+              "known_cost_if_flipped": weighted sum of the Choice fields (the winner's own changes there),
+              "cost_complete": False}],
+   "official_undone": [index into lost],   loser official, winner a mod
+   "itms": [{"plugin", "fk", "type", "edid"}],
+   "type_changes": [{"fk", "edid", "plugin", "plugin_type", "first", "first_type", "text"}],
+   "problems": [{"text", "plugin", "kind", "seen_by"}],  kind: missing-file / master / master-order / unreadable /
+                                                         other; seen_by: "inputs" / "order" / "records"
+   "not_compared": {"errors": [str], "unreadable_fields": {str: n}},
+   "assets": {"checked", "missing": [...], "archive_counts", "archive_limit_warnings"},
+   "differs": None or {"missing": [...], "extra": [...], "order": bool}   vs the load order being checked
+   "heavy": None or {lower name: sfmodcheck.run_check() dict}}
+Field weights are recommend.py's: 0 bookkeeping or No effect, 1 cosmetic (lighting, music, weather, names...),
+3 functional (everything else).
+"""
+import json
+import os
+
+from . import log, sfmodcheck
+from .model import Finding
+
+SECTION = "records"
+NO_PROGRAM = ("sf-mod-check wasn't found. Get it from https://github.com/taosecurity/sf-mod-check/releases (called "
+              "sfmodcheck before 0.8.0; this tool needs 0.8.0 or newer) or pass --sf-mod-check <exe>.")
+RATING_LABEL = {"neutral": "neutral", "neutral-here": "neutral here", "matters": "order matters",
+                "unchecked": "not checked"}
+ADVICE_LABEL = {"built": "no action: built on it", "samemod": "no action: same mod", "same": "no action: same edit",
+                "merge": "patch candidate", "conflict": "pick a winner"}
+ACTION = {"merge", "conflict"}
+FORWARDABLE, CHOICE, NO_EFFECT = "Forwardable", "Choice", "No effect"
+# from the private tracker's recommend.py (bookkeeping 0, cosmetic 1, everything else 3)
+NOISE = {"NumTraversalFluffBytes", "PersistentTimestamp", "Timestamp"}
+COSMETIC = {"Lighting", "LightingTemplate", "ImageSpace", "AcousticSpace", "Music", "AmbienceSet", "EnvironmentMap",
+            "Climate", "LodWater", "LodWaterHeight", "Water", "DistantLodMultiplier", "CellWaterHeightLocations",
+            "Name", "MapData", "WorldMapOffset", "FNAM", "GNAM", "HNAM", "SkyLighting", "WaterHeight",
+            "WaterEnvironmentMap", "LandDefaults", "Description", "Components", "XILS", "WaterHeights",
+            "ActorFadeMult"}
+# record types whose edits are lists of entries: two mods adding entries can always be merged (tracker, neutral.py)
+LIST_TYPES = {"LeveledItem", "LeveledNpc", "LeveledPackIn", "LeveledSpaceshipBaseList", "LeveledBaseForm",
+              "FormList", "Container", "Outfit", "NavigationMeshInfoMap"}
+DELETED_RISKY = {"REFR", "ACHR", "NAVM"}
+REQUIRED_KEYS = ("loadOrder", "lost")
+
+
+# ---------- reading ----------
+def load(path):
+    """(dict, None) or (None, error text naming the file and the fix)."""
+    fix = "Fix: give --conflicts the conflicts.json that sf-mod-check conflict wrote in its --out folder."
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            d = json.load(f)
+    except OSError as e:
+        return None, f"can't read {path}: {e.strerror or e}. {fix}"
+    except ValueError as e:
+        return None, f"{path} isn't valid JSON ({e}). {fix}"
+    if not isinstance(d, dict) or any(not isinstance(d.get(k), list) for k in REQUIRED_KEYS):
+        return None, f"{path} doesn't look like sf-mod-check's conflicts.json (no loadOrder and lost lists). {fix}"
+    return d, None
+
+
+def label(f):
+    """sf-mod-check's label for one lost field (ConflictImpact.IsMinor, then WinnerChangedToo)."""
+    lc = f.get("LoserChanges") or []
+    df = f.get("Differences") or []
+    if (lc and all(x.get("Minor") for x in lc)) or (df and all(x.get("Minor") for x in df)):
+        return NO_EFFECT
+    return CHOICE if f.get("WinnerChangedToo") else FORWARDABLE
+
+
+def weight(field, lab=None):
+    if lab == NO_EFFECT or field in NOISE:
+        return 0
+    return 1 if field in COSMETIC else 3
+
+
+def _outcome(rtype, fields):
+    real = [f for f in fields if f["label"] != NO_EFFECT]
+    if not real:
+        return "same"
+    if rtype in LIST_TYPES or all(f["label"] == FORWARDABLE for f in real):
+        return "merge"
+    return "conflict"
+
+
+def _closure(load_order):
+    direct = {(e.get("FileName") or "").lower(): {str(m or "").lower() for m in (e.get("Masters") or [])}
+              for e in load_order}
+    out = {}
+
+    def walk(n, seen):
+        for m in direct.get(n, ()):
+            if m not in seen:
+                seen.add(m)
+                walk(m, seen)
+        return seen
+    for n in direct:
+        out[n] = walk(n, set())
+    return out
+
+
+def _problem(text):
+    """(plugin, kind, seen_by) for one loadOrderProblems line (texts from sf-mod-check ConflictLoadOrder.cs)."""
+    plugin = text.split(":", 1)[0].strip() if ":" in text else None
+    t = text.lower()
+    if "listed but not found" in t:
+        return plugin, "missing-file", "inputs"
+    if "listed before its master" in t:
+        return plugin, "master-order", "order"
+    if " master " in t and ("missing or inactive" in t or "unloadable" in t):
+        return plugin, "master", "order"
+    if "cannot be read" in t or "cannot be opened" in t:
+        return plugin, "unreadable", "records"
+    return plugin, "other", "records"
+
+
+def analyse(cj, lo):
+    """Turn conflicts.json (dict) into ctx.results["records"] (see the module text). lo: the LoadOrder checked."""
+    order = [(e.get("FileName") or "") for e in (cj.get("loadOrder") or [])]
+    official = {(e.get("FileName") or "").lower() for e in (cj.get("loadOrder") or []) if e.get("Official")}
+    need = _closure((cj.get("loadOrder") or []))
+    modof = {}
+    for m in (getattr(lo, "mods", None) or []):
+        for p in (m.plugins or []):
+            modof[p.lower()] = m.name
+
+    lost = []
+    for e in (cj.get("lost") or []):
+        fields = []
+        for f in e.get("Fields") or []:
+            lab = label(f)
+            name = f.get("Field") or "?"
+            fields.append({"field": name, "label": lab, "weight": weight(name, lab),
+                           "winner_changed_too": bool(f.get("WinnerChangedToo")),
+                           "loser_value": f.get("LoserValue"), "winner_value": f.get("WinnerValue"),
+                           "differences": [(x.get("Text") or "") for x in (f.get("Differences") or [])]})
+        loser, winner = (e.get("Loser") or ""), (e.get("Winner") or "")
+        lost.append({"fk": (e.get("formKey") or ""), "type": (e.get("RecordType") or ""), "edid": e.get("EditorID"),
+                     "loser": loser, "winner": winner,
+                     "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
+                     "winner_official": winner.lower() in official,
+                     "outcome": _outcome((e.get("RecordType") or ""), fields), "fields": fields})
+
+    pairs, by_pair = [], {}
+    for i, x in enumerate(lost):
+        if x["loser_official"]:
+            continue
+        key = (x["loser"].lower(), x["winner"].lower())
+        if key not in by_pair:
+            by_pair[key] = len(pairs)
+            pairs.append({"loser": x["loser"], "winner": x["winner"], "winner_official": x["winner_official"],
+                          "records": [], "mod": None})
+        pairs[by_pair[key]]["records"].append(i)
+    for p in pairs:
+        recs = [lost[i] for i in p["records"]]
+        outs = [r["outcome"] for r in recs]
+        p["n"] = {k: outs.count(k) for k in ("same", "merge", "conflict")}
+        allf = [f for r in recs for f in r["fields"]]
+        p["fields"] = {k: sum(1 for f in allf if f["label"] == k) for k in (FORWARDABLE, CHOICE, NO_EFFECT)}
+        p["gain_if_flipped"] = sum(f["weight"] for f in allf if f["label"] != NO_EFFECT)
+        p["known_cost_if_flipped"] = sum(f["weight"] for f in allf if f["label"] == CHOICE)
+        p["cost_complete"] = False
+        lw, ll = p["winner"].lower(), p["loser"].lower()
+        if ll in need.get(lw, ()):
+            p["advice"] = "built"
+        elif modof.get(ll) and modof.get(ll) == modof.get(lw):
+            p["advice"], p["mod"] = "samemod", modof[ll]
+        elif "conflict" in outs:
+            p["advice"] = "conflict"
+        elif "merge" in outs:
+            p["advice"] = "merge"
+        else:
+            p["advice"] = "same"
+        p["label"] = ADVICE_LABEL[p["advice"]]
+
+    official_undone = [i for i, x in enumerate(lost) if x["loser_official"] and not x["winner_official"]]
+    itms = [{"plugin": (x.get("Plugin") or ""), "fk": (x.get("formKey") or ""), "type": (x.get("RecordType") or ""),
+             "edid": x.get("EditorID")} for x in cj.get("itms", []) or []]
+    tcs = [{"fk": (x.get("formKey") or ""), "edid": x.get("EditorID"), "plugin": (x.get("Plugin") or ""),
+            "plugin_type": x.get("PluginType"), "first": x.get("First"), "first_type": x.get("FirstType"),
+            "text": x.get("finding")} for x in cj.get("typeChanges", []) or []]
+    problems = []
+    for t in cj.get("loadOrderProblems", []) or []:
+        plugin, kind, seen_by = _problem(str(t))
+        problems.append({"text": str(t), "plugin": plugin, "kind": kind, "seen_by": seen_by})
+
+    res = {"load_order": order, "generated": cj.get("generated"), "lost": lost, "pairs": pairs,
+           "official_undone": official_undone, "itms": itms, "type_changes": tcs, "problems": problems,
+           "not_compared": {"errors": list(cj.get("Errors") or []),
+                            "unreadable_fields": dict(cj.get("UnreadableFields") or {})},
+           "assets": {"checked": cj.get("assetsChecked"), "missing": list(cj.get("missingAssets") or []),
+                      "archive_counts": cj.get("archiveCounts"),
+                      "archive_limit_warnings": list(cj.get("archiveLimitWarnings") or [])},
+           "heavy": None}
+    res["plugins"] = _ratings(lo, res, {n.lower() for n in order})
+    res["differs"] = _differs(lo, cj)
+    return res
+
+
+def _mod_plugins(lo):
+    return [p for p in lo.plugins if p.enabled and not p.official and not p.dropped]
+
+
+def _ratings(lo, res, loaded):
+    skipped = {}
+    for pr in res["problems"]:
+        # sf-mod-check skips a plugin it can't read, one with a master missing, and a listed file that isn't there
+        if pr["plugin"] and pr["kind"] in ("unreadable", "master", "missing-file"):
+            skipped.setdefault(pr["plugin"].lower(), pr["text"])
+    out = {}
+    for p in _mod_plugins(lo):
+        n = p.name.lower()
+        mine = [i for i, x in enumerate(res["pairs"]) if n in (x["loser"].lower(), x["winner"].lower())]
+        lost_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["loser"].lower() == n)
+        won_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["winner"].lower() == n)
+        undo = sum(1 for i in res["official_undone"] if res["lost"][i]["winner"].lower() == n)
+        itms = sum(1 for x in res["itms"] if x["plugin"].lower() == n)
+        tcs = sum(1 for x in res["type_changes"] if x["plugin"].lower() == n)
+        movable = [i for i in mine if res["pairs"][i]["advice"] in ACTION and not res["pairs"][i]["winner_official"]]
+        if n in skipped or n not in loaded:
+            rating = "unchecked"
+            why = skipped.get(n) or "sf-mod-check didn't load it (it isn't in conflicts.json's load order)"
+        elif movable:
+            rating = "matters"
+            kinds = sorted({res["pairs"][i]["label"] for i in movable})
+            why = f"{len(movable)} overlap(s) with another mod: {', '.join(kinds)}"
+        elif mine or undo or itms or tcs:
+            rating = "neutral-here"
+            bits = []
+            if mine:
+                bits.append(f"{len(mine)} overlap(s) the order doesn't change ("
+                            + ", ".join(sorted({res['pairs'][i]['label'] for i in mine})) + ")")
+            if undo:
+                bits.append(f"undoes {undo} official change(s) (no order fixes that)")
+            if itms:
+                bits.append(f"{itms} ITM record(s)")
+            if tcs:
+                bits.append(f"{tcs} record type change(s)")
+            why = "; ".join(bits)
+        else:
+            rating = "neutral"
+            why = ("no change of it is lost and it undoes no one's change (conflicts.json lists only losses, so this "
+                   "doesn't say whether it edits existing records)")
+        out[n] = {"name": p.name, "rating": rating, "label": RATING_LABEL[rating], "why": why, "pairs": mine,
+                  "lost_records": lost_r, "won_records": won_r, "undoes_official": undo, "itms": itms,
+                  "type_changes": tcs}
+    return out
+
+
+def _differs(lo, cj):
+    ours = [p.name.lower() for p in _mod_plugins(lo)]
+    theirs = [(e.get("FileName") or "").lower() for e in (cj.get("loadOrder") or []) if not e.get("Official")]
+    if ours == theirs:
+        return None
+    so, st = set(ours), set(theirs)
+    common_o = [n for n in ours if n in st]
+    common_t = [n for n in theirs if n in so]
+    return {"missing": [n for n in ours if n not in st], "extra": [n for n in theirs if n not in so],
+            "order": common_o != common_t}
+
+
+# ---------- findings ----------
+def _names(fields, n=6):
+    """Field names in plain words with the raw name after it, e.g. "script settings (VirtualMachineAdapter)"."""
+    from .recommend import plain_field  # imported here: recommend imports this module
+    out = []
+    for f in fields:
+        raw = f["field"]
+        word = plain_field(raw)
+        label = raw if word.replace(" ", "").lower() == raw.lower() else f"{word} ({raw})"
+        if label not in out:
+            out.append(label)
+    return ", ".join(out[:n]) + ("..." if len(out) > n else "")
+
+
+def add_findings(ctx, res, source):
+    add = ctx.report.add
+    lost = res["lost"]
+    for p in res["pairs"]:
+        if p["advice"] not in ACTION:
+            continue
+        recs = [lost[i] for i in p["records"]]
+        real = [f for r in recs for f in r["fields"] if f["label"] != NO_EFFECT]
+        level = "caution" if any(f["weight"] >= 3 for f in real) else "note"
+        L, W = p["loser"], p["winner"]
+        head = (f"{W} wins over {L} on {len(recs)} record(s), so changes {L} made are lost there "
+                f"(fields: {_names(real)}).")
+        if p["advice"] == "merge":
+            text = head + f" {W} didn't change those fields itself, so a patch can keep both (patch candidate)."
+            fix = (f"Make a small patch that loads after both and carries {L}'s values forward (sf-mod-check's "
+                   f"report.html has a prompt for it), or load {L} after {W} if you want its changes more.")
+        else:
+            text = head + f" Both changed the same fields, so one has to win (pick a winner)."
+            fix = (f"Decide which version you want: the plugin that loads later wins. Keep {W} after {L}, or move "
+                   f"{L} below {W}; a patch can combine the two.")
+        if p["winner_official"]:
+            fix = (f"{W} is an official file that loads after every mod, so no order fixes this; a patch that loads "
+                   f"after it can.")
+        add(Finding(level, SECTION, text, fix=fix, plugins=[L, W],
+                    data={"advice": p["advice"], "records": [lost[i]["fk"] for i in p["records"]][:50],
+                          "fields": p["fields"]}))
+
+    by_winner = {}
+    for i in res["official_undone"]:
+        by_winner.setdefault(lost[i]["winner"], []).append(lost[i])
+    for w, xs in by_winner.items():
+        real = [f for x in xs for f in x["fields"] if f["label"] != NO_EFFECT]
+        if not real:
+            continue
+        offs = sorted({x["loser"] for x in xs})
+        recs = sorted({x["fk"] for x in xs})
+        add(Finding("caution" if any(f["weight"] >= 3 for f in real) else "note", SECTION,
+                    f"{w} undoes official changes from {', '.join(offs)} on {len(recs)} record(s) (fields: "
+                    f"{_names(real)}): it wasn't built with them as masters.",
+                    fix=(f"Look for an update of {w} made for the current game and DLCs, or a patch that carries the "
+                         "official changes forward. Moving it won't help: official files always load first."),
+                    plugins=[w] + offs, data={"records": recs[:50]}))
+
+    for t in res["type_changes"]:
+        add(Finding("problem", SECTION,
+                    t["text"] or f"{t['plugin']} gives {t['fk']} a different record type than {t['first']}.",
+                    fix=("The game keeps whichever record loads first and drops the other. Tell the mod's author: "
+                         "the record needs its own FormID (xEdit: right-click > Change FormID)."),
+                    plugins=[x for x in (t["plugin"], t["first"]) if x], data={"fk": t["fk"]}))
+
+    itm_by = {}
+    for x in res["itms"]:
+        itm_by.setdefault(x["plugin"], []).append(x["fk"])
+    for plugin, fks in itm_by.items():
+        add(Finding("note", SECTION, f"{plugin} has {len(fks)} record(s) identical to the version it overrides "
+                    "(ITM); they change nothing but can undo other mods' edits to the same records.",
+                    fix="Clean it with xEdit's QuickAutoClean (Remove \"Identical to Master\" records), or ask the "
+                        "author for a cleaned version.", plugins=[plugin], data={"records": fks[:50]}))
+
+    for pr in res["problems"]:
+        if pr["seen_by"] != "records":
+            log.info(SECTION, f"load-order problem left to the {pr['seen_by']} checks: {pr['text']}")
+            continue
+        add(Finding("caution", SECTION, f"sf-mod-check: {pr['text']}.",
+                    fix=f"Run sf-mod-check check on {pr['plugin'] or 'that plugin'} to see why; reinstall it if "
+                        "the file is damaged.", plugins=[pr["plugin"]] if pr["plugin"] else []))
+
+    nc = res["not_compared"]
+    if nc["errors"] or nc["unreadable_fields"]:
+        add(Finding("note", SECTION,
+                    f"sf-mod-check couldn't compare everything: {len(nc['errors'])} error line(s) and "
+                    f"{sum(nc['unreadable_fields'].values())} unreadable field(s), so conflicts there aren't listed.",
+                    fix="See \"Tool limits hit\" in sf-mod-check's report.html; sf-mod-check check on the named "
+                        "plugin shows the record.", data={"errors": nc["errors"][:20]}))
+
+    miss = {}
+    for m in res["assets"]["missing"]:
+        miss.setdefault((m.get("plugin") or ""), []).append(m)
+    for plugin, ms in miss.items():
+        scripts = [m for m in ms if (m.get("kind") or "").lower().startswith("script")]
+        models = len(ms) - len(scripts)
+        add(Finding("caution" if scripts else "note", SECTION,
+                    f"{plugin}: {len(scripts)} script(s) and {models} model(s) its records use aren't installed "
+                    "(not loose and not in an archive the game loads).",
+                    fix="Reinstall the mod, or install the mod those files come from.", plugins=[plugin],
+                    data={"paths": [m.get("path") for m in ms][:50]}))
+    for w in res["assets"]["archive_limit_warnings"]:
+        add(Finding("caution", SECTION, f"sf-mod-check: {w}",
+                    fix="Remove or merge mods that bring archives, or use a BA2 limit fix."))
+
+    d = res["differs"]
+    if d and source == "file":
+        bits = []
+        if d["missing"]:
+            bits.append(f"{len(d['missing'])} enabled plugin(s) aren't in it")
+        if d["extra"]:
+            bits.append(f"it has {len(d['extra'])} plugin(s) that aren't enabled now")
+        if d["order"]:
+            bits.append("the order differs")
+        add(Finding("caution", SECTION, f"The --conflicts file was made for another load order ({'; '.join(bits)}), "
+                    "so its record results may be out of date.",
+                    fix="Run sf-mod-check conflict again on this load order, or leave out --conflicts.",
+                    data=d))
+
+
+# ---------- heavy ----------
+def heavy(ctx, prog, res):
+    """--depth heavy: sf-mod-check check on each enabled mod plugin, for deleted records and broken plugins (the ITM
+    count from check is kept in the data only: conflict already lists ITMs)."""
+    lo = ctx.load_order
+    out = {}
+    failed = []
+    for p in _mod_plugins(lo):
+        path = os.path.join(lo.data, p.name)
+        if not os.path.isfile(path):
+            failed.append(f"{p.name} (not in the Data folder)")
+            continue
+        r = sfmodcheck.run_check(prog, path, lo.data)
+        out[p.name.lower()] = r
+        if r["why"]:
+            failed.append(f"{p.name} ({r['why']})")
+            continue
+        risky = {k: v for k, v in r["deleted"].items() if k in DELETED_RISKY}
+        other = {k: v for k, v in r["deleted"].items() if k not in DELETED_RISKY}
+        if risky:
+            what = ", ".join(f"{v} {k}" for k, v in sorted(risky.items()))
+            ctx.report.add(Finding("caution", SECTION,
+                                   f"{p.name} deletes records ({what}); another mod or the game still using a deleted "
+                                   "placed reference or navmesh can crash the game.",
+                                   fix="Ask the author for a cleaned version, or in xEdit use Undelete and Disable "
+                                       "References on the placed references.", plugins=[p.name], data=r["deleted"]))
+        elif other:
+            what = ", ".join(f"{v} {k}" for k, v in sorted(other.items()))
+            ctx.report.add(Finding("note", SECTION, f"{p.name} deletes records ({what}).",
+                                   fix="Usually meant; check it only if something from the game goes missing.",
+                                   plugins=[p.name], data=r["deleted"]))
+        if r["errors"]:
+            ctx.report.add(Finding("caution", SECTION, f"sf-mod-check check found {r['errors']} error(s) in {p.name}.",
+                                   fix=f"Run sf-mod-check check \"{p.name}\" to see them, and tell the mod's author.",
+                                   plugins=[p.name]))
+    if failed:
+        ctx.report.add(Finding("note", SECTION, f"sf-mod-check check couldn't check {len(failed)} plugin(s): "
+                               + "; ".join(failed[:10]) + ("..." if len(failed) > 10 else ""),
+                               plugins=[f.split(" (")[0] for f in failed]))
+    res["heavy"] = out
+    return len(out), len(failed)
+
+
+# ---------- run ----------
+def _skip(why, **kw):
+    log.info(SECTION, f"skipped: {why}")
+    return dict({"status": "skipped", "why": why}, **kw)
+
+
+def _exe_note(ctx, prog):
+    """A note naming the .exe chosen beside a .cmd/.bat wrapper (sfmodcheck.unwrap_info), once per run."""
+    if prog.note and not any(f.section == SECTION and f.data.get("exe") == prog.path for f in ctx.report.findings):
+        log.info(SECTION, prog.note)
+        ctx.report.add(Finding("note", SECTION, prog.note, fix="If that isn't the sf-mod-check you meant, give "
+                               "--sf-mod-check the full path of the right sf-mod-check.exe.", data={"exe": prog.path}))
+
+
+def _not_visible(lo):
+    return [p.name for p in _mod_plugins(lo) if not os.path.isfile(os.path.join(lo.data, p.name))]
+
+
+def run(ctx):
+    args, lo = ctx.args, ctx.load_order
+    depth = getattr(args, "depth", None) or "medium"
+    given = getattr(args, "conflicts", None)
+    prog, result_line, exit_code = None, None, None
+    if given:
+        cj, err = load(given)
+        if err:
+            ctx.report.add(Finding("caution", SECTION, f"The --conflicts file couldn't be used: {err}"))
+            return _skip(err)
+        source, path = "file", os.path.abspath(given)
+        log.info(SECTION, f"read {path}: {len(cj['lost'])} lost entries")
+    else:
+        prog, err = sfmodcheck.find(args)
+        if err:
+            return _skip(err)
+        if prog is None:
+            return _skip(NO_PROGRAM)
+        _exe_note(ctx, prog)
+        err = sfmodcheck.version(prog)
+        if err:
+            return _skip(err, program=prog.to_dict())
+        err = sfmodcheck.too_old(prog)
+        if err:
+            return _skip(err, program=prog.to_dict())
+        if not lo.data:
+            return _skip("no Data folder was found, so sf-mod-check has nothing to read. Fix: pass --data.")
+        hidden = _not_visible(lo)
+        if hidden and lo.source == "mo2":
+            why = (f"{len(hidden)} enabled plugin(s) aren't in {lo.data} (MO2 keeps mods in their own folders, and "
+                   "only programs started from MO2 see them in Data). Fix: start sf-load-order from MO2 (add it as "
+                   "an executable), or run sf-mod-check conflict from MO2 with --plugins set to the profile's "
+                   "plugins.txt and pass its conflicts.json with --conflicts.")
+            ctx.report.add(Finding("note", SECTION, "Record conflicts weren't checked: " + why.split(" Fix: ")[0] + ".",
+                                   fix=why.split(" Fix: ")[1], plugins=hidden[:20]))
+            return _skip(why, program=prog.to_dict())
+        os.makedirs(ctx.work, exist_ok=True)
+        ptxt = sfmodcheck.write_plugins_txt(os.path.join(ctx.work, "sf-mod-check-plugins.txt"), lo)
+        r = sfmodcheck.run_conflict(prog, ptxt, lo.data, os.path.join(ctx.work, "conflict"),
+                                    getattr(args, "max_memory", None),
+                                    timeout=getattr(args, "sf_mod_check_timeout", None) or sfmodcheck.CONFLICT_TIMEOUT)
+        result_line, exit_code = r.result, r.exit
+        failed = None
+        if getattr(r, "refused", False):
+            failed = (f"sf-mod-check wasn't run: {r.start_error}.",
+                      "Give --sf-mod-check the sf-mod-check.exe itself (not the .cmd), or use folders whose names "
+                      "hold none of & | < > ^ % ! \" for the output (--out) and the game.")
+        elif r.start_error:
+            failed = (f"sf-mod-check couldn't be started ({r.start_error}).",
+                      "Check the --sf-mod-check path, or reinstall sf-mod-check.")
+        elif r.timed_out:
+            failed = (f"sf-mod-check conflict didn't finish within {int(r.seconds)} seconds and was stopped.",
+                      "Run sf-mod-check conflict yourself (it can take a while on a big load order) and pass its "
+                      "conflicts.json with --conflicts.")
+        elif r.exit == 3:
+            failed = (f"sf-mod-check conflict stopped at the memory limit ({r.result or 'RESULT: STOPPED'}).",
+                      "Close other programs and run again with a higher --max-memory (or none).")
+        elif r.exit == 2:
+            failed = (f"sf-mod-check conflict couldn't run ({r.result or 'no RESULT line'}).",
+                      "Run it with --log to see why: sf-mod-check conflict --plugins <file> --data <folder> --log "
+                      "sf-mod-check-log.txt.")
+        elif r.exit != 0:
+            failed = (f"sf-mod-check conflict ended with exit code {r.exit} ({r.result or 'no RESULT line'}).",
+                      "Run it yourself with --log to see why.")
+        elif not r.conflicts:
+            failed = ("sf-mod-check conflict said it finished but wrote no conflicts.json.",
+                      "Run it yourself with --log to see why.")
+        if failed:
+            ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + failed[0], fix=failed[1]))
+            return _skip(failed[0], program=prog.to_dict(), exit=r.exit, result_line=r.result)
+        cj, err = load(r.conflicts)
+        if err:
+            ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + err))
+            return _skip(err, program=prog.to_dict(), exit=r.exit, result_line=r.result)
+        source, path = "run", r.conflicts
+
+    res = analyse(cj, lo)
+    res.update({"source": source, "file": path, "program": prog.to_dict() if prog else None,
+                "exit": exit_code, "result_line": result_line})
+    ctx.results[SECTION] = res
+    add_findings(ctx, res, source)
+    status = {"status": "done", "source": source, "file": path,
+              "lost": len(res["lost"]), "pairs": len(res["pairs"]),
+              "action_pairs": sum(1 for p in res["pairs"] if p["advice"] in ACTION),
+              "official_undone": len(res["official_undone"]), "itms": len(res["itms"]),
+              "type_changes": len(res["type_changes"])}
+    if result_line:
+        status["result_line"] = result_line
+    if depth == "heavy":
+        if prog is None:
+            prog, err = sfmodcheck.find(args)
+            if not err and prog is not None:
+                err = sfmodcheck.version(prog) or sfmodcheck.too_old(prog)
+            if err or prog is None:
+                status["heavy"] = f"skipped: {err or NO_PROGRAM}"
+                prog = None
+            else:
+                _exe_note(ctx, prog)
+        if prog is not None:
+            if not lo.data:
+                status["heavy"] = "skipped: no Data folder (pass --data)"
+            elif _not_visible(lo) and lo.source == "mo2":
+                status["heavy"] = "skipped: MO2's mods aren't in the Data folder (start sf-load-order from MO2)"
+            else:
+                done, bad = heavy(ctx, prog, res)
+                status["heavy"] = f"sf-mod-check check on {done} plugin(s), {bad} not checked"
+        log.info(SECTION, f"heavy: {status['heavy']}")
+    log.info(SECTION, f"{len(res['lost'])} lost entries, {len(res['pairs'])} pairs, ratings "
+                      + str({k: sum(1 for v in res['plugins'].values() if v['rating'] == k) for k in RATING_LABEL}))
+    return status

@@ -1,0 +1,432 @@
+# sf-load-order
+
+sf-load-order checks your Starfield load order and tells you, in plain words, what is wrong with it and how to fix
+it. It reads the load order you already have (the game's own Plugins.txt, a Mod Organizer 2 profile, or a file
+exported from Vortex's Load Order page) and reports:
+
+- plugins whose masters are missing, turned off or loading too late, and how close you are to the plugin limits;
+- patches that were built for an older version of a mod they depend on (a mod that changed from a full to a light
+  plugin, for example), which break with no error message;
+- known clashes from LOOT's masterlist and from your own notes;
+- mods whose archives (.ba2 files) or loose files overwrite each other, and which copy the game actually uses;
+- record conflicts, where one mod silently undoes another mod's changes (through sf-mod-check, if you have it).
+
+It then rates your order, suggests a better one when the data supports it, and writes the files to apply it, with
+step-by-step instructions. It never changes your game, Vortex or MO2: you decide whether to apply anything.
+
+- It needs Python 3.9 or newer and nothing else.
+- It is made for Windows (Steam and Game Pass installs, Vortex and MO2). It also runs on Linux with Python 3.10 or
+  newer, for checking a copy of a load order: give every path with options (see [Linux](#linux)).
+- It reads only. It writes only its report folder, a small snapshot and cache folder, and a log when you ask for one
+  (see [PRIVACY.md](PRIVACY.md)).
+- It's released under the GPL-3.0 license.
+
+This tool was built with [Claude Code](https://claude.com/claude-code).
+
+**For AI assistants:** [AGENTS.md](AGENTS.md) has step-by-step instructions: what the tool is for, the commands, the
+inputs and outputs, the exit codes and the limits.
+
+## First command
+
+Unzip the release, open a Command Prompt or PowerShell window in the unzipped folder, and run:
+
+```
+.\sf-load-order.cmd
+```
+
+With no options it checks the load order the game itself reads (`%LOCALAPPDATA%\Starfield\Plugins.txt`) against
+the game's Data folder, which it finds by itself on Steam and Game Pass installs. The first line names the tool:
+
+```
+sf-load-order 0.1.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+```
+
+(It goes to stderr, so scripts reading stdout see only the RESULT line; `--quiet` leaves it out.) The last line looks
+like this:
+
+```
+RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
+```
+
+Open `sf-load-order-report\report.html` in your browser (or `report.txt` in any text editor). The report starts with
+the ten findings that matter most, problems first, each with what to do about it.
+
+If you use Vortex or MO2, point the tool at your mod manager instead (see
+[Where the load order comes from](#where-the-load-order-comes-from)): then it can also check loose files and tell
+which mod each file comes from.
+
+## Install
+
+1. Install Python 3.9 or newer from https://www.python.org/downloads/. In the installer, tick **"Add python.exe to
+   PATH"** on the first page. (Check it worked: `python --version` in a new Command Prompt window.)
+2. Download `sf-load-order-<version>.zip` from the
+   [GitHub releases](https://github.com/taosecurity/sf-load-order/releases), and if you like, check it against the
+   `.sha256` file next to it (`certutil -hashfile sf-load-order-<version>.zip SHA256` in a Command Prompt).
+3. Unzip it anywhere, for example into your Documents folder.
+4. Run `.\sf-load-order.cmd` in that folder. The `.cmd` file only starts `python -I sf-load-order.py` with the
+   options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
+
+Optional extras:
+
+- **lz4**, for archives packed with LZ4 (some newer mod archives are): `python -m pip install lz4`. Without it,
+  sf-load-order still lists which archives share files, but says "can't compare" for the contents of LZ4 archives.
+- **sf-mod-check** 0.8.0 or newer, for record conflicts: https://github.com/taosecurity/sf-mod-check/releases. Put
+  it on PATH, or give its path with `--sf-mod-check`. Without it the tool runs at light depth (see [Depth](#depth)):
+  every check except record conflicts still runs. Versions before 0.8.0 (called sfmodcheck) are refused with a note
+  saying where to get the new one.
+
+### Linux
+
+sf-load-order runs on Linux with Python 3.10 or newer (its tests run on Linux too). Use it to check a copy
+of a load order: a Plugins.txt, an MO2 instance folder or a Vortex export, plus the game's Data folder, copied from
+the Windows PC or reached on its disk. Run it as `python3 -I sf-load-order.py` and give every path with an option:
+
+```
+python3 -I sf-load-order.py --plugins-txt ~/sf/Plugins.txt --data ~/sf/Data
+```
+
+The Windows defaults don't apply on Linux: there is no `%LOCALAPPDATA%` Plugins.txt, no Steam or Game Pass search,
+no `%APPDATA%` Vortex staging folder and no LOOT folder, so give `--plugins-txt` (or `--mo2` or
+`--vortex-loadorder`), `--data`, and if you want them `--vortex-staging`, `--loot-masterlist` and `--sf-mod-check`.
+With no load order option it stops with a RESULT: CANNOT CHECK line that says so. The snapshot and cache go to
+`~/.local/state/sf-load-order` (or `$XDG_STATE_HOME/sf-load-order`) unless you give `--state`. File names are
+matched in any letter case, as the game does on Windows. It hasn't been tried with a Linux game install (Proton).
+
+## Where the load order comes from
+
+Give one source. When you give none, the game's own Plugins.txt is read.
+
+| Your setup | Option | What is read |
+|---|---|---|
+| No mod manager, or you just want what the game reads | (none), or `--plugins-txt <file>` | `%LOCALAPPDATA%\Starfield\Plugins.txt` (Steam and Game Pass use the same file), or the file you name. |
+| Mod Organizer 2 | `--mo2 <instance folder>` and, if you like, `--profile <name>` | The folder that holds `ModOrganizer.ini`, `profiles\` and `mods\`. The profile's `plugins.txt`, `loadorder.txt` and `modlist.txt` give the order, which plugins are on, and each mod's priority. Without `--profile`, MO2's selected profile is used. The game folder comes from MO2's `gamePath` setting. |
+| Vortex | `--vortex-loadorder <file>`, and `--vortex-staging <folder>` if your staging folder isn't the default | On Vortex's **Load Order** page, click **Export** and save the file. That file gives the order. Each mod's own folder comes from Vortex's staging folder (default `%APPDATA%\Vortex\starfield\mods`; Vortex shows yours under Settings, Mods, Mod Staging Folder). Vortex's deployment record in the Data folder (`vortex.deployment.*.json`) says which mod deployed each loose file, so mods with no plugin are found too. |
+
+Vortex writes mod plugin names in lower case in its export, so sf-load-order takes each name's real spelling from
+the files in Data (or staging). It never reads Vortex's own database.
+
+### The Data folder
+
+The game's Data folder is found in this order:
+
+1. `--data <folder>`, when you give it.
+2. MO2's `gamePath`, for an MO2 source.
+3. Steam: the Steam folder from the Windows registry and `%ProgramFiles(x86)%\Steam`, and every library listed in
+   `steamapps\libraryfolders.vdf`, as `<library>\steamapps\common\Starfield\Data`. So a game on another drive's
+   Steam library is found too.
+4. Game Pass (the Xbox app): `<drive>:\XboxGames\Starfield\Content\Data` on every drive, plus the folders the Xbox
+   app lists in each drive's `.GamingRoot` file.
+
+If you have more than one copy, or the game is somewhere else, give `--data` (for example
+`--data "D:\Games\Starfield\Data"`).
+
+## What each check means
+
+Each finding has a level: **problem** (fix it before playing), **caution** (look at it) or **note** (good to know).
+The report groups findings by section, in this order.
+
+### What was read
+
+What the tool read, and anything wrong with the input itself: an enabled plugin whose file is missing, a plugin
+listed twice, a name the game drops (a plugin whose name ends in an official plugin's name, such as
+`-ShatteredSpace.esm`, or starts with `BlueprintShips-`, is removed from Plugins.txt by the game and never loads),
+or no Data folder found.
+
+### Load order and masters
+
+- Each mod plugin's masters: missing, turned off, dropped by the game, or loading after the plugin that needs them.
+- Plugins whose header can't be read (the file isn't a plugin).
+- Plugin counts per kind, base game included: full up to 253, medium up to 256, light up to 4,096. A caution comes
+  within 5% of a limit, a problem past it.
+- `BlueprintShips-*.esm` files: the game always loads these after every other plugin, oldest file first, whatever
+  the list says.
+
+Official files (the base game, the DLC and Bethesda's free Creations) load in the game's own fixed order and are not
+checked.
+
+### Patches built for an older master
+
+Inside a plugin, each record says which master it belongs to by a number that counts masters of one kind (full,
+medium or light) separately. When a master changes kind in an update (full to light is common), every patch for it
+now points at the wrong records, and neither the game nor the mod manager says anything. Two checks catch this:
+
+1. **A scan of record headers** (no history needed): records that claim to override a record their master doesn't
+   have, and records numbered past the plugin's own size limit.
+2. **"A master changed kind since the last run"**: each run saves a small snapshot of every plugin's kind and the
+   kinds its masters had (`--state`, default `%LOCALAPPDATA%\sf-load-order`, one file per load order). On the next
+   run, a master whose kind changed under an unchanged patch is a problem until the patch is updated. A patch that
+   was itself updated gets one caution (check it was built for the new master). The first run has nothing to compare
+   with and says so. `--no-state` turns the snapshot off.
+
+### Known clashes
+
+From four sources:
+
+1. **LOOT's masterlist.** sf-load-order reads the copy LOOT keeps on your PC
+   (`%LOCALAPPDATA%\LOOT\games\Starfield\masterlist.yaml`, plus `userlist.yaml` next to it; `--loot-masterlist` and
+   `--loot-userlist` point elsewhere). For your enabled plugins it reports missing requirements, incompatible plugins
+   that are both on, LOOT's warnings and errors, and plugins LOOT says need cleaning (when the file's CRC matches).
+   LOOT downloads the masterlist the first time it runs for Starfield; without LOOT this part is skipped and the
+   report says how to get it. The masterlist is never copied into this tool.
+2. **`--clashes <file>`**: your own known clashes.
+3. **`--accept <file>`**: clashes you have looked at and accepted, so they stop being reported until a file changes.
+4. **`--picks <file>`**: your own order choices ("this plugin loads right after that one"), used by the suggested
+   order.
+
+The `examples` folder has a sample of each, with made-up plugin names. A file can be a JSON list of entries or an
+object holding that list (`{"clashes": [...]}`, `{"accepted": [...]}`, `{"picks": [...]}`). Keys starting with `_`
+are comments and are ignored. A bad file or entry is a caution that names the file, the entry and the fix; the rest
+still runs.
+
+**`--clashes`** entries ([examples\clashes.example.json](examples/clashes.example.json)):
+
+| Field | Needed | Meaning |
+|---|---|---|
+| `plugins` | yes | A list of plugin file names (`.esm`, `.esp` or `.esl`). |
+| `level` | yes | `problem`, `caution` or `pick-one` (only one of them should win: reported as a caution). |
+| `note` | yes | A sentence saying what goes wrong. |
+| `min` | no | How many of the plugins must be enabled for the clash to show (default: all of them). |
+| `fixed_by` | no | A patch plugin. When it is enabled and loads after all of them, the clash is reported as settled. |
+| `link` | no | A web page about the clash, copied into the report. |
+
+**`--accept`** entries ([examples\accept.example.json](examples/accept.example.json)):
+
+| Field | Needed | Meaning |
+|---|---|---|
+| `files` | yes | `{"<plugin>": {"sha256": "<64 hex digits>", "size": <bytes>}}` for each plugin. `sha256` may be a list, to accept several versions. |
+| `plugins` | no | The plugins of the clash (default: the names in `files`). Each needs a hash in `files`. |
+| `date`, `why`, `by`, `history` | no | Your own notes. `date` and `why` are shown in the report. |
+
+An acceptance holds only while every file still has a listed SHA-256. When any of the plugins is updated, the clash
+comes back for review. Each open clash in report.json carries a ready-made entry with the current hashes
+(`findings[].data.accept_entry`), so you can paste it in.
+
+**`--picks`** entries ([examples\picks.example.json](examples/picks.example.json)):
+
+| Field | Needed | Meaning |
+|---|---|---|
+| `plugin` | yes | The plugin to move. Not an official plugin, and one pick per plugin. |
+| `after` | yes | The plugin it should load right after. |
+| `why`, `date` | no | Your own notes. |
+
+Picks that form a loop (A after B, B after A) are all skipped with a caution. A pick that would put a plugin above
+its own master isn't applied, and a pick whose plugins aren't both enabled is reported as not applied.
+
+### Archives (.ba2 files)
+
+Mods pack textures, meshes, sounds and scripts in .ba2 archives. When two mods' archives hold a file with the same
+path, the game uses the copy from the archive that loads last, and archives follow plugin order. Vortex's own
+conflict view checks loose files only, so it never shows these.
+
+- **Which archives load**: the game loads only `<plugin> - Main.ba2`, `- Main01.ba2`, `- Main02.ba2` and so on (it
+  stops at the first missing number), the same for `- Textures`, and `- Voices_en.ba2`. An archive named any other
+  way (`<plugin> - Meshes.ba2`, or a `Main03` after a missing `Main02`) never loads, and is reported.
+- **Shared paths**: each pair of plugins whose archives share paths gets one piece of advice: built on it (the
+  winner has the loser as a master, so it's meant to win), same mod, identical copies (order changes nothing), or
+  "order decides" (different content: the one loading last is what you see).
+- Contents are compared by unpacking the shared files (general archives stored or zlib-packed, texture archives by
+  their pixel data, LZ4 archives when `lz4` is installed).
+- Archives in Data that no enabled plugin loads are listed too.
+
+### Loose files
+
+Files a mod ships outside archives. A loose file in Data beats every archive, whatever the plugin order. This check
+needs each mod's own folder, so it runs for MO2 and Vortex sources, not for a plain Plugins.txt.
+
+- Mods shipping the same loose file: identical copies need nothing. With MO2 the mod with the higher priority wins.
+  With Vortex its own rules decide, and when the copy in Data matches one mod's copy, that mod is named.
+- Loose files that hide a file inside a loaded archive, and whether the content is the same.
+- Stray files: loose files in Data that no enabled mod ships, counted by folder.
+
+### Record conflicts (sf-mod-check)
+
+At depth medium and heavy, sf-load-order runs `sf-mod-check conflict` on your load order (or reads a
+`conflicts.json` you give with `--conflicts`) and turns the result into plain findings. A "lost change" is a mod's
+edit to a record that the game throws away because a later plugin, which doesn't build on it, supplies that record
+too. Each field that is lost is labeled:
+
+- **Forwardable**: the winner only carries an older value, so a patch can copy the lost change forward.
+- **Choice**: both mods changed that field on purpose, so you have to pick a winner.
+- **No effect**: the difference doesn't matter in game (list order, letter case).
+
+Each enabled mod plugin gets a rating: **neutral** (nothing of it is lost and it undoes nothing), **neutral here**
+(it is involved, but in nothing the order can change), **order matters** (it is in a pair where moving one of them
+changes what you get), or **not checked** (sf-mod-check couldn't load it). Each pair gets advice: no action (built on
+it, same mod, same edit), **patch candidate**, or **pick a winner**. Official changes that a mod undoes are listed
+too: no order fixes those.
+
+sf-mod-check reads plugins from the Data folder. Under MO2 it only sees your mods when it is started from MO2 (see
+[Traps](#traps)).
+
+### Suggested order
+
+The tool scores an order by the changes it throws away: each lost field counts 3 when it affects gameplay, 1 when it
+is cosmetic (lighting, music, weather, names and similar), and 0 when it has no effect. Changes to official records
+that a mod undoes count too. Lower is better. Starting from your current order (LOOT's, if you just sorted), it
+applies your `--picks`, then tries letting the losing plugin of each "patch candidate" or "pick a winner" pair load
+after the winner, and keeps a move only when the score of the whole order goes down. Masters always stay above the
+plugins that need them, a mod's plugins keep their order, and official and BlueprintShips files stay where the game
+puts them. Moves that would change which copy of an archived file wins are pointed out.
+
+- **The near-tie rule**: when the moves would save less than 10 points, or less than 3% of your current score
+  (whichever is more), your order is kept. Small differences aren't worth reshuffling a working setup.
+- **Estimates**: sf-mod-check's conflicts.json lists only the losses of the order it checked. When a pair is
+  flipped, the cost to the other plugin is known only for fields both changed, so the recommended order's score is
+  then marked as an estimate. Check the moved mods in game after applying it.
+- **Without record data** (depth light, or no sf-mod-check), the order can't be rated: only master order and your
+  picks are applied.
+- **`--loot-order <file>`**: give a Plugins.txt sorted by LOOT, and the report says how many plugins LOOT places
+  differently and, with record data, what LOOT's order would score.
+
+Files written to the report folder:
+
+- `plugins.txt`: the suggested order in the game's own format (official masters left out, as the game expects).
+- `loadorder.txt`: only for an MO2 source, MO2's own order file. MO2 takes the order from `loadorder.txt` and the
+  on/off marks from `plugins.txt`, so you need both. With MO2 closed, back up the profile's `plugins.txt` and
+  `loadorder.txt` (in `profiles\<profile>\`), then copy both files from the report folder into that folder.
+- `vortex-loadorder-recommended.json`: only for a Vortex source. Your export, reordered, for the Load Order page's
+  **Import** button. When nothing moves, it is a byte-for-byte copy of your export.
+- `HOW-TO-APPLY.txt`: plain steps for your setup, starting with a backup of what you have now, and how to go back.
+
+The files are written even when nothing moves; they then equal your current order, and HOW-TO-APPLY.txt says so.
+
+## Depth
+
+| Depth | What runs | Time |
+|---|---|---|
+| `light` | Everything except record conflicts: inputs, masters and order, patches, clashes, archives, loose files and the suggested order (masters and picks only). | Seconds, plus the first read of large archives. |
+| `medium` | Adds record conflicts through `sf-mod-check conflict`. This is the default. Without sf-mod-check the record section is skipped with how to get it, which is the same as light. | A few minutes on a big load order (it reads every plugin). |
+| `heavy` | Adds `sf-mod-check check` on each enabled mod plugin, for identical-to-master records (ITMs) and deleted references. | Several seconds per plugin. |
+
+`--max-memory <GB>` is passed to `sf-mod-check conflict`, which stops cleanly at that limit. sf-mod-check is
+stopped if `conflict` runs longer than 30 minutes; for a very large load order, run it yourself and give its
+`conflicts.json` with `--conflicts`.
+
+## All options
+
+These are the options `.\sf-load-order.cmd --help` lists.
+
+| Option | Meaning |
+|---|---|
+| `--plugins-txt FILE` | A Plugins.txt to check (default: `%LOCALAPPDATA%\Starfield\Plugins.txt`). |
+| `--mo2 FOLDER` | A Mod Organizer 2 instance folder (it holds `profiles\` and `mods\`). |
+| `--profile NAME` | The MO2 profile (default: MO2's selected profile). |
+| `--vortex-loadorder FILE` | A load order file exported from Vortex's Load Order page (Export button). |
+| `--vortex-staging FOLDER` | Vortex's mod staging folder, for loose-file checks (default: `%APPDATA%\Vortex\starfield\mods`). |
+| `--data FOLDER` | The game's Data folder (default: Steam's, then Game Pass's XboxGames folder on each drive). |
+| `--depth {light,medium,heavy}` | How much to check (see [Depth](#depth)). |
+| `--sf-mod-check EXE` | The sf-mod-check program (default: `sf-mod-check` on PATH, then `sfmodcheck`). |
+| `--conflicts FILE` | Reuse a conflicts.json from an earlier `sf-mod-check conflict` run (nothing is run). |
+| `--max-memory GB` | Passed to `sf-mod-check conflict`. |
+| `--loot-masterlist FILE` | LOOT's Starfield masterlist.yaml (default: `%LOCALAPPDATA%\LOOT\games\Starfield\masterlist.yaml`). |
+| `--loot-userlist FILE` | LOOT's userlist.yaml (default: next to the masterlist). |
+| `--clashes FILE` | Your own known-clashes file. |
+| `--accept FILE` | Clashes you have accepted, pinned to the files' hashes. |
+| `--picks FILE` | Your own order picks: plugin X loads right after plugin Y. |
+| `--loot-order FILE` | A Plugins.txt sorted by LOOT, to compare with. |
+| `--state FOLDER` | Where to keep the snapshot used for "changed since the last run", and the archive and loose-file cache (default: `%LOCALAPPDATA%\sf-load-order`; on Linux `~/.local/state/sf-load-order`). |
+| `--no-state` | Don't read or write the snapshot or the cache. |
+| `--out FOLDER` | Where the report and the files to apply go (default: `.\sf-load-order-report`). |
+| `--strict` | Exit 1 when the report lists any problem. |
+| `--quiet` | Print only the RESULT line (no byline on stderr). |
+| `--verbose` | Write the troubleshooting log to the screen (stderr). |
+| `--log FILE` | Write the troubleshooting log to this file. |
+| `--version` | Print the byline (version, author, license, project page) and the credits, then stop. |
+| `-h`, `--help` | Show the options and exit. |
+
+Options can't be shortened (`--plug` is refused), so a typo never picks the wrong option.
+
+## The report
+
+Every run writes three files to `--out` (default `sf-load-order-report` in the current folder):
+
+- `report.txt`: plain text. A header (the byline, then tool version, source, profile, Data folder, files read, date,
+  depth), the top 10 findings (problems, then cautions, then notes; findings with a fix first), every section with
+  its status and findings, the suggested order, and the files written.
+- `report.html`: the same in one self-contained page, with the byline under the title and a footer with the
+  license, the source and issues links, the credits and the privacy line ("It only reads your game and mod manager
+  files and never uploads anything."). It has no scripts, and no links except this project's page, its issues page
+  and sf-mod-check's page. Light and dark follow your system setting. Long lists fold away with their counts.
+- `report.json`: the same for scripts and other tools.
+
+### report.json
+
+Schema 1. Top-level keys:
+
+| Key | Meaning |
+|---|---|
+| `schema` | `1`. A change that breaks readers raises it. |
+| `tool_version` | The sf-load-order version that wrote the file. |
+| `author`, `license`, `url` | Who made the tool, its license (`GPL-3.0`) and its project page. |
+| `generated` | When, as local time (`2026-11-19T21:30:00`). |
+| `counts` | `{"problem": n, "caution": n, "note": n}`. |
+| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `masters`), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
+| `findings` | Worst first. Each: `level` (`problem`, `caution`, `note`), `section`, `text` (what is wrong), `fix` (what to do, or `null`), `plugins` (names it is about) and `data` (extra detail: counts, FormIDs, paths, a ready `accept_entry`). |
+| `sections` | Per section (`inputs`, `order`, `patches`, `clashes`, `archives`, `loose`, `records`, `recommend`): `status` (`done`, `skipped`, `failed` or `missing`), `why` when it didn't run, and a few counts (for example `patches.built_for_old`, the plugins still built for an older kind of a master). |
+| `recommended` | The suggested order as plugin names, or `null` when none was worked out. |
+| `outputs` | Each file written, by role (`txt`, `html`, `json`, `plugins_txt`, `loadorder_txt` for MO2, `vortex_json` for Vortex, `how_to`). |
+| `results` | A summary per section, counts only (for example `records.ratings`, `archives.pairs_by_advice`, `recommend.score_current` and `score_recommended`, `recommend.estimate`, `recommend.moves`). |
+| `left_out` | What the summary leaves out and where to find it (for example the lost records with their field values, which stay in sf-mod-check's conflicts.json and report.html). |
+
+Readers should ignore keys they don't know: new keys can appear in any version without a schema change.
+
+## The log
+
+Add `--verbose` to see what the tool read, what it decided and why (lines like `21:30:05 [archives] ...` on stderr),
+or `--log <file>` to write the same lines to a file. The file is replaced on each run. Both can be given together.
+Send the log when you report a problem. If a check fails with an unexpected error, the report marks that section
+"failed", the other checks still run, and the log holds the full error.
+
+The log names the folders it read, which include your user name, your Steam library and your mod folders. Read it
+before you post it.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | The report was written (whatever it found). |
+| 1 | The report was written, `--strict` was given, and it lists at least one problem. |
+| 2 | It couldn't run: a bad option, no load order found, or a folder it can't write to. The `RESULT: CANNOT CHECK` line says why and what to do. |
+
+## Traps
+
+- **A plugin's kind can change in an update.** Full to light is common. Every patch for that plugin then has to be
+  rebuilt, and nothing warns you. Keep the snapshot on (don't use `--no-state`) and run sf-load-order after each
+  update, so the "changed since the last run" check can see it.
+- **Vortex keeps the archive's file date.** When Vortex installs an update, the plugin keeps the date stored in the
+  mod's download, which can be older than the file it replaced. So a date alone doesn't show which copy is newer:
+  sf-load-order compares size and date together.
+- **Plugins.txt is what the game reads.** Vortex and MO2 write it for you when they deploy or start the game. A
+  Vortex export made before you deployed, or an old MO2 profile, can differ from what the game loads. Export again
+  after each change, and don't copy a plugins.txt into the game folder while a mod manager manages it (it rewrites
+  the file).
+- **MO2 record checks need sf-mod-check started from MO2.** MO2 keeps each mod in its own folder and shows them to
+  the programs it starts through a virtual Data folder. Run from outside MO2, sf-mod-check can't see your mods, and
+  the record section says so. Either add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and start it
+  from there, or run `sf-mod-check conflict` from MO2 yourself and give its `conflicts.json` with `--conflicts`.
+
+## Similar tools
+
+- **LOOT** (https://loot.github.io) sorts plugins by rules and its community masterlist. sf-load-order doesn't sort
+  by rules: it reads LOOT's masterlist for warnings, and scores LOOT's order (`--loot-order`) by the changes it
+  throws away. Use both: sort with LOOT, then check the result here.
+- **xEdit** (SF1Edit) shows every record conflict in full and can build patches. sf-load-order shows the same kind of
+  conflict as a summary with a suggested order, and points you to xEdit (or a patch) for the ones that need a merge.
+- **Vortex's and MO2's conflict views** show loose files that overwrite each other. Vortex's view doesn't look
+  inside archives; sf-load-order covers archives, loose files and records in one report.
+- **SLOK** (https://www.nexusmods.com/starfield/mods/15786) keeps Plugins.txt from being changed behind your back.
+  sf-load-order doesn't protect the file: it tells you whether the order in it works.
+
+## Credits
+
+- **LOOT's masterlist** (https://github.com/loot/starfield) is dedicated to the public domain under CC0 1.0 by the
+  LOOT team and its contributors. sf-load-order reads the copy LOOT keeps on your PC and never ships one.
+- Record conflicts come from **sf-mod-check** (https://github.com/taosecurity/sf-mod-check), which reads plugins with
+  **Mutagen** (https://github.com/Mutagen-Modding/Mutagen).
+- Starfield belongs to Bethesda Softworks. sf-load-order ships no game files.
+
+Made by Richard Bejtlich. Source and issues: https://github.com/taosecurity/sf-load-order.
+
+## License
+
+GPL-3.0 (see [LICENSE](LICENSE)). Changes are in [CHANGELOG.md](CHANGELOG.md).

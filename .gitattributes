@@ -1,0 +1,10 @@
+# Same bytes on every system: text files are stored and checked out with LF, except the Windows launcher, which
+# cmd.exe reads best with CRLF. build_release.py takes files through these rules, so the release zip is identical
+# whether it is built on Windows or Linux.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.zip binary
+*.ba2 binary
+*.esm binary
+*.esp binary
+*.esl binary

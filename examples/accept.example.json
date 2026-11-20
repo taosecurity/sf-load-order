@@ -1,0 +1,12 @@
+{
+  "_about": "Clashes you have looked at and accepted, for sf-load-order --accept. Each one holds only while every file still has a SHA-256 listed here; when a plugin is updated the clash comes back for review. The report shows a ready entry (with the hashes) next to each open clash. Made-up names and hashes.",
+  "accepted": [
+    {"plugins": ["ExampleArmor.esm", "ExampleArmorRetexture.esm"],
+     "date": "2026-01-15", "why": "I prefer the retexture's look; nothing else is lost.",
+     "files": {
+       "ExampleArmor.esm": {"sha256": "0000000000000000000000000000000000000000000000000000000000000000", "size": 1234},
+       "ExampleArmorRetexture.esm": {"sha256": ["1111111111111111111111111111111111111111111111111111111111111111",
+                                                "2222222222222222222222222222222222222222222222222222222222222222"]}
+     }}
+  ]
+}

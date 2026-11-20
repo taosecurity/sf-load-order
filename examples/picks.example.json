@@ -1,0 +1,8 @@
+{
+  "_about": "Your own load order picks, for sf-load-order --picks: each moves `plugin` to load right after `after` in the recommended order. Made-up plugin names.",
+  "picks": [
+    {"plugin": "ExampleArmorRetexture.esm", "after": "ExampleArmor.esm",
+     "why": "I want the retexture to win.", "date": "2026-01-15"},
+    {"plugin": "ExampleQuestsPatch.esm", "after": "ExampleCompanion.esm"}
+  ]
+}

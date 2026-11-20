@@ -1,0 +1,13 @@
+{
+  "_about": "Your own known clashes, for sf-load-order --clashes. Made-up plugin names: replace them with yours. An entry shows when at least `min` of its plugins are enabled (default: all of them).",
+  "clashes": [
+    {"plugins": ["ExampleArmor.esm", "ExampleArmorRetexture.esm"], "level": "pick-one",
+     "note": "Both change the same armor pieces; the one loading last wins."},
+    {"plugins": ["ExampleQuests.esm", "ExampleQuestsExpanded.esm", "ExampleCompanion.esm"], "min": 2,
+     "level": "problem", "fixed_by": "ExampleQuestsPatch.esm",
+     "note": "They change the same quest stages, so the quest can stall.",
+     "link": "https://example.invalid/compatibility-notes"},
+    {"plugins": ["ExampleWeatherOverhaul.esm"], "level": "caution",
+     "note": "Carries old copies of several weather records. Load it early so newer mods win."}
+  ]
+}

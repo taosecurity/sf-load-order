@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+sf-load-order-report/
+realdata/
+dist/
+build/
+.claude/
