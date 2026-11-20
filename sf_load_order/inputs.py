@@ -68,9 +68,12 @@ def is_official(name):
 
 
 def bad_name(name):
-    """True for a plugin name no plugin file can have: one holding a line break, a NUL or a folder separator. Such a
-    name is never used, so it can't add lines to the plugins.txt and loadorder.txt this tool writes."""
-    return any(c in name for c in BAD_NAME_CHARS)
+    """True for a plugin name no plugin file can have, or one that would change meaning in Plugins.txt: a line break,
+    NUL or other control character, a folder separator, a leading "*" (the enabled mark) or "#" (a comment), or
+    leading or trailing spaces. Such a name is never used, so it can't add or alter lines in the plugins.txt and
+    loadorder.txt this tool writes."""
+    return (any(c in name for c in BAD_NAME_CHARS) or any(ord(c) < 32 for c in name) or not name
+            or name[0] in "*#" or name != name.strip())
 
 
 def drop_bad_names(entries, source):
@@ -329,8 +332,8 @@ def from_mo2(instance, args, env, drives, registry):
         ml = read_modlist(mlpath)
         lo.mods = []
         for i, (name, on) in enumerate(ml):
-            folder = os.path.join(mods_dir, name)
-            if os.path.isdir(folder):
+            folder = os.path.join(mods_dir, name) if paths.safe_component(name) else None
+            if folder and os.path.isdir(folder):
                 lo.mods.append(Mod(name, on, path=folder, plugins=sorted(listing(folder).values()),
                                    priority=len(ml) - 1 - i))
             else:

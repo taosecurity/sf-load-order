@@ -101,7 +101,9 @@ class Runs(unittest.TestCase):
         out = p.stdout.decode("utf-8", "replace")
         self.assertEqual(p.returncode, 0, out + p.stderr.decode("utf-8", "replace")[-2000:])
         self.assertIn("RESULT:", out)
-        self.assertIn("Łukasz", out)
+        # the console encoding is kept: UTF-8 consoles show the name, others (cp1252) get an escape, never a crash
+        ESCAPED = chr(92) + "u0141ukasz"  # what a cp1252 console gets
+        self.assertTrue("Łukasz" in out or ESCAPED in out, out)
 
 
 class LineEndings(unittest.TestCase):

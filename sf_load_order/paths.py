@@ -39,11 +39,18 @@ def default_vortex_staging(env=None):
     return os.path.join(base, "Vortex", "starfield", "mods") if base else None
 
 
+def safe_component(name):
+    """True when name (a Vortex mod id, an MO2 mod name) is one folder name: no folder separator, no drive, not "."
+    or "..", no NUL or other control character. Anything else could point outside the mods folder."""
+    return (bool(name) and name not in (".", "..") and not any(c in name for c in "/\\:")
+            and not any(ord(c) < 32 for c in name))
+
+
 def child_folder(folder, name):
     """folder\\name as it is on disk, matching name in any case (Linux and macOS file systems are case-sensitive,
     and a copied Vortex staging folder or deployment record may spell a mod id differently). None when there is no
     such folder."""
-    if not folder or not name:
+    if not folder or not name or not safe_component(name):
         return None
     exact = os.path.join(folder, name)
     if os.path.isdir(exact):

@@ -30,8 +30,10 @@ First public release.
 - A run that couldn't write any of the three report files says so (`RESULT: CANNOT CHECK`) and exits 2.
 - The Windows launcher runs Python to check it, so the Microsoft Store's placeholder `python.exe` counts as "Python
   wasn't found" (exit 2) instead of a silent failure.
-- Plugin names that hold a line break, a NUL or a `/` or `\` (in a Plugins.txt, MO2's files or a Vortex export) are
-  left out with a caution naming the file, so they can't add lines to the files the tool writes.
+- Plugin names that hold a line break, a NUL or other control character, a `/` or `\`, start with `*` or `#`, or
+  start or end with a space (in a Plugins.txt, MO2's files or a Vortex export) are left out with a caution naming
+  the file, so they can't add or change lines in the files the tool writes. Vortex mod ids and MO2 mod names that
+  aren't a single folder name are never used to find a mod's folder.
 - Every run prints a byline on stderr (left out with `--quiet`); `--version` shows the byline and credits; the
   reports carry the byline, and the HTML report has a footer with the license, source and issues links.
 - Runs on Linux with Python 3.10 or newer for checking a copy of a load order (paths given with options). Folder

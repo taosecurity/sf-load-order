@@ -16,8 +16,9 @@ def setup(verbose=False, log_file=None):
     if log_file:
         try:
             _sinks.append(open(log_file, "w", encoding="utf-8"))
-        except OSError as e:
-            return f"can't write the log file {log_file}: {e.strerror}. Fix: give --log a folder you can write to."
+        except (OSError, ValueError) as e:  # ValueError: a NUL in the path
+            why = getattr(e, "strerror", None) or e
+            return f"can't write the log file {log_file}: {why}. Fix: give --log a folder you can write to."
     return None
 
 

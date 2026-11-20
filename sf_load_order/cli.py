@@ -124,14 +124,16 @@ def run(args):
         if depth == "light" and section in SKIPPED_AT_LIGHT:
             report.sections[section] = {"status": "skipped", "why": "--depth light"}
             continue
-        mod = _module(modname)
-        try:
-            status = mod.run(ctx) or {"status": "done"}
+        try:  # the import too: a check that can't load is marked failed, and the others still run
+            status = _module(modname).run(ctx) or {"status": "done"}
         except Exception as e:  # one broken check must not hide the others
             log.info(section, "failed:\n" + traceback.format_exc())
             status = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
         report.sections[section] = status
-    report.outputs.update(_module("report").write(ctx))
+    try:
+        report.outputs.update(_module("report").write(ctx))
+    except ImportError:  # main() then says no report could be written, and the log has the reason
+        log.info("report", "can't load the report writer:\n" + traceback.format_exc())
     return 0, report
 
 
@@ -139,12 +141,13 @@ REPORT_ROLES = ("txt", "html", "json")
 
 
 def _utf8_console():
-    """Make stdout and stderr write UTF-8 (unknown characters replaced), so a run whose output is redirected to a
-    file or a pipe never stops on a path the console's code page can't show (a Windows default like cp1252)."""
+    """Keep the console's own encoding, but write a character it can't show as an escape (\\u0141) instead of
+    stopping, so a run whose output is redirected never fails on a path (a Windows default like cp1252), and tools
+    that read the output in the console's code page still read every other character as it is."""
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             try:
-                stream.reconfigure(encoding="utf-8", errors="replace")
+                stream.reconfigure(errors="backslashreplace")
             except (OSError, ValueError):
                 pass
 
@@ -152,21 +155,32 @@ def _utf8_console():
 def main(argv=None):
     _utf8_console()
     args = parser().parse_args(argv)  # unknown option or a missing value: argparse prints why and exits 2
+    out_err = None
     try:  # first, so a --log file inside --out can be opened
         os.makedirs(args.out, exist_ok=True)
-    except OSError as e:
-        print(f"RESULT: CANNOT CHECK: can't create the output folder {args.out}: {e.strerror}. "
-              "Fix: give --out a folder you can write to.")
-        return 2
+    except (OSError, ValueError) as e:
+        out_err = (f"can't create the output folder {args.out}: {getattr(e, 'strerror', None) or e}. "
+                   "Fix: give --out a folder you can write to.")
     err = log.setup(args.verbose, args.log)
-    if err:
-        print(f"RESULT: CANNOT CHECK: {err}")
+    if err:  # when --out failed too (a --log inside it can't open either), the --out problem is the one to fix
+        print(f"RESULT: CANNOT CHECK: {out_err or err}")
+        return 2
+    if out_err:  # after log.setup, so a --log outside --out records why the run stopped
+        log.info("start", out_err)
+        log.close()
+        print(f"RESULT: CANNOT CHECK: {out_err}")
         return 2
     try:
         if not args.quiet:
             print(BYLINE, file=sys.stderr)  # stderr: stdout stays script-friendly (RESULT line)
         log.info("start", f"{BYLINE}; python {sys.version.split()[0]}, args {vars(args)}")
-        code, report = run(args)
+        try:
+            code, report = run(args)
+        except ImportError as e:  # a file missing from the tool itself
+            log.info("start", "can't load part of the tool:\n" + traceback.format_exc())
+            print(f"RESULT: CANNOT CHECK: part of sf-load-order is missing or broken ({e}). Fix: unzip the release "
+                  "again into an empty folder.")
+            return 2
         if code:
             return code
         if not any(role in report.outputs for role in REPORT_ROLES):
