@@ -155,19 +155,14 @@ def enrich(lo, deployment):
     if staging and "vortex_staging" not in lo.files:
         lo.files["vortex_staging"] = staging
     by_mod = deployment.by_mod()
-    known = {}
-    for m in lo.mods:
-        key = (m.id or m.name).lower()
-        known.setdefault(key, m)
-        known.setdefault(key.strip(), m)
+    # mod ids are trimmed (inputs._vortex_mod_key), so ids that differ only by surrounding spaces are one mod; the
+    # record may keep a folder name's spaces, so it is matched trimmed too, and its folder is found raw first
+    known = {(m.id or m.name).strip().lower(): m for m in lo.mods}
     filled, added = 0, []
     for mid in sorted(by_mod, key=str.lower):
         files = by_mod[mid]
-        # the export's ids may be trimmed where the record keeps the folder name as it is (or the other way round)
-        m = known.get(mid.lower()) or known.get(mid.strip().lower())
-        folder = paths.child_folder(staging, mid) if staging else None
-        if folder is None and staging and mid.strip() != mid:
-            folder = paths.child_folder(staging, mid.strip())
+        m = known.get(mid.strip().lower())
+        folder = paths.mod_folder(staging, mid)
         if m is not None:
             # deployed = enabled in Vortex, even when its plugin is turned off on the Load Order page (the export
             # marks a mod enabled only through its plugins); plugin flags stay as the export has them
@@ -182,9 +177,9 @@ def enrich(lo, deployment):
             continue
         tops = [p for p in files if "\\" not in p and p.endswith(PLUGIN_EXT)]
         case = _case(lo.data, tops)
-        m = Mod(mid, True, path=folder, plugins=sorted(case[p] for p in tops), id=mid, files=list(files))
+        m = Mod(mid.strip(), True, path=folder, plugins=sorted(case[p] for p in tops), id=mid.strip(), files=list(files))
         lo.mods.append(m)
-        known[mid.lower()] = m
+        known[mid.strip().lower()] = m
         added.append(m)
         log.info(SECTION, f"vortex deployment: added mod {mid} ({len(files)} files, folder "
                           f"{folder or 'not found'})")

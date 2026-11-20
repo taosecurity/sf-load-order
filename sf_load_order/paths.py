@@ -76,6 +76,17 @@ WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
 SUPERSCRIPT_DEVICES = {f"{d}{i}" for d in ("COM", "LPT") for i in "¹²³"}  # devices before Windows 11 only
 
 
+def mod_folder(staging, raw_id):
+    """A Vortex mod's staging folder for a raw mod id: the exact name first (it may start with a space), then the
+    trimmed name (Windows drops trailing spaces from folder names); None if neither exists (0.1.1)."""
+    if not staging or not raw_id:
+        return None
+    folder = child_folder(staging, raw_id)
+    if folder is None and raw_id.strip() != raw_id:
+        folder = child_folder(staging, raw_id.strip())
+    return folder
+
+
 def child_folder(folder, name):
     """folder\\name as it is on disk, matching name in any case (Linux and macOS file systems are case-sensitive,
     and a copied Vortex staging folder or deployment record may spell a mod id differently). None when there is no

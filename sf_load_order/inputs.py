@@ -228,19 +228,13 @@ def _vortex_entries(path):
 
 
 def _vortex_mod_key(staging, raw_id):
-    """(the mod's id, its staging folder or None) for a raw Vortex modId. The untrimmed id wins when a folder of
-    that exact name exists (a name may start with a space, 0.1.1); otherwise the trimmed id is used, both for the
-    folder (Windows drops trailing spaces from folder names) and as the key, so " 7" and "7" are one mod, as in
-    0.1.0."""
+    """(the mod's id, its staging folder or None) for a raw Vortex modId. The id is always the trimmed modId, as in
+    0.1.0, so ids that differ only by surrounding spaces are one mod and a mod keeps its id from run to run. Only the
+    folder lookup uses the raw modId first (a folder name may start with a space, 0.1.1), then the trimmed one
+    (Windows drops trailing spaces from folder names)."""
     if not raw_id:
         return None, None
-    folder = paths.child_folder(staging, raw_id) if staging else None
-    if folder:
-        return raw_id, folder
-    trimmed = raw_id.strip()
-    if trimmed != raw_id and staging:
-        folder = paths.child_folder(staging, trimmed)
-    return trimmed, folder
+    return raw_id.strip(), paths.mod_folder(staging, raw_id)
 
 
 def from_vortex(path, args, env, drives, registry):
@@ -260,6 +254,8 @@ def from_vortex(path, args, env, drives, registry):
     for name, on, raw_id in entries:
         low = name.lower()
         mod_id, mfolder = _vortex_mod_key(staging if has_staging else None, raw_id)
+        if mfolder is None and mod_id in mods:  # another entry of the same mod already found its folder
+            mfolder = mods[mod_id].path
         case = present.get(low) or (listing(mfolder).get(low) if mfolder else None) or name
         if case != name:
             log.info(SECTION, f"case of {name} -> {case}")
