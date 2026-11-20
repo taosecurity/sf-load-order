@@ -39,6 +39,30 @@ class BrokenParts(unittest.TestCase):
             self.assertIn("1 check(s) failed: loose", out)
             self.assertTrue(os.path.isfile(os.path.join(t, "out", "report.txt")))
 
+    def test_damaged_part_is_cannot_check(self):
+        def fake(name):
+            raise SyntaxError("invalid syntax (test)")
+        with tempfile.TemporaryDirectory() as t:
+            with mock.patch.object(cli, "_module", side_effect=fake):
+                code, out, _ = run_cli("--out", os.path.join(t, "out"))
+        self.assertEqual(code, 2)
+        self.assertIn("missing or broken", out)
+
+    def test_report_writer_that_cant_load_says_reinstall(self):
+        real = cli._module
+
+        def fake(name):
+            if name == "report":
+                raise ImportError("no module named report (test)")
+            return real(name)
+        with tempfile.TemporaryDirectory() as t:
+            data, ptxt = fixtures.game(os.path.join(t, "game"), {"A.esm": {"masters": ["Starfield.esm"]}})
+            with mock.patch.object(cli, "_module", side_effect=fake):
+                code, out, _ = run_cli("--plugins-txt", ptxt, "--data", data, "--depth", "light", "--no-state",
+                                       "--out", os.path.join(t, "out"))
+        self.assertEqual(code, 2)
+        self.assertIn("unzip the release again", out)
+
     def test_inputs_that_cant_import_is_cannot_check(self):
         def fake(name):
             raise ImportError("no module named inputs (test)")
@@ -91,13 +115,31 @@ class Names(unittest.TestCase):
             code, _, _ = run_cli("--vortex-loadorder", vx, "--data", data, "--depth", "light", "--no-state",
                                  "--vortex-staging", os.path.join(t, "none"), "--out", os.path.join(t, "out"))
             with open(os.path.join(t, "out", "plugins.txt"), encoding="utf-8") as f:
-                lines = [ln.strip() for ln in f if ln.strip() and not ln.startswith("# ")]
+                body = [ln.rstrip("\r\n") for ln in f][2:]  # after the game's two header comment lines
         self.assertEqual(code, 0)
-        self.assertEqual(lines, ["*a.esm"] if lines and lines[0].lower() == "*a.esm" and lines[0] != "*A.esm"
-                         else ["*A.esm"])
+        self.assertEqual([ln for ln in body if ln], ["*A.esm"])  # real case from Data; *X.esm and #P.esm left out
+
+    def test_non_string_mod_id_doesnt_crash(self):
+        import json
+        with tempfile.TemporaryDirectory() as t:
+            data, _ = fixtures.game(os.path.join(t, "game"), {"A.esm": {"masters": ["Starfield.esm"]}})
+            vx = os.path.join(t, "lo.json")
+            with open(vx, "w", encoding="utf-8") as f:
+                json.dump([{"id": "a.esm", "name": "a.esm", "enabled": True, "modId": 12345}], f)
+            code, out, _ = run_cli("--vortex-loadorder", vx, "--data", data, "--depth", "light", "--no-state",
+                                   "--vortex-staging", t, "--out", os.path.join(t, "out"))
+        self.assertEqual(code, 0, out)
+
+    def test_unsafe_mo2_profile_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            fixtures.mo2(t, "Default", [("ModA", True, {"ModA.esm": {"masters": ["Starfield.esm"]}})])
+            code, out, _ = run_cli("--mo2", t, "--profile", "..\\..\\x", "--out", os.path.join(t, "out"))
+        self.assertEqual(code, 2)
+        self.assertIn("isn't a single folder name", out)
 
     def test_mod_folder_names_stay_inside(self):
-        for bad in ("..", ".", "..\\..\\Windows", "../x", "C:\\x", "C:x", "a\0b", ""):
+        for bad in ("..", ".", "...", ".. ", ". ", "Mod.", "Mod ", "..\\..\\Windows", "../x", "C:\\x", "C:x", "a\0b",
+                    "", 123):
             self.assertFalse(paths.safe_component(bad), repr(bad))
         self.assertTrue(paths.safe_component("My Mod-123-1-0"))
         with tempfile.TemporaryDirectory() as t:

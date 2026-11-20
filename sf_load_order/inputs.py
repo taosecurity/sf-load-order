@@ -86,7 +86,8 @@ def drop_bad_names(entries, source):
     shown = [repr(e[0]) for e in bad[:5]]
     log.info(SECTION, f"{source}: left out {len(bad)} name(s) that can't be plugin names: {', '.join(shown)}")
     return kept, [Finding("caution", SECTION, f"{source} lists {len(bad)} name(s) that can't be plugin file names "
-                          "(they hold a line break, a NUL character or a / or \\), so they were left out: "
+                          "or would change meaning in a Plugins.txt (a line break, NUL or other control character, "
+                          "a / or \\, a first character of * or #, or a space at either end), so they were left out: "
                           + ", ".join(shown) + (" and more." if len(bad) > 5 else "."),
                           fix=f"Remove those lines from {source}, or let the game or the mod manager write it again.",
                           data={"file": source, "names": [e[0] for e in bad]})]
@@ -214,7 +215,8 @@ def _vortex_entries(path):
         raise InputError(bad + " (It isn't valid JSON.)")
     if not isinstance(d, list) or not all(isinstance(e, dict) and (e.get("name") or e.get("id")) for e in d):
         raise InputError(bad + " (It should be a list of entries, each with a name.)")
-    return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")), e.get("modId")) for e in d]
+    return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")),
+             str(e["modId"]) if e.get("modId") is not None else None) for e in d]
 
 
 def from_vortex(path, args, env, drives, registry):
@@ -310,6 +312,10 @@ def from_mo2(instance, args, env, drives, registry):
         raise InputError(f"no profile given and none selected in {ini_path}. Fix: pass --profile <name> (a folder "
                          f"in {os.path.join(instance, 'profiles')}).")
     profiles = _mo2_dir(ini, "profiles_directory", instance, "profiles")
+    if not paths.safe_component(profile):
+        raise InputError(f"the MO2 profile name {profile!r} isn't a single folder name (from "
+                         f"{'--profile' if getattr(args, 'profile', None) else ini_path}). Fix: pass --profile with one "
+                         f"of the folder names in {profiles}.")
     pdir = os.path.join(profiles, profile)
     ptxt = os.path.join(pdir, "plugins.txt")
     if not os.path.isdir(pdir):
@@ -338,7 +344,11 @@ def from_mo2(instance, args, env, drives, registry):
                                    priority=len(ml) - 1 - i))
             else:
                 lo.mods.append(Mod(name, on, priority=len(ml) - 1 - i))
-                if on:
+                if on and not paths.safe_component(name):
+                    extra.append(Finding("caution", SECTION, f"MO2 mod {name!r} in modlist.txt isn't a single folder "
+                                         "name, so its folder wasn't read.", fix="Remove that line from the profile's "
+                                         "modlist.txt, or let MO2 write the file again."))
+                elif on:
                     extra.append(Finding("caution", SECTION, f"MO2 mod {name} is enabled but has no folder in "
                                          f"{mods_dir}.", fix="Reinstall the mod in MO2, or disable it."))
         overwrite = _mo2_dir(ini, "overwrite_directory", instance, "overwrite")

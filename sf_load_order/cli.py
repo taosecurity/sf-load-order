@@ -130,10 +130,8 @@ def run(args):
             log.info(section, "failed:\n" + traceback.format_exc())
             status = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
         report.sections[section] = status
-    try:
-        report.outputs.update(_module("report").write(ctx))
-    except ImportError:  # main() then says no report could be written, and the log has the reason
-        log.info("report", "can't load the report writer:\n" + traceback.format_exc())
+    # a report writer that can't load is a broken install: main() says so (CANNOT CHECK, unzip again)
+    report.outputs.update(_module("report").write(ctx))
     return 0, report
 
 
@@ -176,7 +174,7 @@ def main(argv=None):
         log.info("start", f"{BYLINE}; python {sys.version.split()[0]}, args {vars(args)}")
         try:
             code, report = run(args)
-        except ImportError as e:  # a file missing from the tool itself
+        except (ImportError, SyntaxError) as e:  # a file of the tool itself missing or damaged
             log.info("start", "can't load part of the tool:\n" + traceback.format_exc())
             print(f"RESULT: CANNOT CHECK: part of sf-load-order is missing or broken ({e}). Fix: unzip the release "
                   "again into an empty folder.")

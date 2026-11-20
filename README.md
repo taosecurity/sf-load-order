@@ -48,6 +48,10 @@ like this:
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
+The screen output uses your console's character set. A character it can't show (for example the Ł in a folder
+named Łukasz on a Western-European Windows console) is written as an escape such as `Ł`, so the run never stops
+on it. Scripts that need the exact paths should read `report.json` (`outputs`), which is always UTF-8.
+
 Open `sf-load-order-report\report.html` in your browser (or `report.txt` in any text editor). The report starts with
 the ten findings that matter most, problems first, each with what to do about it.
 
