@@ -13,7 +13,7 @@ import os
 import sys
 import traceback
 
-from . import BYLINE, CREDITS, __version__, log
+from . import BYLINE, CREDITS, URL, __version__, log
 from .model import Report
 
 # (section, module) in run order. Each module has run(ctx) -> None or a section status dict.
@@ -191,7 +191,7 @@ def main(argv=None):
         if writer_failed and not any(role in report.outputs for role in REPORT_ROLES):
             print(f"RESULT: CANNOT CHECK: an internal error stopped the report writer "
                   f"({report.sections['report']['why']}). Fix: run again with --log <file> and report the log at "
-                  "https://github.com/taosecurity/sf-load-order/issues.")
+                  f"{URL}/issues.")
             return 2
         if not any(role in report.outputs for role in REPORT_ROLES):
             print(f"RESULT: CANNOT CHECK: couldn't write the report to {args.out} (none of report.txt, report.html "

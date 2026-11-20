@@ -221,7 +221,7 @@ def _vortex_entries(path):
             m = int(m)
         if isinstance(m, bool) or not isinstance(m, (str, int)) or (isinstance(m, str) and not m.strip()):
             return None
-        return str(m)
+        return str(m).strip()
     return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")), mod_id(e.get("modId"))) for e in d]
 
 

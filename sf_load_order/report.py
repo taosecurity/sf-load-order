@@ -734,8 +734,10 @@ def write(ctx):
             return True
         except OSError as e:
             log.info("report", f"can't write {paths[role]}: {e}")
-        except Exception:  # one broken part of the report must not cost the other two files
+        except Exception as e:  # one broken part of the report must not cost the other two files
             log.info("report", f"couldn't make {paths[role]}:\n" + traceback.format_exc())
+            # a bug, not a disk problem: cli.main() names it as an internal error when no file was written
+            ctx.report.sections["report"] = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
         written.pop(role, None)
         return False
 

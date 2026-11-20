@@ -51,14 +51,24 @@ def safe_component(name):
     if os.name == "nt":
         # On Windows a trailing dot or space is dropped too ("Mod." is "Mod"), and device names (CON, NUL, COM1...)
         # aren't folders. Elsewhere such names are real folder names, so they stay allowed.
-        # Only the bare device name is reserved (Windows 11): "Aux.Lighting" and "Con Tweaks" are real folders.
-        if name != name.rstrip(" .") or name.upper() in WINDOWS_DEVICES:
+        # Windows 11 reserves only the bare device name ("Aux.Lighting" is a real folder there); Windows 10 and older
+        # also treat a device name plus an extension ("NUL.x", "Aux.Lighting") as the device.
+        stem = name if _windows_11_or_later() else name.split(".")[0].rstrip(" ")
+        if name != name.rstrip(" .") or stem.upper() in WINDOWS_DEVICES:
             return False
     return True
 
 
+def _windows_11_or_later():
+    try:
+        import sys
+        return sys.getwindowsversion().build >= 22000
+    except (AttributeError, OSError):
+        return False
+
+
 WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
-                   *(f"{d}{i}" for d in ("COM", "LPT") for i in [*"0123456789", "¹", "²", "³"])}
+                   *(f"{d}{i}" for d in ("COM", "LPT") for i in [*"123456789", "¹", "²", "³"])}  # COM0/LPT0 are plain names
 
 
 def child_folder(folder, name):
