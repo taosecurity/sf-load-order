@@ -154,6 +154,15 @@ class Enrich(Base):
         self.assertEqual(sorted(got), ["moda-1", "retex-2"])
         self.assertEqual(sorted(got["retex-2"]), ["a\\one.dds", "b\\two.dds"])
 
+    def test_second_record_key_adds_its_plugins(self):
+        """A mod only the record knows, with a plugin under its second key: the plugin belongs to the mod (0.1.1)."""
+        record(self.data, self.staging, [("a\\one.dds", " retex-2"), ("Retex.esm", "retex-2")])
+        lo = self.lo()
+        vortex_deploy.enrich(lo, vortex_deploy.read(self.data))
+        got = {m.id: m.plugins for m in lo.mods}
+        self.assertEqual(len(got["retex-2"]), 1)
+        self.assertEqual(got["retex-2"][0].lower(), "retex.esm")
+
     def test_listed_mod_with_plugin_off_counts_as_deployed(self):
         record(self.data, self.staging, self.files)
         lo = self.lo()

@@ -253,21 +253,24 @@ def from_vortex(path, args, env, drives, registry):
     real, mods, order = {}, {}, []
     # First pass: each mod's folder, from whichever of its entries finds one, so the case lookups below don't
     # depend on the order of the export's entries
-    folders = {}
-    for _name, _on, raw_id in entries:
+    folders, keyed = {}, []
+    for name, on, raw_id in entries:
         mod_id, f = _vortex_mod_key(staging if has_staging else None, raw_id)
+        keyed.append((name, on, mod_id, f))
         if not f:
             continue
         if mod_id not in folders:
             folders[mod_id] = f
         elif os.path.normcase(folders[mod_id]) != os.path.normcase(f):
-            log.info(SECTION, f"mod {mod_id!r}: two staging folders ({folders[mod_id]}, {f}) differ only by spaces; "
-                              "the first is checked")
-    for name, on, raw_id in entries:
+            log.info(SECTION, f"mod {mod_id!r}: two staging folders ({folders[mod_id]}, {f}) differ only by "
+                              "surrounding spaces, dots or case; the mod's path is the first, and each plugin's "
+                              "case comes from its own entry's folder")
+    for name, on, mod_id, own in keyed:
         low = name.lower()
-        mod_id = raw_id.strip() if raw_id else None
         mfolder = folders.get(mod_id) if mod_id else None
-        case = present.get(low) or (listing(mfolder).get(low) if mfolder else None) or name
+        # the entry's own folder first, then the mod's (an entry whose id finds no folder of its own)
+        case = (present.get(low) or (listing(own).get(low) if own else None)
+                or (listing(mfolder).get(low) if mfolder and mfolder != own else None) or name)
         if case != name:
             log.info(SECTION, f"case of {name} -> {case}")
         real[low] = case

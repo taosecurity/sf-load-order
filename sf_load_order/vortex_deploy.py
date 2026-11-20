@@ -177,7 +177,12 @@ def enrich(lo, deployment):
             elif id(m) in from_record:
                 # a second record key for the same trimmed id (" 7" and "7"): keep its files too
                 log.info(SECTION, f"vortex deployment: {mid!r} joins mod {m.id!r} (same id without spaces)")
-                m.files.extend(f for f in files if f not in m.files)
+                m.files.extend(files)  # record paths are unique (a dict), so no file is listed twice
+                tops = [p for p in files if "\\" not in p and p.endswith(PLUGIN_EXT)]
+                # a mod this record created: its plugins come from all of its keys
+                if tops and any(a is m for a in added):
+                    case = _case(lo.data, tops)
+                    m.plugins = sorted(set(m.plugins) | {case[p] for p in tops})
             if m.path is None and folder:
                 m.path = folder
             continue
