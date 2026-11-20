@@ -2,73 +2,112 @@
 
 sf-load-order checks your Starfield load order and tells you, in plain words, what is wrong with it and how to fix
 it. It reads the load order you already have (the game's own Plugins.txt, a Mod Organizer 2 profile, or a file
-exported from Vortex's Load Order page) and reports:
+exported from Vortex's Load Order page), and it never changes your game, Vortex or MO2.
 
-- plugins whose masters are missing, turned off or loading too late, and how close you are to the plugin limits;
-- patches that were built for an older version of a mod they depend on (a mod that changed from a full to a light
-  plugin, for example), which break with no error message;
-- known clashes from LOOT's masterlist and from your own notes;
-- mods whose archives (.ba2 files) or loose files overwrite each other, and which copy the game actually uses;
-- record conflicts, where one mod silently undoes another mod's changes (through sf-mod-check, if you have it).
-
-It then rates your order, suggests a better one when the data supports it, and writes the files to apply it, with
-step-by-step instructions. It never changes your game, Vortex or MO2: you decide whether to apply anything.
-
-- It needs Python 3.9 or newer and nothing else.
-- It is made for Windows (Steam and Game Pass installs, Vortex and MO2). It also runs on Linux with Python 3.10 or
-  newer, for checking a copy of a load order: give every path with options (see [Linux](#linux)).
-- It reads only. It writes only its report folder, a small snapshot and cache folder, and a log when you ask for one
-  (see [PRIVACY.md](PRIVACY.md)).
-- It's released under the GPL-3.0 license.
-
-This tool was built with [Claude Code](https://claude.com/claude-code).
-
-**For AI assistants:** [AGENTS.md](AGENTS.md) has step-by-step instructions: what the tool is for, the commands, the
-inputs and outputs, the exit codes and the limits.
-
-## First command
-
-Unzip the release, open a Command Prompt or PowerShell window in the unzipped folder, and run:
+Download the latest zip from [Releases](https://github.com/taosecurity/sf-load-order/releases), unzip it, open a
+Command Prompt in the folder (see [Install](#install)) and run:
 
 ```
 .\sf-load-order.cmd
 ```
 
-With no options it checks the load order the game itself reads (`%LOCALAPPDATA%\Starfield\Plugins.txt`) against
-the game's Data folder, which it finds by itself on Steam and Game Pass installs. The first line names the tool:
+For AI assistants: step-by-step instructions are in [AGENTS.md](AGENTS.md).
+
+## Example
+
+This is a real run on a small made-up load order: three mod plugins and the official ones. NewModA.esm needs a
+master that isn't installed, two mods ship the same texture in their archives, and one archive has a name the game
+never loads.
 
 ```
+> .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
 sf-load-order 0.1.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
-(It goes to stderr, so scripts reading stdout see only the RESULT line; `--quiet` leaves it out.) The last line looks
-like this:
+The screen shows only the byline and the RESULT line. The findings are in the report, which starts with the ten
+that matter most, each with what to do about it:
 
 ```
+Top 10
+------
+ 1. [Problem] NewModA.esm needs NewModC.esm, which isn't installed or isn't enabled.
+    Fix: Install and enable NewModC.esm, or disable NewModA.esm.
+    (Section: Load order and masters.)
+ 2. [Caution] NewModB - Meshes.ba2 starts with NewModB.esm's name but the game won't load it: it loads only NewModB -
+    Main.ba2, NewModB - Main01.ba2 and on, NewModB - Textures.ba2 and on, and NewModB - Voices_en.ba2.
+    Fix: Ask the mod's author: the archive needs one of those names, or its files never reach the game.
+    (Section: Archives (.ba2 files).)
+ 3. [Caution] MyMod.esm and NewModA.esm both ship 1 file(s) in their archives (1 textures; 1 can't be compared).
+    NewModA.esm loads later, so its copies are used and MyMod.esm's never show up in the game.
+    Fix: Order decides here. If you want MyMod.esm's versions, load MyMod.esm after NewModA.esm; if NewModA.esm's are
+    right, leave it.
+    (Section: Archives (.ba2 files).)
+ 4. [Note] The order can't be rated beyond masters and archives: there is no record-conflict data (run at --depth
+    medium with sf-mod-check 0.8.0 or later, or pass --conflicts), so no record-based move is suggested.
+    (Section: Rating.)
+...
+```
+
+## What it checks
+
+- Plugins whose masters are missing, turned off or loading too late, and how close you are to the plugin limits.
+- Patches that were built for an older version of a mod they depend on (a mod that changed from a full to a light
+  plugin, for example), which break with no error message.
+- Known clashes from LOOT's masterlist and from your own notes.
+- Mods whose archives (.ba2 files) or loose files overwrite each other, and which copy the game actually uses.
+- Record conflicts, where one mod silently undoes another mod's changes (through sf-mod-check, if you have it).
+
+It then rates your order, suggests a better one when the data supports it, and writes the files to apply it, with
+step-by-step instructions. You decide whether to apply anything.
+
+- It needs Python 3.9 or newer and nothing else.
+- It is made for Windows (Steam and Game Pass installs, Vortex and MO2). It also runs on Linux with Python 3.10 or
+  newer, for checking a copy of a load order (see [Linux](#linux)).
+- It reads only. It writes only its report folder, a small snapshot and cache folder, and a log when you ask for one
+  (see [PRIVACY.md](PRIVACY.md)).
+
+This tool was built with [Claude Code](https://claude.com/claude-code).
+
+## First run
+
+With no options, sf-load-order checks the load order the game itself reads (`%LOCALAPPDATA%\Starfield\Plugins.txt`)
+against the game's Data folder, which it finds by itself on Steam and Game Pass installs. It prints a byline and a
+RESULT line like the one below; the counts depend on your load order:
+
+```
+> .\sf-load-order.cmd
+sf-load-order 0.1.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
-The screen output uses your console's character set. A character it can't show (for example the Ł in a folder
-named Łukasz on a Western-European Windows console) is written as an escape such as `\u0141`, so the run never stops
-on it. Scripts that need the exact paths should read `report.json` (`outputs`), which is always UTF-8.
-
-Open `sf-load-order-report\report.html` in your browser (or `report.txt` in any text editor). The report starts with
-the ten findings that matter most, problems first, each with what to do about it.
+Then open `sf-load-order-report\report.html` in your browser, or `report.txt` in any text editor.
 
 If you use Vortex or MO2, point the tool at your mod manager instead (see
-[Where the load order comes from](#where-the-load-order-comes-from)): then it can also check loose files and tell
+[Where the load order comes from](#where-the-load-order-comes-from)). Then it can also check loose files and tell
 which mod each file comes from.
+
+Two details matter only if a script reads the output:
+
+- The byline goes to stderr, so a script reading stdout sees only the RESULT line. `--quiet` leaves the byline out.
+- The screen output uses your console's character set. A character it can't show (for example the Ł in a folder
+  named Łukasz on a Western-European Windows console) is written as an escape such as `Ł`, so the run never
+  stops on it. Scripts that need the exact paths should read `report.json` (`outputs`), which is always UTF-8.
 
 ## Install
 
-1. Install Python 3.9 or newer from https://www.python.org/downloads/. In the installer, tick **"Add python.exe to
-   PATH"** on the first page. (Check it worked: `python --version` in a new Command Prompt window.)
-2. Download `sf-load-order-<version>.zip` from the
-   [GitHub releases](https://github.com/taosecurity/sf-load-order/releases), and if you like, check it against the
-   `.sha256` file next to it (`certutil -hashfile sf-load-order-<version>.zip SHA256` in a Command Prompt).
+1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
+   installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
+   `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
+2. Download `sf-load-order-0.1.0.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.1.0.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
-4. Run `.\sf-load-order.cmd` in that folder. The `.cmd` file only starts `python -I sf-load-order.py` with the
-   options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
+4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
+   Prompt window opens in that folder, ready for the commands in this README.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.1.0 by Richard Bejtlich`.
+
+`.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
+the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
 
 Optional extras:
 
@@ -76,25 +115,49 @@ Optional extras:
   sf-load-order still lists which archives share files, but says "can't compare" for the contents of LZ4 archives.
 - **sf-mod-check** 0.8.0 or newer, for record conflicts: https://github.com/taosecurity/sf-mod-check/releases. Put
   it on PATH, or give its path with `--sf-mod-check`. Without it the tool runs at light depth (see [Depth](#depth)):
-  every check except record conflicts still runs. Versions before 0.8.0 (called sfmodcheck) are refused with a note
-  saying where to get the new one.
+  every check except record conflicts still runs. Versions before 0.8.0 are refused with a note saying where to
+  get the new one (the old name of those versions was sfmodcheck).
 
 ### Linux
 
-sf-load-order runs on Linux with Python 3.10 or newer (its tests run on Linux too). Use it to check a copy
-of a load order: a Plugins.txt, an MO2 instance folder or a Vortex export, plus the game's Data folder, copied from
-the Windows PC or reached on its disk. Run it as `python3 -I sf-load-order.py` and give every path with an option:
+sf-load-order runs on Linux with Python 3.10 or newer (its tests run on Linux too). Use it to check a copy of a load
+order: a Plugins.txt, an MO2 instance folder or a Vortex export, plus the game's Data folder, copied from the Windows
+PC or reached on its disk. Run it as `python3 -I sf-load-order.py` and give every path with an option:
 
 ```
 python3 -I sf-load-order.py --plugins-txt ~/sf/Plugins.txt --data ~/sf/Data
 ```
 
-The Windows defaults don't apply on Linux: there is no `%LOCALAPPDATA%` Plugins.txt, no Steam or Game Pass search,
-no `%APPDATA%` Vortex staging folder and no LOOT folder, so give `--plugins-txt` (or `--mo2` or
-`--vortex-loadorder`), `--data`, and if you want them `--vortex-staging`, `--loot-masterlist` and `--sf-mod-check`.
-With no load order option it stops with a RESULT: CANNOT CHECK line that says so. The snapshot and cache go to
-`~/.local/state/sf-load-order` (or `$XDG_STATE_HOME/sf-load-order`) unless you give `--state`. File names are
-matched in any letter case, as the game does on Windows. It hasn't been tried with a Linux game install (Proton).
+The Windows defaults don't apply on Linux. There is no `%LOCALAPPDATA%` Plugins.txt, no Steam or Game Pass search,
+no `%APPDATA%` Vortex staging folder and no LOOT folder. So give these options yourself:
+
+- `--plugins-txt` (or `--mo2` or `--vortex-loadorder`) and `--data`. With no load order option, the tool stops with
+  a RESULT: CANNOT CHECK line that says so.
+- If you want them: `--vortex-staging`, `--loot-masterlist` and `--sf-mod-check`.
+
+The snapshot and cache go to `~/.local/state/sf-load-order` (or `$XDG_STATE_HOME/sf-load-order`) unless you give
+`--state`. File names are matched in any letter case, as the game does on Windows. It hasn't been tried with a Linux
+game install (Proton).
+
+## Words used here
+
+- **Plugin:** a mod's data file (`.esm`, `.esp` or `.esl`). It adds or changes records in the game.
+- **Master:** a plugin that another plugin needs loaded before it. Starfield.esm is the master of nearly every mod.
+- **Full, medium and light plugins:** the three kinds of plugin slot. A light plugin is flagged to use a small slot,
+  so it doesn't count toward the limit of about 250 full plugins.
+- **Load order:** the order the game loads plugins in. When two plugins change the same record, the one loaded later
+  wins.
+- **Record:** one thing in a plugin, such as a weapon, a quest, a location or a setting.
+- **FormID:** a record's number, such as `0002B560`. The first two digits depend on the load order.
+- **Override:** a later plugin's copy of a record from an earlier one, which replaces it in the game.
+- **ITM ("identical to master"):** a record a plugin copies without changing anything. It can undo other mods'
+  changes, so it is best removed.
+- **BA2:** Bethesda's archive format. Mods pack their scripts, models and textures into `.ba2` files.
+- **Loose files:** a mod's files placed straight in the Data folder instead of inside an archive.
+- **LOOT:** a community tool that sorts load orders and warns about known problems. Its masterlist is the shared list
+  of those warnings.
+- **xEdit (SF1Edit):** a community tool for viewing and editing plugins record by record.
+- **Mutagen:** a .NET library for reading and writing Bethesda plugins, which sf-mod-check uses.
 
 ## Where the load order comes from
 
@@ -266,11 +329,17 @@ sf-mod-check reads plugins from the Data folder. Under MO2 it only sees your mod
 
 The tool scores an order by the changes it throws away: each lost field counts 3 when it affects gameplay, 1 when it
 is cosmetic (lighting, music, weather, names and similar), and 0 when it has no effect. Changes to official records
-that a mod undoes count too. Lower is better. Starting from your current order (LOOT's, if you just sorted), it
-applies your `--picks`, then tries letting the losing plugin of each "patch candidate" or "pick a winner" pair load
-after the winner, and keeps a move only when the score of the whole order goes down. Masters always stay above the
-plugins that need them, a mod's plugins keep their order, and official and BlueprintShips files stay where the game
-puts them. Moves that would change which copy of an archived file wins are pointed out.
+that a mod undoes count too. Lower is better.
+
+Starting from your current order (LOOT's, if you just sorted), it applies your `--picks`. Then it tries letting the
+losing plugin of each "patch candidate" or "pick a winner" pair load after the winner, and keeps a move only when
+the score of the whole order goes down. Some things never move:
+
+- Masters always stay above the plugins that need them.
+- A mod's plugins keep their order.
+- Official and BlueprintShips files stay where the game puts them.
+
+Moves that would change which copy of an archived file wins are pointed out.
 
 - **The near-tie rule**: when the moves would save less than 10 points, or less than 3% of your current score
   (whichever is more), your order is kept. Small differences aren't worth reshuffling a working setup.
@@ -319,7 +388,7 @@ These are the options `.\sf-load-order.cmd --help` lists.
 | `--vortex-staging FOLDER` | Vortex's mod staging folder, for loose-file checks (default: `%APPDATA%\Vortex\starfield\mods`). |
 | `--data FOLDER` | The game's Data folder (default: Steam's, then Game Pass's XboxGames folder on each drive). |
 | `--depth {light,medium,heavy}` | How much to check (see [Depth](#depth)). |
-| `--sf-mod-check EXE` | The sf-mod-check program (default: `sf-mod-check` on PATH, then `sfmodcheck`). |
+| `--sf-mod-check EXE` | The sf-mod-check program (default: `sf-mod-check` on PATH, then `sfmodcheck`, its old name). |
 | `--conflicts FILE` | Reuse a conflicts.json from an earlier `sf-mod-check conflict` run (nothing is run). |
 | `--max-memory GB` | Passed to `sf-mod-check conflict`. |
 | `--loot-masterlist FILE` | LOOT's Starfield masterlist.yaml (default: `%LOCALAPPDATA%\LOOT\games\Starfield\masterlist.yaml`). |
@@ -420,6 +489,11 @@ before you post it.
   inside archives; sf-load-order covers archives, loose files and records in one report.
 - **SLOK** (https://www.nexusmods.com/starfield/mods/15786) keeps Plugins.txt from being changed behind your back.
   sf-load-order doesn't protect the file: it tells you whether the order in it works.
+
+## Found a mistake?
+
+Open an issue: https://github.com/taosecurity/sf-load-order/issues. Attach the log (see [The log](#the-log)) if you
+can.
 
 ## Credits
 

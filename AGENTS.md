@@ -23,7 +23,7 @@ before each release.
 2. Optional: the `lz4` package (any current version, for example 4.4.5), to compare the contents of LZ4-packed
    archives. Without it those contents are reported as "can't compare".
 3. Optional: sf-mod-check 0.8.0 or newer (https://github.com/taosecurity/sf-mod-check/releases), for record
-   conflicts. Older versions (named sfmodcheck) are refused with a note. Without it, the record section is skipped
+   conflicts. Older versions (from when its old name was sfmodcheck) are refused with a note. Without it, the record section is skipped
    and everything else runs (the same as `--depth light`).
 4. Optional: LOOT, run once for Starfield, so its masterlist is on the PC
    (`%LOCALAPPDATA%\LOOT\games\Starfield\masterlist.yaml`).
