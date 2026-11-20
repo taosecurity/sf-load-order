@@ -189,9 +189,16 @@ def main(argv=None):
             return code
         writer_failed = report.sections.get("report", {}).get("status") == "failed"
         if writer_failed and not any(role in report.outputs for role in REPORT_ROLES):
-            print(f"RESULT: CANNOT CHECK: an internal error stopped the report writer "
-                  f"({report.sections['report']['why']}). Fix: run again with --log <file> and report the log at "
-                  f"{URL}/issues.")
+            sec = report.sections["report"]
+            disk = sec.get("disk_errors") or {}
+            if disk:  # a bug in one file and the disk refusing the others: name both causes
+                why = "; ".join(f"{os.path.basename(p)}: {w}" for p, w in disk.items())
+                print(f"RESULT: CANNOT CHECK: an internal error stopped the report writer ({sec['why']}), and "
+                      f"{args.out} couldn't be written ({why}). Fix: give --out a folder you can write to, with room "
+                      f"on its drive, then run again with --log <file> and report the log at {URL}/issues.")
+            else:
+                print(f"RESULT: CANNOT CHECK: an internal error stopped the report writer "
+                      f"({sec['why']}). Fix: run again with --log <file> and report the log at {URL}/issues.")
             return 2
         if not any(role in report.outputs for role in REPORT_ROLES):
             print(f"RESULT: CANNOT CHECK: couldn't write the report to {args.out} (none of report.txt, report.html "

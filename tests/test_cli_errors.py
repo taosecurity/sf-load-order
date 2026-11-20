@@ -138,8 +138,7 @@ class Names(unittest.TestCase):
                 json.dump([{"name": "a.esm", "enabled": True, "modId": v} for v in (False, ["x"], {"k": 1}, "", " ")]
                           + [{"name": "b.esm", "enabled": True, "modId": v} for v in (7, 7.0, " 7 ")], f)
             got = [e[2] for e in inputs._vortex_entries(vx)]
-        self.assertEqual(got, [None, None, None, None, None, "7", "7", "7"])
-
+        self.assertEqual(got, [None, None, None, None, None, "7", "7", " 7 "])  # raw: " 7 " is a folder name
     def test_render_bug_in_every_file_is_internal_error(self):
         from sf_load_order import report as report_mod
 
@@ -153,6 +152,31 @@ class Names(unittest.TestCase):
                                        "--out", os.path.join(t, "out"))
         self.assertEqual(code, 2)
         self.assertIn("internal error stopped the report writer", out)
+        self.assertNotIn("couldn't be written", out)  # no disk error, so only the bug is named
+
+    def test_render_bug_plus_disk_error_names_both(self):
+        """One file hits a render bug and the disk refuses the other two: the RESULT line names both (0.1.1)."""
+        from sf_load_order import report as report_mod
+
+        def boom(*a, **k):
+            raise TypeError("render bug (test)")
+        real_open = open
+
+        def fake_open(path, mode="r", *a, **k):
+            if "w" in mode and os.path.basename(str(path)) in ("report.txt", "report.json"):
+                raise OSError(28, "No space left on device (test)")
+            return real_open(path, mode, *a, **k)
+        with tempfile.TemporaryDirectory() as t:
+            data, ptxt = fixtures.game(os.path.join(t, "game"), {"A.esm": {"masters": ["Starfield.esm"]}})
+            with mock.patch.object(report_mod, "render_html", boom), \
+                    mock.patch("builtins.open", fake_open):
+                code, out, _ = run_cli("--plugins-txt", ptxt, "--data", data, "--depth", "light", "--no-state",
+                                       "--out", os.path.join(t, "out"))
+        self.assertEqual(code, 2)
+        self.assertIn("internal error stopped the report writer (TypeError: render bug (test))", out)
+        self.assertIn("report.txt: No space left on device (test)", out)
+        self.assertIn("report.json: No space left on device (test)", out)
+        self.assertIn("give --out a folder you can write to", out)
 
     def test_writer_bug_is_named_as_such(self):
         real = cli._module
@@ -188,6 +212,12 @@ class Names(unittest.TestCase):
         for win11, want in ((True, True), (False, os.name != "nt")):
             with mock.patch.object(paths, "_windows_11_or_later", return_value=win11):
                 self.assertEqual(paths.safe_component("Aux.Lighting"), want, f"win11={win11}")
+                # COM/LPT with a superscript digit: a device before Windows 11, a real folder on Windows 11 (0.1.1)
+                for sup in ("COM¹", "com²", "LPT³", "COM¹.x"):
+                    self.assertEqual(paths.safe_component(sup), want, f"{sup!r} win11={win11}")
+                # the real device names stay refused on every Windows
+                for dev in ("COM1", "LPT3", "NUL", "con"):
+                    self.assertEqual(paths.safe_component(dev), os.name != "nt", f"{dev!r} win11={win11}")
         for name in windows_only:
             self.assertEqual(paths.safe_component(name), os.name != "nt", repr(name))
         self.assertTrue(paths.safe_component("My Mod-123-1-0"))

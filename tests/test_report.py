@@ -259,5 +259,25 @@ class EndToEnd(unittest.TestCase):
                 self.assertIn(url.rstrip("."), report.LINKS)
 
 
+class LooseWording(unittest.TestCase):
+    """One mod or one pair takes 'ships', more take 'ship' (0.1.1)."""
+
+    def lines(self, mods, pairs):
+        ctx = types.SimpleNamespace(
+            report=types.SimpleNamespace(sections={"loose": {"status": "done", "mods": mods, "pairs": pairs}}),
+            results={}, load_order=None)
+        return " ".join(report._summary_lines(ctx, "loose"))
+
+    def test_singular(self):
+        text = self.lines(1, 1)
+        self.assertIn("1 mod ships loose files", text)
+        self.assertIn("1 pair of mods ships the same paths", text)
+
+    def test_plural(self):
+        text = self.lines(2, 0)
+        self.assertIn("2 mods ship loose files", text)
+        self.assertIn("0 pairs of mods ship the same paths", text)
+
+
 if __name__ == "__main__":
     unittest.main()

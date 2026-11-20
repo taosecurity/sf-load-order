@@ -68,6 +68,24 @@ class PluginsTxt(unittest.TestCase):
         self.assertIn("loadorder.txt", how)
         self.assertIn("equal your current order", how)
 
+    def test_mo2_pair_has_the_same_order(self):
+        """MO2 (game_bethesda's GamebryoGamePlugins::readPluginLists) takes the order from loadorder.txt when it
+        starts, and from plugins.txt only when plugins.txt alone changed while it ran. Either way the result must
+        be the recommended order, so the two files must list the mod plugins in the same order (0.1.1, NOTES)."""
+        lo = make_lo(["A.esm", "-Off.esp", "B.esm", "C.esm"], source="mo2")
+        lo.profile = "Default"
+        ctx = ctx_for(self.t, lo)
+        ctx.results["recommend"] = {"order": ["Starfield.esm", "C.esm", "B.esm", "A.esm"], "same_as_current": False}
+        files = writers.write(ctx)
+
+        def body(role):
+            return [x.lstrip("*") for x in read(files[role]).decode("utf-8").split("\r\n")
+                    if x and not x.startswith("#")]
+        mods = [n for n in body("loadorder_txt") if not inputs.is_official(n)]
+        self.assertEqual(mods, ["C.esm", "B.esm", "A.esm", "Off.esp"])
+        self.assertEqual(body("plugins_txt"), mods)
+        self.assertEqual(body("loadorder_txt")[0], "Starfield.esm")  # MO2's file keeps the official masters
+
     def test_mo2_without_loadorder_txt_says_why(self):
         lo = make_lo(["A.esm"], source="mo2")
         out = os.path.join(self.t, "out")

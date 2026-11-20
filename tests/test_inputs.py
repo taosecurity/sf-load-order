@@ -227,6 +227,15 @@ class Vortex(Base):
         self.assertEqual([f.plugins for f in miss], [["NotDeployed.esm"]])
         self.assertIn("Deploy", miss[0].fix)
 
+    def test_mod_id_with_leading_space_finds_its_staging_folder(self):
+        """The raw modId names the staging folder: one whose name starts with a space is found (0.1.1)."""
+        fixtures.plugin(os.path.join(self.staging, " spaced-5", "SpacedMod.esm"))
+        lof = fixtures.vortex_loadorder(os.path.join(self.t, "spaced.json"), [
+            ("Starfield.esm", True), ("SpacedMod.esm", True, " spaced-5")])
+        lo = self.ok("--vortex-loadorder", lof, "--data", self.data, "--vortex-staging", self.staging)
+        self.assertEqual([(m.id, m.plugins, m.path) for m in lo.mods],
+                         [(" spaced-5", ["SpacedMod.esm"], os.path.join(self.staging, " spaced-5"))])
+
     def test_default_staging_from_appdata(self):
         s = paths.default_vortex_staging(self.env)
         fixtures.plugin(os.path.join(s, "moda-1", "ModA.esm"))

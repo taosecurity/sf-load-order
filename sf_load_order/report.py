@@ -174,8 +174,9 @@ def _summary_lines(ctx, section):
             out.append(f"{_plural(len(res['pairs']), 'pair')} of plugins share archive paths "
                        f"({', '.join(f'{ARCHIVE_ADVICE.get(k, k)} {v}' for k, v in _count(res['pairs'], 'advice').items())}).")
     elif section == "loose" and st.get("status") == "done":
-        out.append(f"{_plural(st.get('mods', 0), 'mod')} ship loose files; {_plural(st.get('pairs', 0), 'pair')} of "
-                   "mods ship the same paths.")
+        n_mods, n_pairs = st.get("mods", 0), st.get("pairs", 0)
+        out.append(f"{_plural(n_mods, 'mod')} {'ships' if n_mods == 1 else 'ship'} loose files; "
+                   f"{_plural(n_pairs, 'pair')} of mods {'ships' if n_pairs == 1 else 'ship'} the same paths.")
         if st.get("stray") is not None:
             out.append(f"{_plural(st['stray'], 'loose file')} in Data come from no enabled mod.")
     elif section == "records" and st.get("status") == "done":
@@ -723,6 +724,7 @@ def write(ctx):
     paths = {"txt": os.path.join(out, TXT), "html": os.path.join(out, HTML), "json": os.path.join(out, JSON)}
     render = {"json": to_json, "txt": render_text, "html": render_html}
     written = {}
+    disk_errors = {}  # {path: why} of files the disk refused, so a run that also hit a bug can name both causes
 
     def attempt(role, listed):
         """Write one file whose "Files written" part lists `listed`; True when it was written."""
@@ -734,6 +736,7 @@ def write(ctx):
             return True
         except OSError as e:
             log.info("report", f"can't write {paths[role]}: {e}")
+            disk_errors[paths[role]] = getattr(e, "strerror", None) or str(e)
         except Exception as e:  # one broken part of the report must not cost the other two files
             log.info("report", f"couldn't make {paths[role]}:\n" + traceback.format_exc())
             # a bug, not a disk problem: cli.main() names it as an internal error when no file was written
@@ -753,5 +756,8 @@ def write(ctx):
                     os.remove(paths[role])
                 except OSError:
                     pass
+    sec = ctx.report.sections.get("report")
+    if disk_errors and sec and sec.get("status") == "failed":  # added last: every file is already rendered
+        sec["disk_errors"] = disk_errors
     log.info("report", f"wrote {sorted(written)} to {out}")
     return written

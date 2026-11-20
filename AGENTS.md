@@ -48,7 +48,7 @@ Run in the unzipped folder:
 .\sf-load-order.cmd --version
 ```
 
-Expect the byline `sf-load-order 0.1.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order`,
+Expect the byline `sf-load-order 0.1.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order`,
 three credit lines (LOOT's masterlist, sf-mod-check, the license), and exit code 0. If it says Python wasn't found,
 install Python (step 2.1) and open a new window. On Linux, or without the launcher (on Linux the command may be
 `python3`):
@@ -101,7 +101,8 @@ apply a suggested order, follow `sf-load-order-report\HOW-TO-APPLY.txt` with the
 copy the files into place without the person agreeing. For MO2 the steps are: close MO2, back up the profile's
 `plugins.txt` and `loadorder.txt` (in `profiles\<profile>\`), then copy both files from the report folder into that
 folder. MO2 takes the order from `loadorder.txt` and the on/off marks from `plugins.txt`, so copying only one of them
-doesn't work.
+doesn't work. When MO2 starts, it reads the order from `loadorder.txt` whenever that file exists, so a `plugins.txt`
+copied in alone leaves the old order in place. The two files the tool writes list the mods in the same order.
 
 ## 6. Inputs
 

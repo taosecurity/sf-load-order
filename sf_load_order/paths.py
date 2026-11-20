@@ -53,8 +53,12 @@ def safe_component(name):
         # aren't folders. Elsewhere such names are real folder names, so they stay allowed.
         # Windows 11 reserves only the bare device name ("Aux.Lighting" is a real folder there); Windows 10 and older
         # also treat a device name plus an extension ("NUL.x", "Aux.Lighting") as the device.
-        stem = name if _windows_11_or_later() else name.split(".")[0].rstrip(" ")
-        if name != name.rstrip(" .") or stem.upper() in WINDOWS_DEVICES:
+        # COM and LPT with a superscript 1, 2 or 3 ("COM¹") are devices before Windows 11 only: Windows 11 makes
+        # them as plain folders (checked on build 26300, 2026-11-19 and 2026-11-20).
+        win11 = _windows_11_or_later()
+        stem = name if win11 else name.split(".")[0].rstrip(" ")
+        devices = WINDOWS_DEVICES if win11 else WINDOWS_DEVICES | SUPERSCRIPT_DEVICES
+        if name != name.rstrip(" .") or stem.upper() in devices:
             return False
     return True
 
@@ -68,7 +72,8 @@ def _windows_11_or_later():
 
 
 WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
-                   *(f"{d}{i}" for d in ("COM", "LPT") for i in [*"123456789", "¹", "²", "³"])}  # COM0/LPT0 are plain names
+                   *(f"{d}{i}" for d in ("COM", "LPT") for i in "123456789")}  # COM0/LPT0 are plain names
+SUPERSCRIPT_DEVICES = {f"{d}{i}" for d in ("COM", "LPT") for i in "¹²³"}  # devices before Windows 11 only
 
 
 def child_folder(folder, name):
