@@ -212,7 +212,19 @@ class Console(unittest.TestCase):
                                 "--plugins-txt", os.path.join(out, "missing.txt")], capture_output=True, env=env)
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn(b"CANNOT CHECK", r.stdout)
-        self.assertIn(b"\\u0141ukasz", r.stdout)  # cp1252 can't show it: escaped, the run doesn't crash
+        # -I ignores PYTHONIOENCODING, so the system decides: Windows pipes use the ANSI code page (escaped),
+        # Linux and macOS use UTF-8 (written as is). Either way the run doesn't crash.
+        self.assertTrue(b"\\u0141ukasz" in r.stdout or "Łukasz".encode("utf-8") in r.stdout, r.stdout)
+
+    def test_console_escape_on_a_cp1252_stream(self):
+        """The same rule in-process, on any system: a cp1252 stream escapes what it can't show."""
+        buf = io.BytesIO()
+        stream = io.TextIOWrapper(buf, encoding="cp1252")
+        with mock.patch.object(sys, "stdout", stream), mock.patch.object(sys, "stderr", stream):
+            cli._utf8_console()
+            print("path Łukasz café")
+            stream.flush()
+        self.assertEqual(buf.getvalue().rstrip(b"\r\n"), b"path \\u0141ukasz caf\xe9")
 
 
 if __name__ == "__main__":
