@@ -135,10 +135,28 @@ class Names(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             vx = os.path.join(t, "lo.json")
             with open(vx, "w", encoding="utf-8") as f:
-                json.dump([{"name": "a.esm", "enabled": True, "modId": v} for v in (False, ["x"], {"k": 1}, "")]
-                          + [{"name": "b.esm", "enabled": True, "modId": 7}], f)
+                json.dump([{"name": "a.esm", "enabled": True, "modId": v} for v in (False, ["x"], {"k": 1}, "", " ")]
+                          + [{"name": "b.esm", "enabled": True, "modId": v} for v in (7, 7.0)], f)
             got = [e[2] for e in inputs._vortex_entries(vx)]
-        self.assertEqual(got, [None, None, None, None, "7"])
+        self.assertEqual(got, [None, None, None, None, None, "7", "7"])
+
+    def test_writer_bug_is_named_as_such(self):
+        real = cli._module
+
+        class Broken:
+            @staticmethod
+            def write(ctx):
+                raise RuntimeError("boom (test)")
+
+        def fake(name):
+            return Broken if name == "report" else real(name)
+        with tempfile.TemporaryDirectory() as t:
+            data, ptxt = fixtures.game(os.path.join(t, "game"), {"A.esm": {"masters": ["Starfield.esm"]}})
+            with mock.patch.object(cli, "_module", side_effect=fake):
+                code, out, _ = run_cli("--plugins-txt", ptxt, "--data", data, "--depth", "light", "--no-state",
+                                       "--out", os.path.join(t, "out"))
+        self.assertEqual(code, 2)
+        self.assertIn("internal error stopped the report writer", out)
 
     def test_unsafe_mo2_profile_is_refused(self):
         with tempfile.TemporaryDirectory() as t:
@@ -150,7 +168,8 @@ class Names(unittest.TestCase):
     def test_mod_folder_names_stay_inside(self):
         for bad in ("..", ".", "...", ".. ", ". ", "..\\..\\Windows", "../x", "C:\\x", "C:x", "a\0b", "", 123):
             self.assertFalse(paths.safe_component(bad), repr(bad))
-        windows_only = ("Mod.", "Mod ", "NUL", "con", "COM1.txt")  # Windows drops trailing dots/spaces; devices
+        windows_only = ("Mod.", "Mod ", "NUL", "con", "COM0", "CONIN$")  # trailing dots/spaces; bare devices
+        self.assertTrue(paths.safe_component("Aux.Lighting"))  # a device word plus more is a real folder on Windows 11
         for name in windows_only:
             self.assertEqual(paths.safe_component(name), os.name != "nt", repr(name))
         self.assertTrue(paths.safe_component("My Mod-123-1-0"))

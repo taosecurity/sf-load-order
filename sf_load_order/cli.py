@@ -135,8 +135,9 @@ def run(args):
     writer = _module("report")
     try:
         report.outputs.update(writer.write(ctx))
-    except Exception:
+    except Exception as e:  # a bug in the writer, not a disk problem: main() names it as such
         log.info("report", "writing the report failed:\n" + traceback.format_exc())
+        report.sections["report"] = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
     return 0, report
 
 
@@ -186,6 +187,12 @@ def main(argv=None):
             return 2
         if code:
             return code
+        writer_failed = report.sections.get("report", {}).get("status") == "failed"
+        if writer_failed and not any(role in report.outputs for role in REPORT_ROLES):
+            print(f"RESULT: CANNOT CHECK: an internal error stopped the report writer "
+                  f"({report.sections['report']['why']}). Fix: run again with --log <file> and report the log at "
+                  "https://github.com/taosecurity/sf-load-order/issues.")
+            return 2
         if not any(role in report.outputs for role in REPORT_ROLES):
             print(f"RESULT: CANNOT CHECK: couldn't write the report to {args.out} (none of report.txt, report.html "
                   "or report.json could be written). Fix: give --out a folder you can write to, with room on its "

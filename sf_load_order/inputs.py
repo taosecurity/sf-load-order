@@ -216,8 +216,10 @@ def _vortex_entries(path):
         raise InputError(bad + " (It isn't valid JSON.)")
     if not isinstance(d, list) or not all(isinstance(e, dict) and (e.get("name") or e.get("id")) for e in d):
         raise InputError(bad + " (It should be a list of entries, each with a name.)")
-    def mod_id(m):  # a string or a number; anything else (false, a list, an object) means no mod
-        if isinstance(m, bool) or not isinstance(m, (str, int)) or m == "":
+    def mod_id(m):  # a string or a whole number; anything else (false, a list, an object, blanks) means no mod
+        if isinstance(m, float) and m.is_integer():
+            m = int(m)
+        if isinstance(m, bool) or not isinstance(m, (str, int)) or (isinstance(m, str) and not m.strip()):
             return None
         return str(m)
     return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")), mod_id(e.get("modId"))) for e in d]
