@@ -163,3 +163,5 @@ credits and writes nothing. Screen output keeps the console's character set and 
 - A suggested order with "estimate" in its score is based on partial data: the moved mods should be checked in game.
 - When the suggested order saves less than 10 points or 3% (whichever is more), the current order is kept.
 - Don't use it while the game or the mod manager is changing the load order; run it after deploying.
+- Off Windows, a Vortex mod id ending in a dot (`Mod9.`) doesn't match a staging folder copied from Windows (`Mod9`).
+  Run it on Windows for such a folder.

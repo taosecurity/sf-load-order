@@ -78,12 +78,13 @@ SUPERSCRIPT_DEVICES = {f"{d}{i}" for d in ("COM", "LPT") for i in "¹²³"}  # d
 
 def mod_folder(staging, raw_id):
     """A Vortex mod's staging folder for a raw mod id; None if none exists (0.1.1). Tried in this order: the exact
-    name (it may start with a space), then the name the way Windows stores it (trailing spaces and dots dropped),
-    then the fully trimmed name. The Windows form is tried on every system, because a staging folder copied from
-    Windows has those names; a folder with the exact name always wins."""
+    name (it may start with a space), then on Windows only the name as Windows stores it (trailing spaces and dots
+    dropped), then the fully trimmed name. Elsewhere "Mod9." and "Mod9" can be two mods' folders, so the dot form
+    isn't tried there (a staging folder copied from Windows may then miss such a mod: README, Limits)."""
     if not staging or not raw_id:
         return None
-    for name in dict.fromkeys((raw_id, raw_id.rstrip(" ."), raw_id.strip())):
+    tries = (raw_id, raw_id.rstrip(" ."), raw_id.strip()) if os.name == "nt" else (raw_id, raw_id.strip())
+    for name in dict.fromkeys(tries):
         folder = child_folder(staging, name)
         if folder:
             return folder

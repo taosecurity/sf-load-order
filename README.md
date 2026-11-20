@@ -480,6 +480,10 @@ before you post it.
   the programs it starts through a virtual Data folder. Run from outside MO2, sf-mod-check can't see your mods, and
   the record section says so. Either add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and start it
   from there, or run `sf-mod-check conflict` from MO2 yourself and give its `conflicts.json` with `--conflicts`.
+- **A Vortex staging folder copied off Windows.** Windows drops trailing spaces and dots from folder names, so on
+  Windows a mod id like `Mod9.` finds the folder `Mod9`. On Linux and macOS, `Mod9.` and `Mod9` can be two
+  different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
+  run sf-load-order on Windows, or such a mod shows no folder and its loose files aren't checked.
 
 ## Similar tools
 
