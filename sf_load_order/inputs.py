@@ -230,8 +230,8 @@ def _vortex_entries(path):
 def _vortex_mod_key(staging, raw_id):
     """(the mod's id, its staging folder or None) for a raw Vortex modId. The id is always the trimmed modId, as in
     0.1.0, so ids that differ only by surrounding spaces are one mod and a mod keeps its id from run to run. Only the
-    folder lookup uses the raw modId first (a folder name may start with a space, 0.1.1), then the trimmed one
-    (Windows drops trailing spaces from folder names)."""
+    folder lookup uses the raw modId first (a folder name may start with a space, 0.1.1), then the name as Windows
+    stores it (trailing spaces and dots dropped), then the trimmed one (paths.mod_folder)."""
     if not raw_id:
         return None, None
     return raw_id.strip(), paths.mod_folder(staging, raw_id)

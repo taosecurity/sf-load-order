@@ -272,7 +272,6 @@ class Vortex(Base):
         lo = self.ok("--vortex-loadorder", lof, "--data", self.data, "--vortex-staging", self.staging)
         self.assertEqual([(m.id, sorted(m.plugins)) for m in lo.mods], [("7", ["A7.esm", "B7.esm"])])
 
-    @unittest.skipUnless(os.name == "nt", "Windows drops trailing dots; elsewhere Mod9. and Mod9 are two folders")
     def test_trailing_dot_id_finds_the_windows_folder(self):
         """Windows drops a trailing dot: modId "Mod9." finds the folder Mod9 (0.1.1)."""
         fixtures.plugin(os.path.join(self.staging, "Mod9", "Nine.esm"))
