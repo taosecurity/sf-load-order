@@ -1,4 +1,4 @@
-"""C1 tests: inputs (Plugins.txt, Vortex Load Order export, MO2) and paths (Data folder detection).
+"""Tests for inputs (Plugins.txt, Vortex Load Order export, MO2) and paths (Data folder detection).
 Synthetic data only: every file is built in a temp folder; no real game, Vortex or MO2 file is read."""
 import argparse
 import json
@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sf_load_order import cli, inputs, paths  # noqa: E402
+from sf_load_order import cli, inputs, paths, writers  # noqa: E402
 from tests import fixtures  # noqa: E402
 
 OFF = fixtures.OFFICIAL  # Starfield, ShatteredSpace, SFBGS003/004/006/007/008
@@ -469,6 +469,63 @@ class NotWindows(Base):
                          os.path.normcase(os.path.join(self.t, "St", "MyMod-12")))  # Windows keeps the given case
         self.assertIsNone(paths.child_folder(os.path.join(self.t, "St"), "other"))
         self.assertIsNone(paths.child_folder(os.path.join(self.t, "none"), "x"))
+
+
+class BadNames(Base):
+    """A name holding a line break, a NUL or a folder separator is left out with a caution naming its file, so it
+    can never add lines to the plugins.txt or loadorder.txt the tool writes."""
+
+    def setUp(self):
+        super().setUp()
+        self.data, _ = fixtures.game(os.path.join(self.t, "Game"), {"ModA.esm": {"masters": ["Starfield.esm"]}})
+
+    def check(self, lo, source_file, *bad):
+        names = [p.name for p in lo.plugins]
+        for b in bad:
+            self.assertNotIn(b, names)
+        self.assertIn("ModA.esm", lo.enabled())
+        for p in lo.plugins:
+            self.assertFalse(inputs.bad_name(p.name), p.name)
+        cautions = [f for f in inputs.findings(lo) if f.level == "caution" and "can't be plugin file names" in f.text]
+        self.assertEqual(len(cautions), 1, [f.text for f in inputs.findings(lo)])
+        self.assertIn(source_file, cautions[0].text)
+        self.assertEqual(sorted(cautions[0].data["names"]), sorted(bad))
+        lines = writers.plugins_txt_lines(lo, [p.name for p in lo.plugins]) + \
+            writers.loadorder_txt_lines(lo, [p.name for p in lo.plugins])
+        self.assertFalse([x for x in lines if "\r" in x or "\n" in x or "\0" in x or "Injected" in x], lines)
+
+    def test_plugins_txt(self):
+        pt = os.path.join(self.t, "Plugins.txt")
+        with open(pt, "wb") as f:
+            f.write(b"*ModA.esm\r\n*Bad\0Name.esm\r\n*sub/Injected.esm\r\n*sub\\Other.esm\r\n")
+        lo = self.ok("--plugins-txt", pt, "--data", self.data)
+        self.check(lo, pt, "Bad\0Name.esm", "sub/Injected.esm", "sub\\Other.esm")
+
+    def test_vortex_export(self):
+        lof = os.path.join(self.t, "lo.json")
+        with open(lof, "w", encoding="utf-8") as f:
+            json.dump([{"enabled": True, "id": "Starfield.esm", "name": "Starfield.esm", "locked": True},
+                       {"enabled": True, "id": "moda.esm", "name": "moda.esm", "modId": "ModA"},
+                       {"enabled": True, "id": "x", "name": "evil.esm\r\n*Injected.esm", "modId": "Evil"},
+                       {"enabled": True, "id": "y", "name": "nul\0.esm", "modId": "Evil"}], f)
+        lo = self.ok("--vortex-loadorder", lof, "--data", self.data)
+        self.check(lo, lof, "evil.esm\r\n*Injected.esm", "nul\0.esm")
+        self.assertFalse(any("Injected" in p for m in lo.mods or [] for p in m.plugins))
+
+    def test_mo2_files(self):
+        mo2 = fixtures.mo2(os.path.join(self.t, "mo2"), "Default",
+                           [("ModA", True, {"ModA.esm": {"masters": ["Starfield.esm"]}})])
+        prof = os.path.join(mo2, "profiles", "Default")
+        with open(os.path.join(prof, "plugins.txt"), "ab") as f:
+            f.write(b"*..\\Injected.esm\r\n")
+        with open(os.path.join(prof, "loadorder.txt"), "ab") as f:
+            f.write(b"a/Injected.esm\n")
+        lo = self.ok("--mo2", mo2, "--data", self.data)
+        names = [p.name for p in lo.plugins]
+        self.assertNotIn("..\\Injected.esm", names)
+        self.assertNotIn("a/Injected.esm", names)
+        cautions = [f for f in inputs.findings(lo) if "can't be plugin file names" in f.text]
+        self.assertEqual(sorted(os.path.basename(f.data["file"]) for f in cautions), ["loadorder.txt", "plugins.txt"])
 
 
 if __name__ == "__main__":

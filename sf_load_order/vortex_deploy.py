@@ -1,4 +1,4 @@
-"""Vortex's deployment record: which mod deployed which file into Data (C1b).
+"""Vortex's deployment record: which mod deployed which file into Data.
 
 A Vortex Load Order export lists only mods with plugins, so a mod that ships loose files only (textures, scripts,
 an SFSE DLL) is missing from it, and its files would look like stray files. Vortex writes a record of every file it

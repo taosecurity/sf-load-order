@@ -21,11 +21,11 @@ What conflicts.json holds (sf-mod-check src\\ConflictReport.cs, 0.8.0) and what 
 
 What it can't tell: the file lists only losses. A plugin's own edits that nobody undoes, and edits two mods make
 the same way, aren't listed, so a plugin with no entry is "neutral" in the sense "nothing of it is lost and it
-undoes nothing", not proven to add only new records (the private tracker's overrides list could tell those apart).
+undoes nothing", not proven to add only new records (that would take every override, which the file doesn't list).
 It also has no cost of the other order (sf-mod-check works that out, ReorderCost, but doesn't write it), so a
 pair's flip cost below is only the part the Choice fields show.
 
-Ratings per enabled mod plugin (keys as the tracker's, labels in RATING_LABEL):
+Ratings per enabled mod plugin (labels in RATING_LABEL):
   neutral       no lost-change entry names it and no ITM or type change of its is listed
   neutral-here  it is in entries, but none that the order can change (built on it, same mod, same edit, it undoes
                 an official change, which no order fixes), or it has ITMs / type changes
@@ -36,7 +36,7 @@ Pair advice (key, label): built "no action: built on it", samemod "no action: sa
 edit", merge "patch candidate", conflict "pick a winner". "built" can't come from sf-mod-check itself (it leaves
 out pairs where the winner has the loser as a master); it is kept for files made another way.
 
-ctx.results["records"] (for recommend, C6, and the report, C7):
+ctx.results["records"] (for recommend.py and the report):
   {"source": "run"|"file", "file": conflicts.json path, "program": Program.to_dict() or None,
    "exit": int|None, "result_line": str|None, "generated": str,
    "load_order": [names sf-mod-check loaded, official included, in its order],
@@ -77,14 +77,14 @@ ADVICE_LABEL = {"built": "no action: built on it", "samemod": "no action: same m
                 "merge": "patch candidate", "conflict": "pick a winner"}
 ACTION = {"merge", "conflict"}
 FORWARDABLE, CHOICE, NO_EFFECT = "Forwardable", "Choice", "No effect"
-# from the private tracker's recommend.py (bookkeeping 0, cosmetic 1, everything else 3)
+# field weights: bookkeeping 0, cosmetic 1, everything else 3
 NOISE = {"NumTraversalFluffBytes", "PersistentTimestamp", "Timestamp"}
 COSMETIC = {"Lighting", "LightingTemplate", "ImageSpace", "AcousticSpace", "Music", "AmbienceSet", "EnvironmentMap",
             "Climate", "LodWater", "LodWaterHeight", "Water", "DistantLodMultiplier", "CellWaterHeightLocations",
             "Name", "MapData", "WorldMapOffset", "FNAM", "GNAM", "HNAM", "SkyLighting", "WaterHeight",
             "WaterEnvironmentMap", "LandDefaults", "Description", "Components", "XILS", "WaterHeights",
             "ActorFadeMult"}
-# record types whose edits are lists of entries: two mods adding entries can always be merged (tracker, neutral.py)
+# record types whose edits are lists of entries: two mods adding entries can always be merged
 LIST_TYPES = {"LeveledItem", "LeveledNpc", "LeveledPackIn", "LeveledSpaceshipBaseList", "LeveledBaseForm",
               "FormList", "Container", "Outfit", "NavigationMeshInfoMap"}
 DELETED_RISKY = {"REFR", "ACHR", "NAVM"}

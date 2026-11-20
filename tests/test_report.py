@@ -1,4 +1,4 @@
-"""C7 report tests: report.txt, report.html and report.json. Synthetic data only."""
+"""Report tests: report.txt, report.html and report.json. Synthetic data only."""
 import io
 import json
 import os
@@ -187,9 +187,9 @@ class Synthetic(unittest.TestCase):
 
     def test_recommend_missing(self):
         del self.ctx.results["recommend"]
-        self.ctx.report.sections["recommend"] = {"status": "skipped", "why": "not built yet"}
+        self.ctx.report.sections["recommend"] = {"status": "skipped", "why": "a made-up reason"}
         t = report.render_text(self.ctx, self.paths)
-        self.assertIn("No order was worked out. Skipped. Why: Not built yet.", t)
+        self.assertIn("No order was worked out. Skipped. Why: A made-up reason.", t)
 
 
 class OnlyWrittenListed(unittest.TestCase):

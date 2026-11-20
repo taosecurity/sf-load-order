@@ -1,4 +1,4 @@
-"""Tests for sf_load_order.loose (C3). Synthetic data only (tests.fixtures).
+"""Tests for sf_load_order.loose. Synthetic data only (tests.fixtures).
 
 MO2 setup, lowest priority first:
   ModA   textures\\x.dds "1", scripts\\s.pex "a", meshes\\m.nif "loose", readme.txt, meta.ini
@@ -160,7 +160,7 @@ class Vortex(unittest.TestCase):
     def test_data_copy_named(self):
         with tempfile.TemporaryDirectory() as d:
             lo = self.build(d)
-            # stray files need Vortex's deployment record (C1b): everything but stray.dds was deployed by a mod
+            # stray files need Vortex's deployment record: everything but stray.dds was deployed by a mod
             lo._vortex_deployment = vortex_deploy.Deployment(path="record", files={
                 "textures\\t.dds": "S2", "scripts\\u.pex": "S1", "textures\\readme.txt": "S1", "s1.esm": "S1"})
             ctx = ctx_for(lo, d)

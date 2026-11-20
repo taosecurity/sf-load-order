@@ -34,7 +34,7 @@ LEAVE_OUT = (".github/", ".gitignore", ".gitattributes")
 PRIVATE_FILES = {"NOTES.md", "WORKPLAN.md", "sync_public.py"}
 PRIVATE_DIRS = ("realdata/", "private/")
 FIXED_TIME = (2026, 1, 1, 0, 0, 0)
-CRLF_SUFFIXES = (".cmd", ".bat")
+CRLF_SUFFIXES = (".cmd", ".bat")  # the same as the eol=crlf lines in .gitattributes
 
 
 def git(*args):

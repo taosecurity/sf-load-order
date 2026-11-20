@@ -1,7 +1,7 @@
 """Synthetic test data: tiny Starfield plugins, BA2 archives, fake game, MO2 and Vortex folders, fake conflicts.json.
 
 Nothing here comes from the game or from anyone's mods: every file is built byte by byte from the format rules, so
-the tests can be published. Master-only file (WORKPLAN.md); a chunk that needs a new fixture asks the master.
+the tests can be published. A test that needs a shape these don't make builds it the same way, from the format.
 
 Plugins:  plugin(path, masters=(), kind="F", records=())   records: [(signature, raw FormID, editor ID)]
 Archives: ba2(path, files, version=2, kind=b"GNRL")         files: {name: bytes | ("zlib"|"lz4", content, ...)}

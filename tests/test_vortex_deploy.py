@@ -1,4 +1,4 @@
-"""C1b tests: Vortex's deployment record (sf_load_order.vortex_deploy). Synthetic data only.
+"""Tests for Vortex's deployment record (sf_load_order.vortex_deploy). Synthetic data only.
 
 The record is written here from its documented shape: an object with stagingPath and a files list, each entry
 {"relPath": <path relative to Data>, "source": <Vortex mod id>, ...}. No real Vortex file is read.
@@ -198,7 +198,7 @@ class Enrich(Base):
         self.assertEqual(sorted(m.id for m in lo.mods), ["moda-1", "retex-2", "sfse-dll-3"])
 
     def test_through_inputs_read(self):
-        """The real export path: inputs.read() then enrich(), as the master will wire it."""
+        """The real export path: inputs.read(), which calls enrich()."""
         record(self.data, self.staging, self.files)
         lof = fixtures.vortex_loadorder(os.path.join(self.t, "lo.json"),
                                         [("Starfield.esm", True), ("ModA.esm", True, "moda-1")])

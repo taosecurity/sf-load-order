@@ -1,4 +1,4 @@
-"""C4 tests: records.py and sfmodcheck.py. Synthetic only: fixtures.conflicts_json files and a fake sf-mod-check (a
+"""Tests for records.py and sfmodcheck.py. Synthetic only: fixtures.conflicts_json files and a fake sf-mod-check (a
 small .py plus a .cmd wrapper on Windows or a shell script elsewhere, written to a temp folder) that prints a version and writes a conflicts.json.
 
 Fixtures written here (not in tests\\fixtures.py): FAKE (the fake program), lost()/field() (lost entries shaped like
@@ -156,7 +156,7 @@ class Mapping(unittest.TestCase):
         self.assertTrue(any("undoes official changes" in t for t in texts))
         self.assertTrue(any("ITM" in t for t in texts))
         self.assertTrue(any("cannot be read" in t for t in texts))
-        self.assertFalse(any("listed before its master" in t for t in texts))   # C2's job
+        self.assertFalse(any("listed before its master" in t for t in texts))   # order.py's job
         self.assertFalse(any("E.esm wins over C.esm" in t for t in texts))  # same edit: no finding
         self.assertTrue(any("another load order" in t for t in texts))  # F.esm isn't in the file
         for f in ctx.report.findings:

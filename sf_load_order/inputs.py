@@ -43,6 +43,7 @@ DROPPED_PLUGIN_NAMES = [
     re.compile(r"^blueprintships-", re.I),
 ]
 PLUGIN_EXT = (".esm", ".esp", ".esl")
+BAD_NAME_CHARS = ("\r", "\n", "\0", "/", "\\")
 SECTION = "inputs"
 
 
@@ -66,10 +67,32 @@ def is_official(name):
     return bool(m and OFFICIAL_RE.match(m.group(1)))
 
 
+def bad_name(name):
+    """True for a plugin name no plugin file can have: one holding a line break, a NUL or a folder separator. Such a
+    name is never used, so it can't add lines to the plugins.txt and loadorder.txt this tool writes."""
+    return any(c in name for c in BAD_NAME_CHARS)
+
+
+def drop_bad_names(entries, source):
+    """(entries whose name (the first item) is a usable plugin name, [caution Finding for the ones left out])."""
+    kept, bad = [], []
+    for e in entries:
+        (bad if bad_name(e[0]) else kept).append(e)
+    if not bad:
+        return kept, []
+    shown = [repr(e[0]) for e in bad[:5]]
+    log.info(SECTION, f"{source}: left out {len(bad)} name(s) that can't be plugin names: {', '.join(shown)}")
+    return kept, [Finding("caution", SECTION, f"{source} lists {len(bad)} name(s) that can't be plugin file names "
+                          "(they hold a line break, a NUL character or a / or \\), so they were left out: "
+                          + ", ".join(shown) + (" and more." if len(bad) > 5 else "."),
+                          fix=f"Remove those lines from {source}, or let the game or the mod manager write it again.",
+                          data={"file": source, "names": [e[0] for e in bad]})]
+
+
 def listing(folder):
     """{lower name: real name} of the plugin files in a folder ({} when it can't be read)."""
     try:
-        return {n.lower(): n for n in os.listdir(folder) if n.lower().endswith(PLUGIN_EXT)}
+        return {n.lower(): n for n in os.listdir(folder) if n.lower().endswith(PLUGIN_EXT) and not bad_name(n)}
     except OSError as e:
         log.info(SECTION, f"can't list {folder}: {e.strerror}")
         return {}
@@ -160,8 +183,9 @@ def from_plugins_txt(path, args, env, drives, registry):
     if not os.path.isfile(path):
         raise InputError(f"no Plugins.txt at {path}. Fix: start the game once (it writes this file), or pass "
                          "--plugins-txt <file>, --mo2 <folder> or --vortex-loadorder <file>.")
-    listed = read_plugins_list(path)
+    listed, bad = drop_bad_names(read_plugins_list(path), path)
     data, extra = _find_data(args, env, drives, registry)
+    extra += bad
     log.info(SECTION, f"plugins.txt {path}: {len(listed)} lines")
     present = listing(data) if data else {}
     lo = LoadOrder("plugins.txt", files={"plugins_txt": path}, data=data,
@@ -191,8 +215,9 @@ def _vortex_entries(path):
 
 
 def from_vortex(path, args, env, drives, registry):
-    entries = _vortex_entries(path)
+    entries, bad = drop_bad_names(_vortex_entries(path), path)
     data, extra = _find_data(args, env, drives, registry)
+    extra += bad
     present = listing(data) if data else {}
     staging = getattr(args, "vortex_staging", None) or paths.default_vortex_staging(env)
     has_staging = bool(staging) and os.path.isdir(staging)  # no default off Windows (APPDATA isn't set)
@@ -219,7 +244,7 @@ def from_vortex(path, args, env, drives, registry):
             m.plugins.append(case)
     lo.plugins, more = build_order(order, present, lambda n: _in(data, present[n]) if n in present else None)
     lo.mods = list(mods.values())
-    # mods with no plugin aren't in the export: Vortex's deployment record in Data names them (C1b)
+    # mods with no plugin aren't in the export: Vortex's deployment record in Data names them
     extra += vortex_deploy.enrich(lo, vortex_deploy.read(data))
     if "vortex_staging" not in lo.files:  # neither the option, Vortex's default nor the record's stagingPath
         where = staging or "(no default: APPDATA isn't set)"
@@ -328,12 +353,15 @@ def from_mo2(instance, args, env, drives, registry):
             for p in m.plugins:
                 present[p.lower()] = p
                 where[p.lower()] = _in(m.path, p)
-    listed = read_plugins_list(ptxt)
+    listed, bad = drop_bad_names(read_plugins_list(ptxt), ptxt)
+    extra += bad
     lopath = os.path.join(pdir, "loadorder.txt")
     if os.path.isfile(lopath):  # loadorder.txt holds the order (disabled plugins too); plugins.txt the flags
         lo.files["loadorder_txt"] = lopath
         on = {n.lower(): e for n, e in listed}
-        order = [n for n, _ in read_plugins_list(lopath)]
+        lo_listed, bad = drop_bad_names(read_plugins_list(lopath), lopath)
+        extra += bad
+        order = [n for n, _ in lo_listed]
         known = {n.lower() for n in order}
         listed = [(n, on.get(n.lower(), False)) for n in order] + [(n, e) for n, e in listed if n.lower() not in known]
     lo.plugins, more = build_order(listed, present, where.get)

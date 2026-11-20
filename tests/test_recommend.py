@@ -1,4 +1,4 @@
-"""C6 tests: recommend.py. Synthetic only: load orders built in memory, records data built by hand (the shape
+"""Tests for recommend.py. Synthetic only: load orders built in memory, records data built by hand (the shape
 records.py documents) or from fixtures.conflicts_json through records.analyse.
 
 Fixtures written here (not in tests\\fixtures.py): make_lo() (a LoadOrder with masters and mods, no files),

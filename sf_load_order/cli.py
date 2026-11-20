@@ -1,11 +1,11 @@
-"""Command line and the run pipeline. Master-only file (WORKPLAN.md).
+"""Command line and the run pipeline.
 
-Each check lives in its own module with run(ctx) (see Context). The pipeline calls them in order; a module that is
-missing or raises marks its section "failed" in the report and the run carries on, so one broken check never hides
-the others.
+Each check lives in its own module with run(ctx) (see Context). The pipeline calls them in order; a check that raises
+marks its section "failed" in the report and the run carries on, so one broken check never hides the others. (A
+missing module is a packaging error, and it stops the run.)
 
 Exit codes: 0 report written; 1 report written and --strict was given and there are problems; 2 couldn't run (bad
-options, no load order found, output folder not writable).
+options, no load order found, output folder not writable, no report file could be written).
 """
 import argparse
 import importlib
@@ -18,13 +18,13 @@ from .model import Report
 
 # (section, module) in run order. Each module has run(ctx) -> None or a section status dict.
 PIPELINE = [
-    ("order", "order"),        # C2: masters, missing files, slots, dropped names, BlueprintShips last
-    ("patches", "patches"),    # C2: patches built against an older version of a master
-    ("clashes", "clashes"),    # C5: LOOT masterlist + the player's own --clashes / --accept
-    ("archives", "archives"),  # C3: BA2 overlap and archive names
-    ("loose", "loose"),        # C3: loose files (needs mod folders: MO2 or Vortex staging)
-    ("records", "records"),    # C4: sf-mod-check conflict (depth medium and heavy)
-    ("recommend", "recommend"),  # C6: score, moves, files to apply
+    ("order", "order"),        # masters, missing files, slots, dropped names, BlueprintShips last
+    ("patches", "patches"),    # patches built against an older version of a master
+    ("clashes", "clashes"),    # LOOT masterlist + the player's own --clashes / --accept
+    ("archives", "archives"),  # BA2 overlap and archive names
+    ("loose", "loose"),        # loose files (needs mod folders: MO2 or Vortex staging)
+    ("records", "records"),    # sf-mod-check conflict (depth medium and heavy)
+    ("recommend", "recommend"),  # score, moves, files to apply
 ]
 DEPTHS = ("light", "medium", "heavy")
 SKIPPED_AT_LIGHT = {"records"}
@@ -99,20 +99,13 @@ def parser():
 
 
 def _module(name):
-    try:
-        return importlib.import_module(f"{__package__}.{name}")
-    except ModuleNotFoundError as e:
-        if e.name == f"{__package__}.{name}":
-            return None
-        raise
+    """A check's module. One that is missing is a packaging error, so the ImportError is left to stop the run."""
+    return importlib.import_module(f"{__package__}.{name}")
 
 
 def read_load_order(args):
     """Returns (LoadOrder, None) or (None, error text)."""
-    inputs = _module("inputs")
-    if inputs is None:
-        return None, "the inputs module isn't built yet"
-    return inputs.read(args)
+    return _module("inputs").read(args)
 
 
 def run(args):
@@ -132,40 +125,55 @@ def run(args):
             report.sections[section] = {"status": "skipped", "why": "--depth light"}
             continue
         mod = _module(modname)
-        if mod is None:
-            report.sections[section] = {"status": "skipped", "why": "not built yet"}
-            continue
         try:
             status = mod.run(ctx) or {"status": "done"}
         except Exception as e:  # one broken check must not hide the others
             log.info(section, "failed:\n" + traceback.format_exc())
             status = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
         report.sections[section] = status
-    writer = _module("report")
-    if writer is not None:
-        report.outputs.update(writer.write(ctx))
+    report.outputs.update(_module("report").write(ctx))
     return 0, report
 
 
+REPORT_ROLES = ("txt", "html", "json")
+
+
+def _utf8_console():
+    """Make stdout and stderr write UTF-8 (unknown characters replaced), so a run whose output is redirected to a
+    file or a pipe never stops on a path the console's code page can't show (a Windows default like cp1252)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
 def main(argv=None):
+    _utf8_console()
     args = parser().parse_args(argv)  # unknown option or a missing value: argparse prints why and exits 2
+    try:  # first, so a --log file inside --out can be opened
+        os.makedirs(args.out, exist_ok=True)
+    except OSError as e:
+        print(f"RESULT: CANNOT CHECK: can't create the output folder {args.out}: {e.strerror}. "
+              "Fix: give --out a folder you can write to.")
+        return 2
     err = log.setup(args.verbose, args.log)
     if err:
         print(f"RESULT: CANNOT CHECK: {err}")
         return 2
     try:
-        try:
-            os.makedirs(args.out, exist_ok=True)
-        except OSError as e:
-            print(f"RESULT: CANNOT CHECK: can't create the output folder {args.out}: {e.strerror}. "
-                  "Fix: give --out a folder you can write to.")
-            return 2
         if not args.quiet:
             print(BYLINE, file=sys.stderr)  # stderr: stdout stays script-friendly (RESULT line)
         log.info("start", f"{BYLINE}; python {sys.version.split()[0]}, args {vars(args)}")
         code, report = run(args)
         if code:
             return code
+        if not any(role in report.outputs for role in REPORT_ROLES):
+            print(f"RESULT: CANNOT CHECK: couldn't write the report to {args.out} (none of report.txt, report.html "
+                  "or report.json could be written). Fix: give --out a folder you can write to, with room on its "
+                  "drive, and run with --log <file> to see why.")
+            return 2
         c = report.counts()
         failed = [s for s, v in report.sections.items() if v.get("status") == "failed"]
         tail = f", {len(failed)} check(s) failed: {', '.join(failed)}" if failed else ""

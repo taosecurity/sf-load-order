@@ -386,7 +386,7 @@ before you post it.
 |---|---|
 | 0 | The report was written (whatever it found). |
 | 1 | The report was written, `--strict` was given, and it lists at least one problem. |
-| 2 | It couldn't run: a bad option, no load order found, or a folder it can't write to. The `RESULT: CANNOT CHECK` line says why and what to do. |
+| 2 | It couldn't run: a bad option, no Python found by the launcher, no load order found, a folder it can't write to, or no report file could be written. The `RESULT: CANNOT CHECK` line says why and what to do. |
 
 ## Traps
 

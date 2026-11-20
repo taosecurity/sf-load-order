@@ -1,4 +1,4 @@
-"""Tests for sf_load_order.archives (C3). Synthetic data only (tests.fixtures).
+"""Tests for sf_load_order.archives. Synthetic data only (tests.fixtures).
 
 Main setup (one Data folder, plugins.txt source): A.esm, B.esm (masters A), C.esm, D.esm + E.esm (one mod),
 F.esm, G.esm, H.esm, Z.esm (listed, disabled).

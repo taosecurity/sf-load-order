@@ -1,6 +1,6 @@
-"""The shapes every part of sf-load-order shares. Master-only file (WORKPLAN.md): chunks read these, never change them.
+"""The shapes every part of sf-load-order shares. The checks read these and never change their definitions.
 
-LoadOrder comes from inputs (C1). Findings come from each check. A Report holds both and is what report.json writes.
+LoadOrder comes from inputs. Findings come from each check. A Report holds both and is what report.json writes.
 """
 import dataclasses
 from dataclasses import dataclass, field

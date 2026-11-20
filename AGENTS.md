@@ -138,8 +138,9 @@ credits and writes nothing.
 
 - 0: the report was written, whatever it found.
 - 1: the report was written, `--strict` was given, and it lists at least one problem.
-- 2: it couldn't run (a bad or shortened option, no load order found, an output or log folder it can't write). The
-  `RESULT: CANNOT CHECK:` line says why and what to do.
+- 2: it couldn't run (a bad or shortened option, no Python found by the launcher, no load order found, an output or
+  log folder it can't write, or none of the three report files could be written). The `RESULT: CANNOT CHECK:` line
+  says why and what to do.
 
 ## 9. The log
 

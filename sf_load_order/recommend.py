@@ -13,7 +13,7 @@ How the recommendation is made:
 Constraints: masters stay above the plugins that need them, a mod's plugins keep their order (Mod.plugins), and
 official plugins and BlueprintShips files stay where the game puts them.
 
-What the data can't tell (NOTES.md, C4 gaps 3 and 4): conflicts.json lists only the losses of the order it was run
+What the data can't tell: conflicts.json lists only the losses of the order it was run
 on. When a pair is flipped, the new loser's loss is known only in part: the "Choice" fields, where both plugins
 changed the same field. Fields only the old winner changed aren't written, so a flipped pair's cost is a lower
 bound (pair["cost_complete"] False) and the score of the recommended order is an ESTIMATE. With exact costs
@@ -44,7 +44,7 @@ ACTION = {"merge", "conflict"}
 ESTIMATE_WHY = ("an estimate: sf-mod-check's conflicts.json lists only the losses of the order it checked, so the "
                 "cost of a flipped pair is known only for fields both plugins changed")
 
-# field -> plain words for the report (from the private tracker's recommend.py)
+# field -> plain words for the report
 QUEST = "quest objects and NPCs added to the location"
 PLAIN = [
     (lambda f: f.startswith("Added") and f.endswith(("References", "Npcs")), QUEST),
@@ -68,7 +68,7 @@ PLAIN = [
     (lambda f: f == "ActorFadeMult", "NPC fade distance"),
 ]
 MAX_PASSES, MAX_RESTARTS = 50, 20
-NEAR_MIN, NEAR_SHARE = 10, 0.03  # near-tie rule: a saving under max(10, 3%) keeps the order (as the tracker does)
+NEAR_MIN, NEAR_SHARE = 10, 0.03  # near-tie rule: a saving under max(10, 3%) keeps the order
 
 
 def plain_field(f):
@@ -326,7 +326,7 @@ def run(ctx):
             if s >= best:
                 break
             order, best = o, s
-        # Not worth another import (tracker rule, kept for consistency, master 2026-11-19): when the record moves save
+        # Not worth another import: when the record moves save
         # less than 3% (at least 10 points), keep the start order. The search is local, so near-ties shift with it.
         start_score = score(_full(current, start, fixed))[0]
         if order != start and start_score - best < max(NEAR_MIN, NEAR_SHARE * start_score):

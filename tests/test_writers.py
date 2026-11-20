@@ -1,4 +1,4 @@
-"""C6 tests: writers.py. Synthetic only: a Vortex export from fixtures.vortex_loadorder and load orders built in
+"""Tests for writers.py. Synthetic only: a Vortex export from fixtures.vortex_loadorder and load orders built in
 memory (make_lo and ctx_for from test_recommend)."""
 import json
 import os

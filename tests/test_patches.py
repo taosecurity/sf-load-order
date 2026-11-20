@@ -13,7 +13,7 @@ from tests import fixtures  # noqa: E402
 
 
 def old_rule_flags(path, lists):
-    """The private tracker's first rule (before the fix), kept here to prove the false alarm: an index past the end of
+    """The first rule (before the fix), kept here to prove the false alarm: an index past the end of
     a master list was flagged, although the engine reads it as the plugin's own record."""
     n = 0
     for fid in patches.record_ids(path):

@@ -252,7 +252,7 @@ def analyse(lo, cache, arc_cache, arc_result):
     rank = {m.name: i for i, m in enumerate(mods)}
     data = lo.data if lo.data and os.path.isdir(lo.data) else None
     trusted = data is not None and (mo2 or archives.data_matches(lo))
-    # stray files need to know every mod's files: MO2's folders, or Vortex's deployment record (C1b)
+    # stray files need to know every mod's files: MO2's folders, or Vortex's deployment record
     stray_ok = data is not None and (mo2 or dep is not None)
 
     ships = defaultdict(list)  # path -> [(mod name, full path)], lowest priority first

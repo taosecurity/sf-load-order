@@ -6,7 +6,11 @@ sf-load-order runs on your own computer, offline. It collects no data and sends 
 
 - It makes no network connections.
 - It has no telemetry, analytics, crash reporting or update checks.
-- It uploads nothing. The report's only link is to the project page, and nothing is fetched from it.
+- It uploads nothing. The report (report.html) holds three links: the project page
+  (https://github.com/taosecurity/sf-load-order), its issues page
+  (https://github.com/taosecurity/sf-load-order/issues) and sf-mod-check's page
+  (https://github.com/taosecurity/sf-mod-check). The tool never fetches any of them; they open only if you click
+  one.
 - It never changes the game, Plugins.txt, Vortex or Mod Organizer 2. Applying a suggested order is your own step.
 
 ## What it reads
