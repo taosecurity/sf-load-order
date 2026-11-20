@@ -139,6 +139,7 @@ class Names(unittest.TestCase):
                           + [{"name": "b.esm", "enabled": True, "modId": v} for v in (7, 7.0, " 7 ")], f)
             got = [e[2] for e in inputs._vortex_entries(vx)]
         self.assertEqual(got, [None, None, None, None, None, "7", "7", " 7 "])  # raw: " 7 " is a folder name
+
     def test_render_bug_in_every_file_is_internal_error(self):
         from sf_load_order import report as report_mod
 
@@ -176,7 +177,7 @@ class Names(unittest.TestCase):
         self.assertIn("internal error stopped the report writer (TypeError: render bug (test))", out)
         self.assertIn("report.txt: No space left on device (test)", out)
         self.assertIn("report.json: No space left on device (test)", out)
-        self.assertIn("give --out a folder you can write to", out)
+        self.assertIn("make sure you can write to", out)
 
     def test_writer_bug_is_named_as_such(self):
         real = cli._module

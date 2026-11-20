@@ -155,12 +155,19 @@ def enrich(lo, deployment):
     if staging and "vortex_staging" not in lo.files:
         lo.files["vortex_staging"] = staging
     by_mod = deployment.by_mod()
-    known = {(m.id or m.name).lower(): m for m in lo.mods}
+    known = {}
+    for m in lo.mods:
+        key = (m.id or m.name).lower()
+        known.setdefault(key, m)
+        known.setdefault(key.strip(), m)
     filled, added = 0, []
     for mid in sorted(by_mod, key=str.lower):
         files = by_mod[mid]
-        m = known.get(mid.lower())
+        # the export's ids may be trimmed where the record keeps the folder name as it is (or the other way round)
+        m = known.get(mid.lower()) or known.get(mid.strip().lower())
         folder = paths.child_folder(staging, mid) if staging else None
+        if folder is None and staging and mid.strip() != mid:
+            folder = paths.child_folder(staging, mid.strip())
         if m is not None:
             # deployed = enabled in Vortex, even when its plugin is turned off on the Load Order page (the export
             # marks a mod enabled only through its plugins); plugin flags stay as the export has them

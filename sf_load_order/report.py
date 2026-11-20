@@ -725,11 +725,20 @@ def write(ctx):
     render = {"json": to_json, "txt": render_text, "html": render_html}
     written = {}
     disk_errors = {}  # {path: why} of files the disk refused, so a run that also hit a bug can name both causes
+    bug = []          # set by this call only, so an older "failed" section can't make disk errors look like a bug
 
     def attempt(role, listed):
         """Write one file whose "Files written" part lists `listed`; True when it was written."""
         try:
-            body = render[role](ctx, listed)
+            body = render[role](ctx, listed)  # any error while rendering is a bug, even an OSError
+        except Exception as e:  # one broken part of the report must not cost the other two files
+            log.info("report", f"couldn't make {paths[role]}:\n" + traceback.format_exc())
+            # a bug, not a disk problem: cli.main() names it as an internal error when no file was written
+            ctx.report.sections["report"] = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
+            bug.append(role)
+            written.pop(role, None)
+            return False
+        try:
             with open(paths[role], "w", encoding="utf-8", newline="\n") as f:
                 f.write(body)
             written[role] = paths[role]
@@ -737,10 +746,6 @@ def write(ctx):
         except OSError as e:
             log.info("report", f"can't write {paths[role]}: {e}")
             disk_errors[paths[role]] = getattr(e, "strerror", None) or str(e)
-        except Exception as e:  # one broken part of the report must not cost the other two files
-            log.info("report", f"couldn't make {paths[role]}:\n" + traceback.format_exc())
-            # a bug, not a disk problem: cli.main() names it as an internal error when no file was written
-            ctx.report.sections["report"] = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
         written.pop(role, None)
         return False
 
@@ -757,7 +762,7 @@ def write(ctx):
                 except OSError:
                     pass
     sec = ctx.report.sections.get("report")
-    if disk_errors and sec and sec.get("status") == "failed":  # added last: every file is already rendered
+    if disk_errors and bug and sec and sec.get("status") == "failed":  # added last: every file is rendered
         sec["disk_errors"] = disk_errors
     log.info("report", f"wrote {sorted(written)} to {out}")
     return written

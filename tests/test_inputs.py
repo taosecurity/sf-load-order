@@ -236,6 +236,23 @@ class Vortex(Base):
         self.assertEqual([(m.id, m.plugins, m.path) for m in lo.mods],
                          [(" spaced-5", ["SpacedMod.esm"], os.path.join(self.staging, " spaced-5"))])
 
+    def test_mod_id_with_trailing_space_falls_back_to_trimmed_folder(self):
+        """Windows drops a trailing space from a folder name: "ModT-7 " finds the folder ModT-7, as in 0.1.0."""
+        fixtures.plugin(os.path.join(self.staging, "ModT-7", "ModT.esm"))
+        lof = fixtures.vortex_loadorder(os.path.join(self.t, "trail.json"), [
+            ("Starfield.esm", True), ("ModT.esm", True, "ModT-7 ")])
+        lo = self.ok("--vortex-loadorder", lof, "--data", self.data, "--vortex-staging", self.staging)
+        self.assertEqual([(m.id, m.path) for m in lo.mods], [("ModT-7", os.path.join(self.staging, "ModT-7"))])
+
+    def test_trimmed_and_untrimmed_ids_are_one_mod(self):
+        """Two plugins of one mod, one export entry with " 8" and one with "8": one mod, not two."""
+        fixtures.plugin(os.path.join(self.staging, "8", "A8.esm"))
+        fixtures.plugin(os.path.join(self.staging, "8", "B8.esm"))
+        lof = fixtures.vortex_loadorder(os.path.join(self.t, "dup.json"), [
+            ("Starfield.esm", True), ("A8.esm", True, "8"), ("B8.esm", True, " 8")])
+        lo = self.ok("--vortex-loadorder", lof, "--data", self.data, "--vortex-staging", self.staging)
+        self.assertEqual([(m.id, sorted(m.plugins)) for m in lo.mods], [("8", ["A8.esm", "B8.esm"])])
+
     def test_default_staging_from_appdata(self):
         s = paths.default_vortex_staging(self.env)
         fixtures.plugin(os.path.join(s, "moda-1", "ModA.esm"))

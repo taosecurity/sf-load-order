@@ -227,6 +227,22 @@ def _vortex_entries(path):
     return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")), mod_id(e.get("modId"))) for e in d]
 
 
+def _vortex_mod_key(staging, raw_id):
+    """(the mod's id, its staging folder or None) for a raw Vortex modId. The untrimmed id wins when a folder of
+    that exact name exists (a name may start with a space, 0.1.1); otherwise the trimmed id is used, both for the
+    folder (Windows drops trailing spaces from folder names) and as the key, so " 7" and "7" are one mod, as in
+    0.1.0."""
+    if not raw_id:
+        return None, None
+    folder = paths.child_folder(staging, raw_id) if staging else None
+    if folder:
+        return raw_id, folder
+    trimmed = raw_id.strip()
+    if trimmed != raw_id and staging:
+        folder = paths.child_folder(staging, trimmed)
+    return trimmed, folder
+
+
 def from_vortex(path, args, env, drives, registry):
     entries, bad = drop_bad_names(_vortex_entries(path), path)
     data, extra = _find_data(args, env, drives, registry)
@@ -241,9 +257,9 @@ def from_vortex(path, args, env, drives, registry):
         lo.files["vortex_staging"] = staging
     # Vortex writes mod plugin names in lower case: take the real case from Data, else from the mod's staging folder
     real, mods, order = {}, {}, []
-    for name, on, mod_id in entries:
+    for name, on, raw_id in entries:
         low = name.lower()
-        mfolder = paths.child_folder(staging, mod_id) if has_staging and mod_id else None
+        mod_id, mfolder = _vortex_mod_key(staging if has_staging else None, raw_id)
         case = present.get(low) or (listing(mfolder).get(low) if mfolder else None) or name
         if case != name:
             log.info(SECTION, f"case of {name} -> {case}")
@@ -253,6 +269,8 @@ def from_vortex(path, args, env, drives, registry):
             m = mods.get(mod_id)
             if m is None:
                 m = mods[mod_id] = Mod(mod_id, False, path=mfolder, plugins=[], id=mod_id)
+            elif m.path is None and mfolder:
+                m.path = mfolder
             m.enabled = m.enabled or on
             m.plugins.append(case)
     lo.plugins, more = build_order(order, present, lambda n: _in(data, present[n]) if n in present else None)
