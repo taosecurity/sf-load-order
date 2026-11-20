@@ -133,7 +133,7 @@ Outside `--out`: the snapshot and cache in `--state` (default `%LOCALAPPDATA%\sf
 `~/.local/state/sf-load-order`; nothing with `--no-state`), and the log file when `--log` is given. One `RESULT:`
 line goes to stdout; the byline goes to stderr unless `--quiet` is given. `--version` prints the byline and the
 credits and writes nothing. Screen output keeps the console's character set and escapes characters it can't show
-(`Ł`), so take exact paths from `report.json` (`outputs`, UTF-8), not from the RESULT line.
+(`\u0141`), so take exact paths from `report.json` (`outputs`, UTF-8), not from the RESULT line.
 
 ## 8. Exit codes
 

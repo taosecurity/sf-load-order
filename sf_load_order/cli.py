@@ -130,8 +130,13 @@ def run(args):
             log.info(section, "failed:\n" + traceback.format_exc())
             status = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
         report.sections[section] = status
-    # a report writer that can't load is a broken install: main() says so (CANNOT CHECK, unzip again)
-    report.outputs.update(_module("report").write(ctx))
+    # A report writer that can't load is a broken install: main() says so (CANNOT CHECK, unzip again). Only the
+    # import goes that way; write() catches its own errors per file, and main() reports a run that wrote none.
+    writer = _module("report")
+    try:
+        report.outputs.update(writer.write(ctx))
+    except Exception:
+        log.info("report", "writing the report failed:\n" + traceback.format_exc())
     return 0, report
 
 

@@ -40,12 +40,23 @@ def default_vortex_staging(env=None):
 
 
 def safe_component(name):
-    """True when name (a Vortex mod id, an MO2 mod name) is one folder name: no folder separator, no drive, not "."
-    or "..", no NUL or other control character. Anything else could point outside the mods folder."""
-    # Windows drops trailing dots and spaces from a path part, so ".. " or "..." would act like ".." or ".": refuse
-    # any name that ends in either (a real mod folder never does).
-    return (isinstance(name, str) and bool(name) and name == name.rstrip(" .") and not any(c in name for c in "/\\:")
-            and not any(ord(c) < 32 for c in name))
+    """True when name (a Vortex mod id, an MO2 mod or profile name) is one folder name: a string with no folder
+    separator, no drive (":"), no NUL or other control character, and not made only of dots and spaces. On Windows
+    it also may not end in a dot or a space or be a device name (CON, NUL, COM1 and so on). Anything else could
+    point outside the folder it is joined to."""
+    if not isinstance(name, str) or not name or any(c in name for c in "/\\:") or any(ord(c) < 32 for c in name):
+        return False
+    if name.strip(" .") == "":  # ".", "..", "...", ".. ": Windows drops trailing dots and spaces, so these act like ".."
+        return False
+    if os.name == "nt":
+        # On Windows a trailing dot or space is dropped too ("Mod." is "Mod"), and device names (CON, NUL, COM1...)
+        # aren't folders. Elsewhere such names are real folder names, so they stay allowed.
+        if name != name.rstrip(" .") or name.split(".")[0].strip().upper() in WINDOWS_DEVICES:
+            return False
+    return True
+
+
+WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 
 
 def child_folder(folder, name):

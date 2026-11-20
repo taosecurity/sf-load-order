@@ -87,7 +87,8 @@ def drop_bad_names(entries, source):
     log.info(SECTION, f"{source}: left out {len(bad)} name(s) that can't be plugin names: {', '.join(shown)}")
     return kept, [Finding("caution", SECTION, f"{source} lists {len(bad)} name(s) that can't be plugin file names "
                           "or would change meaning in a Plugins.txt (a line break, NUL or other control character, "
-                          "a / or \\, a first character of * or #, or a space at either end), so they were left out: "
+                          "a / or \\, a first character of * or #, or a space or other blank character at either end), so "
+                          "they were left out: "
                           + ", ".join(shown) + (" and more." if len(bad) > 5 else "."),
                           fix=f"Remove those lines from {source}, or let the game or the mod manager write it again.",
                           data={"file": source, "names": [e[0] for e in bad]})]
@@ -215,8 +216,11 @@ def _vortex_entries(path):
         raise InputError(bad + " (It isn't valid JSON.)")
     if not isinstance(d, list) or not all(isinstance(e, dict) and (e.get("name") or e.get("id")) for e in d):
         raise InputError(bad + " (It should be a list of entries, each with a name.)")
-    return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")),
-             str(e["modId"]) if e.get("modId") is not None else None) for e in d]
+    def mod_id(m):  # a string or a number; anything else (false, a list, an object) means no mod
+        if isinstance(m, bool) or not isinstance(m, (str, int)) or m == "":
+            return None
+        return str(m)
+    return [(str(e.get("name") or e.get("id")), bool(e.get("enabled")), mod_id(e.get("modId"))) for e in d]
 
 
 def from_vortex(path, args, env, drives, registry):

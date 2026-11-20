@@ -130,6 +130,16 @@ class Names(unittest.TestCase):
                                    "--vortex-staging", t, "--out", os.path.join(t, "out"))
         self.assertEqual(code, 0, out)
 
+    def test_odd_mod_ids_mean_no_mod(self):
+        import json
+        with tempfile.TemporaryDirectory() as t:
+            vx = os.path.join(t, "lo.json")
+            with open(vx, "w", encoding="utf-8") as f:
+                json.dump([{"name": "a.esm", "enabled": True, "modId": v} for v in (False, ["x"], {"k": 1}, "")]
+                          + [{"name": "b.esm", "enabled": True, "modId": 7}], f)
+            got = [e[2] for e in inputs._vortex_entries(vx)]
+        self.assertEqual(got, [None, None, None, None, "7"])
+
     def test_unsafe_mo2_profile_is_refused(self):
         with tempfile.TemporaryDirectory() as t:
             fixtures.mo2(t, "Default", [("ModA", True, {"ModA.esm": {"masters": ["Starfield.esm"]}})])
@@ -138,10 +148,13 @@ class Names(unittest.TestCase):
         self.assertIn("isn't a single folder name", out)
 
     def test_mod_folder_names_stay_inside(self):
-        for bad in ("..", ".", "...", ".. ", ". ", "Mod.", "Mod ", "..\\..\\Windows", "../x", "C:\\x", "C:x", "a\0b",
-                    "", 123):
+        for bad in ("..", ".", "...", ".. ", ". ", "..\\..\\Windows", "../x", "C:\\x", "C:x", "a\0b", "", 123):
             self.assertFalse(paths.safe_component(bad), repr(bad))
+        windows_only = ("Mod.", "Mod ", "NUL", "con", "COM1.txt")  # Windows drops trailing dots/spaces; devices
+        for name in windows_only:
+            self.assertEqual(paths.safe_component(name), os.name != "nt", repr(name))
         self.assertTrue(paths.safe_component("My Mod-123-1-0"))
+        self.assertTrue(paths.safe_component("Console Commands"))  # starts like CON, but isn't a device name
         with tempfile.TemporaryDirectory() as t:
             os.makedirs(os.path.join(t, "outside"))
             staging = os.path.join(t, "staging")
