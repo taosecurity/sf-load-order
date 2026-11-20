@@ -137,6 +137,23 @@ class Enrich(Base):
         self.assertEqual([m.id for m in lo.mods], ["moda-1"])
         self.assertEqual(lo.mods[0].files, ["moda.esm", "x\\y.txt"])
 
+    def test_record_key_with_spaces_matches_listed_mod(self):
+        """The record keeps a folder name's spaces (" moda-1"); the export id is trimmed: one mod (0.1.1)."""
+        record(self.data, self.staging, [("ModA.esm", " moda-1"), ("x\\y.txt", " moda-1")])
+        lo = self.lo()
+        vortex_deploy.enrich(lo, vortex_deploy.read(self.data))
+        self.assertEqual([m.id for m in lo.mods], ["moda-1"])
+        self.assertEqual(lo.mods[0].files, ["moda.esm", "x\\y.txt"])
+
+    def test_two_record_keys_for_one_trimmed_id_keep_all_files(self):
+        """Record keys " retex-2" and "retex-2": one mod, and neither key's files are dropped (0.1.1)."""
+        record(self.data, self.staging, [("a\\one.dds", " retex-2"), ("b\\two.dds", "retex-2")])
+        lo = self.lo()
+        vortex_deploy.enrich(lo, vortex_deploy.read(self.data))
+        got = {m.id: m.files for m in lo.mods}
+        self.assertEqual(sorted(got), ["moda-1", "retex-2"])
+        self.assertEqual(sorted(got["retex-2"]), ["a\\one.dds", "b\\two.dds"])
+
     def test_listed_mod_with_plugin_off_counts_as_deployed(self):
         record(self.data, self.staging, self.files)
         lo = self.lo()

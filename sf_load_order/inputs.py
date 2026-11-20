@@ -251,11 +251,22 @@ def from_vortex(path, args, env, drives, registry):
         lo.files["vortex_staging"] = staging
     # Vortex writes mod plugin names in lower case: take the real case from Data, else from the mod's staging folder
     real, mods, order = {}, {}, []
+    # First pass: each mod's folder, from whichever of its entries finds one, so the case lookups below don't
+    # depend on the order of the export's entries
+    folders = {}
+    for _name, _on, raw_id in entries:
+        mod_id, f = _vortex_mod_key(staging if has_staging else None, raw_id)
+        if not f:
+            continue
+        if mod_id not in folders:
+            folders[mod_id] = f
+        elif os.path.normcase(folders[mod_id]) != os.path.normcase(f):
+            log.info(SECTION, f"mod {mod_id!r}: two staging folders ({folders[mod_id]}, {f}) differ only by spaces; "
+                              "the first is checked")
     for name, on, raw_id in entries:
         low = name.lower()
-        mod_id, mfolder = _vortex_mod_key(staging if has_staging else None, raw_id)
-        if mfolder is None and mod_id in mods:  # another entry of the same mod already found its folder
-            mfolder = mods[mod_id].path
+        mod_id = raw_id.strip() if raw_id else None
+        mfolder = folders.get(mod_id) if mod_id else None
         case = present.get(low) or (listing(mfolder).get(low) if mfolder else None) or name
         if case != name:
             log.info(SECTION, f"case of {name} -> {case}")
@@ -265,8 +276,6 @@ def from_vortex(path, args, env, drives, registry):
             m = mods.get(mod_id)
             if m is None:
                 m = mods[mod_id] = Mod(mod_id, False, path=mfolder, plugins=[], id=mod_id)
-            elif m.path is None and mfolder:
-                m.path = mfolder
             m.enabled = m.enabled or on
             m.plugins.append(case)
     lo.plugins, more = build_order(order, present, lambda n: _in(data, present[n]) if n in present else None)

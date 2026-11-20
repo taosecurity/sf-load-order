@@ -263,6 +263,23 @@ class Vortex(Base):
         self.assertEqual([(m.id, sorted(m.plugins), m.path) for m in lo.mods],
                          [("7", ["A7.esm", "B7.esm"], os.path.join(self.staging, " 7"))])
 
+    def test_spaced_folder_found_whatever_the_entry_order(self):
+        """As above with the plain "7" entry first: both plugins still get their real case from the folder."""
+        fixtures.plugin(os.path.join(self.staging, " 7", "A7.esm"))
+        fixtures.plugin(os.path.join(self.staging, " 7", "B7.esm"))
+        lof = fixtures.vortex_loadorder(os.path.join(self.t, "sp7r.json"), [
+            ("Starfield.esm", True), ("B7.esm", True, "7"), ("A7.esm", True, " 7")])
+        lo = self.ok("--vortex-loadorder", lof, "--data", self.data, "--vortex-staging", self.staging)
+        self.assertEqual([(m.id, sorted(m.plugins)) for m in lo.mods], [("7", ["A7.esm", "B7.esm"])])
+
+    def test_trailing_dot_id_finds_the_windows_folder(self):
+        """Windows drops a trailing dot: modId "Mod9." finds the folder Mod9 (0.1.1)."""
+        fixtures.plugin(os.path.join(self.staging, "Mod9", "Nine.esm"))
+        lof = fixtures.vortex_loadorder(os.path.join(self.t, "dot.json"), [
+            ("Starfield.esm", True), ("Nine.esm", True, "Mod9.")])
+        lo = self.ok("--vortex-loadorder", lof, "--data", self.data, "--vortex-staging", self.staging)
+        self.assertEqual([m.path for m in lo.mods], [os.path.join(self.staging, "Mod9")])
+
     def test_default_staging_from_appdata(self):
         s = paths.default_vortex_staging(self.env)
         fixtures.plugin(os.path.join(s, "moda-1", "ModA.esm"))

@@ -159,6 +159,7 @@ def enrich(lo, deployment):
     # record may keep a folder name's spaces, so it is matched trimmed too, and its folder is found raw first
     known = {(m.id or m.name).strip().lower(): m for m in lo.mods}
     filled, added = 0, []
+    from_record = set()  # ids of mods whose file list came from this record (a second key may add to it)
     for mid in sorted(by_mod, key=str.lower):
         files = by_mod[mid]
         m = known.get(mid.strip().lower())
@@ -172,16 +173,23 @@ def enrich(lo, deployment):
             if m.files is None:
                 m.files = list(files)
                 filled += 1
+                from_record.add(id(m))
+            elif id(m) in from_record:
+                # a second record key for the same trimmed id (" 7" and "7"): keep its files too
+                log.info(SECTION, f"vortex deployment: {mid!r} joins mod {m.id!r} (same id without spaces)")
+                m.files.extend(f for f in files if f not in m.files)
             if m.path is None and folder:
                 m.path = folder
             continue
         tops = [p for p in files if "\\" not in p and p.endswith(PLUGIN_EXT)]
         case = _case(lo.data, tops)
-        m = Mod(mid.strip(), True, path=folder, plugins=sorted(case[p] for p in tops), id=mid.strip(), files=list(files))
+        m = Mod(mid.strip(), True, path=folder, plugins=sorted(case[p] for p in tops), id=mid.strip(),
+                files=list(files))
+        from_record.add(id(m))
         lo.mods.append(m)
         known[mid.strip().lower()] = m
         added.append(m)
-        log.info(SECTION, f"vortex deployment: added mod {mid} ({len(files)} files, folder "
+        log.info(SECTION, f"vortex deployment: added mod {mid.strip()!r} ({len(files)} files, folder "
                           f"{folder or 'not found'})")
     log.info(SECTION, f"vortex deployment: {len(added)} mods added, {filled} mods' file lists filled")
     out = []

@@ -81,10 +81,11 @@ def mod_folder(staging, raw_id):
     trimmed name (Windows drops trailing spaces from folder names); None if neither exists (0.1.1)."""
     if not staging or not raw_id:
         return None
-    folder = child_folder(staging, raw_id)
-    if folder is None and raw_id.strip() != raw_id:
-        folder = child_folder(staging, raw_id.strip())
-    return folder
+    for name in dict.fromkeys((raw_id, raw_id.rstrip(" ."), raw_id.strip())):  # Windows drops trailing spaces/dots
+        folder = child_folder(staging, name)
+        if folder:
+            return folder
+    return None
 
 
 def child_folder(folder, name):
