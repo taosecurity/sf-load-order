@@ -33,7 +33,9 @@ Ratings per enabled mod plugin (labels in RATING_LABEL):
   unchecked     sf-mod-check didn't load it (unreadable, a master missing, not in its load order)
 
 Pair advice (key, label): built "no action: built on it", samemod "no action: same mod", same "no action: same
-edit", merge "patch candidate", conflict "pick a winner", navi "no action: navmesh info map". "built" can't come from
+edit", merge "patch candidate", conflict "pick a winner", navi "no action: navmesh info map", blueprint "no action:
+BlueprintShips file wins" (a merge or conflict pair whose winner is an official BlueprintShips file: nothing loads
+after one, so neither an order nor a patch helps; "blueprint": True on the pair). "built" can't come from
 sf-mod-check itself (it leaves out pairs where the winner has the loser as a master); it is kept for files made another
 way. The navmesh info map (NAVI) never counts as a lost change: each plugin's copy lists only its own navmeshes, so its
 entries (outcome "navi") go in a pair's "navi" list, not its "records", and get a note of their own; a pair with only
@@ -78,7 +80,8 @@ NO_PROGRAM = ("sf-mod-check wasn't found. Get it from https://github.com/taosecu
 RATING_LABEL = {"neutral": "neutral", "neutral-here": "neutral here", "matters": "order matters",
                 "unchecked": "not checked"}
 ADVICE_LABEL = {"built": "no action: built on it", "samemod": "no action: same mod", "same": "no action: same edit",
-                "merge": "patch candidate", "conflict": "pick a winner", "navi": "no action: navmesh info map"}
+                "merge": "patch candidate", "conflict": "pick a winner", "navi": "no action: navmesh info map",
+                "blueprint": "no action: BlueprintShips file wins"}
 ACTION = {"merge", "conflict"}
 FORWARDABLE, CHOICE, NO_EFFECT = "Forwardable", "Choice", "No effect"
 # field weights: bookkeeping 0, cosmetic 1, everything else 3
@@ -211,6 +214,7 @@ def analyse(cj, lo):
         if key not in by_pair:
             by_pair[key] = len(pairs)
             pairs.append({"loser": x["loser"], "winner": x["winner"], "winner_official": x["winner_official"],
+                          "blueprint": is_blueprint(x["winner"], x["winner_official"]),
                           "records": [], "navi": [], "mod": None})
         # the navmesh info map stays out of the pair's records, counts, gain and advice (it gets a note of its own)
         pairs[by_pair[key]]["navi" if x["outcome"] == "navi" else "records"].append(i)
@@ -230,6 +234,8 @@ def analyse(cj, lo):
             p["advice"], p["mod"] = "samemod", modof[ll]
         elif not recs:
             p["advice"] = "navi"
+        elif p["blueprint"] and ("conflict" in outs or "merge" in outs):
+            p["advice"] = "blueprint"
         elif "conflict" in outs:
             p["advice"] = "conflict"
         elif "merge" in outs:
@@ -268,16 +274,17 @@ def analyse(cj, lo):
     return res
 
 
-def is_blueprint(name):
+def is_blueprint(name, official=False):
     """An official BlueprintShips-*.esm. The game loads these after every other plugin, so no plugin can load after
-    one and no load order or patch brings back what it overrides (sf-mod-check 0.12.0, BlueprintAdvice)."""
-    return bool(inputs.BLUEPRINT_RE.match(name or "")) and inputs.is_official(name)
+    one and no load order or patch brings back what it overrides (sf-mod-check 0.12.0, BlueprintAdvice). official:
+    conflicts.json marks the file Official (sf-mod-check also counts names this tool doesn't, such as sfta01's)."""
+    return bool(inputs.BLUEPRINT_RE.match(name or "")) and (bool(official) or inputs.is_official(name))
 
 
 def acts_on(p):
-    """A pair a load order or a patch can change: "patch candidate" or "pick a winner", and the winner isn't an
-    official BlueprintShips file."""
-    return p["advice"] in ACTION and not is_blueprint(p["winner"])
+    """A pair a load order or a patch can change: "patch candidate" or "pick a winner" (a pair an official
+    BlueprintShips file wins has the advice "blueprint" instead)."""
+    return p["advice"] in ACTION and not is_blueprint(p["winner"], p.get("blueprint"))
 
 
 def _mod_plugins(lo):
@@ -293,7 +300,9 @@ def _ratings(lo, res, loaded):
     out = {}
     for p in _mod_plugins(lo):
         n = p.name.lower()
-        mine = [i for i, x in enumerate(res["pairs"]) if n in (x["loser"].lower(), x["winner"].lower())]
+        # a pair with only navmesh info map entries isn't a lost change, so it doesn't make a plugin "neutral here"
+        mine = [i for i, x in enumerate(res["pairs"]) if n in (x["loser"].lower(), x["winner"].lower())
+                and x["advice"] != "navi"]
         lost_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["loser"].lower() == n)
         won_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["winner"].lower() == n)
         undo = sum(1 for i in res["official_undone"] if res["lost"][i]["winner"].lower() == n)
@@ -362,7 +371,7 @@ def navi_note(p, lost):
     the notes that have one."""
     L, W = p["loser"], p["winner"]
     n = len(p["navi"])
-    where = ("loads after every mod, so its copy of the navmesh info map loads last" if is_blueprint(W) else
+    where = ("loads after every mod, so its copy of the navmesh info map loads last" if p.get("blueprint") else
              f"loads after {L}, so its copy of the navmesh info map loads later")
     text = (f"{W} and {L} both change the navmesh info map ({n} record(s)). {W} {where}. Each plugin's copy lists "
             "only its own navmeshes, so this isn't a record one plugin wins whole: it isn't patched, and don't copy "
@@ -379,7 +388,7 @@ def add_findings(ctx, res, source):
     for p in res["pairs"]:
         if p.get("navi") and p["advice"] not in ("built", "samemod"):
             add(navi_note(p, lost))
-        if p["advice"] not in ACTION:
+        if p["advice"] not in ACTION and p["advice"] != "blueprint":
             continue
         recs = [lost[i] for i in p["records"]]
         real = [f for r in recs for f in r["fields"] if f["label"] != NO_EFFECT]
@@ -395,7 +404,7 @@ def add_findings(ctx, res, source):
             text = head + f" Both changed the same fields, so one has to win (pick a winner)."
             fix = (f"Decide which version you want: the plugin that loads later wins. Keep {W} after {L}, or move "
                    f"{L} below {W}; a patch can combine the two.")
-        if is_blueprint(W):
+        if p["advice"] == "blueprint":
             # nothing loads after a BlueprintShips file, so neither "patch candidate" nor "pick a winner" applies
             n = len(recs)
             ships = all(r["type"] == "GenericBaseForm" for r in recs)
@@ -635,7 +644,9 @@ def run(ctx):
     ctx.results[SECTION] = res
     add_findings(ctx, res, source)
     status = {"status": "done", "source": source, "file": path,
-              "lost": len(res["lost"]), "pairs": len(res["pairs"]),
+              # the navmesh info map entries aren't lost changes (each copy lists its own navmeshes): counted apart
+              "lost": sum(1 for x in res["lost"] if x["outcome"] != "navi"),
+              "navi": sum(1 for x in res["lost"] if x["outcome"] == "navi"), "pairs": len(res["pairs"]),
               "action_pairs": sum(1 for p in res["pairs"] if acts_on(p)),
               "official_undone": len(res["official_undone"]), "itms": len(res["itms"]),
               "type_changes": len(res["type_changes"])}

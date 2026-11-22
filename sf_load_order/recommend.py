@@ -407,9 +407,9 @@ def run(ctx):
     if rated:
         pos = {n.lower(): i for i, n in enumerate(full)}
         for k, p in enumerate(rec["pairs"]):
-            if p.get("advice") not in ACTION:
+            if p.get("advice") not in ACTION and p.get("advice") != "blueprint":
                 continue
-            if records.is_blueprint(p["winner"]):
+            if p.get("advice") == "blueprint" or records.is_blueprint(p["winner"], p.get("blueprint")):
                 # the game loads BlueprintShips files after every plugin, so a merged patch can't load after one
                 log.info(SECTION, f"{p['loser']} vs {p['winner']}: left out of the merged-patch note (nothing "
                                   "loads after a BlueprintShips file)")

@@ -188,12 +188,19 @@ def prints(text):
 
 
 def version_lines_quoted(r):
-    """AGENTS.md quotes the exact --version lines; each line printed must appear there as its own line."""
+    """AGENTS.md quotes the exact --version lines: the code block after "Expect exit code 0 and these ... lines" must
+    hold the printed lines, in order, and nothing else."""
     with open(AGENTS, encoding="utf-8") as f:
-        doc = set(x.strip() for x in f.read().splitlines())
+        doc = f.read().splitlines()
     lines = [x.strip() for x in r["stdout"].splitlines() if x.strip()]
-    missing = [x for x in lines if x not in doc]
-    return f"AGENTS.md doesn't quote these --version lines: {missing}" if missing else None
+    start = next((i for i, x in enumerate(doc) if x.startswith("Expect exit code 0 and these ")), None)
+    if start is None:
+        return "AGENTS.md lacks the line \"Expect exit code 0 and these ... lines\" before the --version block"
+    fences = [i for i in range(start + 1, len(doc)) if doc[i].strip().startswith("```")][:2]
+    if len(fences) < 2:
+        return "AGENTS.md has no code block after the --version line"
+    block = [x.strip() for x in doc[fences[0] + 1:fences[1]] if x.strip()]
+    return None if block == lines else f"AGENTS.md quotes {block}, but --version prints {lines}"
 
 
 # ---------------------------------------------------------------- the commands (keep in step with AGENTS.md)

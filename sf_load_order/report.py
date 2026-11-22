@@ -181,7 +181,9 @@ def _summary_lines(ctx, section):
             out.append(f"{_plural(st['stray'], 'loose file')} in Data come from no enabled mod.")
     elif section == "records" and st.get("status") == "done":
         src = "a conflicts.json you gave (--conflicts)" if st.get("source") == "file" else "an sf-mod-check run"
-        out.append(f"Read from {src}: {_plural(st.get('lost', 0), 'lost change entry', 'lost change entries')}, "
+        navi = (f" (and {_plural(st['navi'], 'navmesh info map entry', 'navmesh info map entries')}, which aren't "
+                "lost changes)") if st.get("navi") else ""
+        out.append(f"Read from {src}: {_plural(st.get('lost', 0), 'lost change entry', 'lost change entries')}{navi}, "
                    f"{_plural(st.get('pairs', 0), 'plugin pair')} ({_n(st.get('action_pairs', 0))} to act on), "
                    f"{_n(st.get('official_undone', 0))} official change(s) undone, {_n(st.get('itms', 0))} ITM(s) and "
                    f"{_n(st.get('type_changes', 0))} record type change(s).")
@@ -239,8 +241,10 @@ def _item_text_(x):
             bits.append(ARCHIVE_ADVICE[x["advice"]])
         if isinstance(x.get("files"), int):
             bits.append(_plural(x["files"], "file"))
-        if isinstance(x.get("records"), list):
+        if isinstance(x.get("records"), list) and (x["records"] or not x.get("navi")):
             bits.append(_plural(len(x["records"]), "record"))
+        if isinstance(x.get("navi"), list) and x["navi"]:
+            bits.append(_plural(len(x["navi"]), "navmesh info map record"))
         elif isinstance(x.get("records"), int):
             bits.append(_plural(x["records"], "record"))
         f = x.get("fields")
@@ -670,7 +674,9 @@ def _results_summary(ctx):
         prog = rc.get("program") or {}
         out["records"] = {"source": rc.get("source"), "file": rc.get("file"), "generated": rc.get("generated"),
                           "program_version": prog.get("version") if isinstance(prog, dict) else None,
-                          "exit": rc.get("exit"), "lost": len(rc.get("lost") or []),
+                          "exit": rc.get("exit"),
+                          "lost": sum(1 for x in rc.get("lost") or [] if x.get("outcome") != "navi"),
+                          "navi": sum(1 for x in rc.get("lost") or [] if x.get("outcome") == "navi"),
                           "pairs": len(rc.get("pairs") or []),
                           "pairs_by_advice": _count(rc.get("pairs") or [], "advice"),
                           "ratings": _count((rc.get("plugins") or {}).values(), "rating"),

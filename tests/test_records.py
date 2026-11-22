@@ -4,6 +4,7 @@ small .py plus a .cmd wrapper on Windows or a shell script elsewhere, written to
 Fixtures written here (not in tests\\fixtures.py): FAKE (the fake program), lost()/field() (lost entries shaped like
 sf-mod-check 0.8.0's ConflictReport.cs output), make_lo() (a LoadOrder without reading files)."""
 import argparse
+import io
 import json
 import os
 import sys
@@ -265,6 +266,99 @@ class BlueprintWinner(unittest.TestCase):
     def test_verbose_reason(self):
         self.assertIn(f"A.esm vs {BP}: {BP} is an official BlueprintShips file", self.buf.getvalue())
 
+    def test_pair_advice_and_label(self):
+        """code review 0.1.2: the pair itself (report.json, the pair list, the ratings' why) says neither "patch
+        candidate" nor "pick a winner" either, not only the finding."""
+        by = {(p["loser"], p["winner"]): p for p in self.res["pairs"]}
+        for loser in ("A.esm", "B.esm"):
+            p = by[(loser, BP)]
+            self.assertEqual((p["advice"], p["label"], p["blueprint"]),
+                             ("blueprint", "no action: BlueprintShips file wins", True))
+            self.assertEqual(self.by[(loser, BP)].data["advice"], "blueprint")
+        self.assertEqual(by[("C.esm", "SFBGS003.esm")]["advice"], "merge")
+        self.assertFalse(by[("C.esm", "SFBGS003.esm")]["blueprint"])
+        why = self.res["plugins"]["a.esm"]["why"]
+        self.assertIn("no action: BlueprintShips file wins", why)
+        self.assertNotIn("pick a winner", why)
+
+
+class BlueprintOfficialFlag(unittest.TestCase):
+    """code review 0.1.2: sf-mod-check counts more names as official than this tool does (sfta01 and its
+    BlueprintShips file). A BlueprintShips winner that conflicts.json marks Official gets the BlueprintShips
+    wording, isn't "to act on", doesn't make the loser "order matters" and isn't in the merged-patch note."""
+    W = "BlueprintShips-sfta01.esm"
+
+    def setUp(self):
+        self.t = tempfile.mkdtemp()
+        self.lo = make_lo(["A.esm", "B.esm"])
+        entries = [("Starfield.esm", True, []), ("SFBGS003.esm", True, ["Starfield.esm"]),
+                   ("A.esm", False, ["Starfield.esm"]), ("B.esm", False, ["Starfield.esm"]),
+                   (self.W, True, ["Starfield.esm"])]
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"), entries, lost=[
+            lost("000100:Starfield.esm", "A.esm", self.W, [field("Flags", winner_too=True)], rtype="GenericBaseForm"),
+            lost("000200:Starfield.esm", "B.esm", self.W, [field("Keywords")], rtype="GenericBaseForm"),
+        ])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        self.res = records.analyse(cj, self.lo)
+        self.ctx = ctx_for(self.t, self.lo)
+        records.add_findings(self.ctx, self.res, "run")
+
+    def test_flag_counts(self):
+        self.assertTrue(records.is_blueprint(self.W, True))
+        self.assertFalse(records.is_blueprint(self.W))  # this tool's own list doesn't name sfta01
+        self.assertFalse(records.is_blueprint("BlueprintShips-MyMod.esm", False))
+
+    def test_wording_and_counts(self):
+        for p in self.res["pairs"]:
+            self.assertEqual(p["advice"], "blueprint")
+            self.assertFalse(records.acts_on(p))
+        for n in ("a.esm", "b.esm"):
+            self.assertNotEqual(self.res["plugins"][n]["rating"], "matters")
+        for f in self.ctx.report.findings:
+            whole = f.text + " " + (f.fix or "")
+            for bad in ("patch candidate", "pick a winner", "a patch that loads after it can", "a patch can keep"):
+                self.assertNotIn(bad, whole)
+        self.assertTrue(any(f"{self.W} loads after every mod" in f.text for f in self.ctx.report.findings))
+
+
+class NaviCounts(unittest.TestCase):
+    """code review 0.1.2: the records summary doesn't count navmesh info map entries as lost changes, and a NAVI-only
+    pair's line shows its navmesh records, not "0 records"."""
+    def test_status_and_pair_line(self):
+        from contextlib import redirect_stdout
+        from sf_load_order import cli, report
+        t = tempfile.mkdtemp()
+        root = os.path.join(t, "game")
+        data, ptxt = fixtures.game(root, {n: {"masters": ["Starfield.esm"]} for n in ("A.esm", "B.esm", "C.esm")})
+        cj = fixtures.conflicts_json(os.path.join(t, "cli.json"),
+                                     [("Starfield.esm", True, []), ("A.esm", False, ["Starfield.esm"]),
+                                      ("B.esm", False, ["Starfield.esm"]), ("C.esm", False, ["Starfield.esm"])],
+                                     lost=[lost("000100:Starfield.esm", "A.esm", "B.esm", [field("Keywords")]),
+                                           lost("000200:Starfield.esm", "A.esm", "C.esm", [field("MapInfos")],
+                                                rtype=NAVI_TYPE)])
+        out = os.path.join(t, "report")
+        args = cli.parser().parse_args(["--plugins-txt", ptxt, "--data", data, "--conflicts", cj, "--out", out,
+                                         "--no-state"])
+        with redirect_stdout(io.StringIO()):
+            code, rep_ = cli.run(args)
+        st = rep_.sections["records"]
+        self.assertEqual((st["lost"], st["navi"]), (1, 1))
+        with open(os.path.join(out, "report.txt"), encoding="utf-8") as f:
+            txt = " ".join(f.read().split())  # report.txt wraps its lines
+        self.assertIn("1 lost change entry (and 1 navmesh info map entry, which aren't lost changes)", txt)
+        cjd, err = records.load(cj)
+        self.assertIsNone(err)
+        res = records.analyse(cjd, make_lo(["A.esm", "B.esm", "C.esm"]))
+        navi_pair = next(p for p in res["pairs"] if p["winner"] == "C.esm")
+        line = report._item_text(navi_pair)
+        self.assertIn("1 navmesh info map record", line)
+        self.assertNotIn("0 records", line)
+        with open(os.path.join(out, "report.json"), encoding="utf-8") as f:
+            j = json.load(f)
+        self.assertEqual(j["results"]["records"]["lost"], 1)
+        self.assertEqual(j["results"]["records"]["navi"], 1)
+
 
 NAVI_TYPE = "NavigationMeshInfoMap"
 NAVI_SHARED = ("Each plugin's copy lists only its own navmeshes, so this isn't a record one plugin wins whole: it isn't "
@@ -325,7 +419,9 @@ class NaviNote(unittest.TestCase):
                                  f"every mod, so its copy of the navmesh info map loads last. {NAVI_SHARED}")
         for bad in NAVI_BAD:
             self.assertNotIn(bad, f.text)
-        self.assertEqual(self.res["plugins"]["a.esm"]["rating"], "neutral-here")
+        # code review 0.1.2: a NAVI-only pair isn't a lost change, so it doesn't make A.esm "neutral here"
+        self.assertEqual(self.res["plugins"]["a.esm"]["rating"], "neutral")
+        self.assertEqual(self.res["plugins"]["a.esm"]["pairs"], [])
         self.assertEqual(self.res["plugins"]["a.esm"]["lost_records"], 0)
 
     def test_navi_under_mod(self):
@@ -339,7 +435,7 @@ class NaviNote(unittest.TestCase):
                       f.text)
         for bad in NAVI_BAD:
             self.assertNotIn(bad, f.text)
-        self.assertEqual(self.res["plugins"]["b.esm"]["rating"], "neutral-here")  # not "order matters"
+        self.assertEqual(self.res["plugins"]["b.esm"]["rating"], "neutral")  # not "order matters", not "neutral here"
 
     def test_navi_mixed_with_a_real_record(self):
         p = self.pair[("D.esm", "C.esm")]

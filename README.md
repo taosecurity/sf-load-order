@@ -328,10 +328,11 @@ changes what you get), or **not checked** (sf-mod-check couldn't load it). Each 
 it, same mod, same edit), **patch candidate**, or **pick a winner**. Official changes that a mod undoes are listed
 too: no order fixes those.
 
-When the winner is an official `BlueprintShips-*.esm` file, the pair gets neither label. The game loads those files
-after every mod, so no load order or patch brings the mod's change back, and the report says that the mod's edit to
-those ships (or other records) doesn't reach the game. Such a pair isn't counted as one "to act on", isn't moved,
-and isn't in the merged-patch note.
+When the winner is an official `BlueprintShips-*.esm` file, the pair gets neither label: its advice is "no action:
+BlueprintShips file wins". The game loads those files after every mod, so no load order or patch brings the mod's
+change back, and the report says that the mod's edit to those ships (or other records) doesn't reach the game. Such a
+pair isn't counted as one "to act on", doesn't make a plugin "order matters", isn't moved, and isn't in the
+merged-patch note. A `BlueprintShips-` file that sf-mod-check's conflicts.json marks as official counts too.
 
 The navmesh info map (record type `NavigationMeshInfoMap`, shown as "navmesh map") is never a lost change, whichever
 plugin wins it. Each plugin's copy lists only its own navmeshes, so it isn't a record one plugin wins whole: it isn't
@@ -339,8 +340,9 @@ patched, and it shouldn't be copied by hand either, because the Creation Kit reb
 
 The report gives such a pair a note (advice "no action: navmesh info map") instead of "patch candidate" or "pick a
 winner". The navmesh info map isn't counted in the pair's records, in what's "to act on", in the order's score or in
-the merged-patch note, and a mod's copy over an official one isn't counted as undoing an official change. A pair that
-also has other records keeps its advice for those records.
+the merged-patch note, and a mod's copy over an official one isn't counted as undoing an official change. The
+records summary counts its entries apart from the lost change entries, and a pair with only the navmesh info map
+doesn't change a plugin's rating. A pair that also has other records keeps its advice for those records.
 
 sf-mod-check reads plugins from the Data folder. Under MO2 it only sees your mods when it is started from MO2 (see
 [Traps](#traps)).
