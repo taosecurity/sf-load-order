@@ -48,20 +48,49 @@ Run in the unzipped folder:
 .\sf-load-order.cmd --version
 ```
 
-Expect the byline `sf-load-order 0.1.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order`,
-three credit lines (LOOT's masterlist, sf-mod-check, the license), and exit code 0. If it says Python wasn't found,
-install Python (step 2.1) and open a new window. On Linux, or without the launcher (on Linux the command may be
-`python3`):
+Expect exit code 0 and these four lines (the byline, then three credit lines):
+
+```
+sf-load-order 0.1.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
+Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
+This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
+```
+
+If it says Python wasn't found, install Python (step 2.1) and open a new window. On Linux, or without the launcher
+(on Linux the command may be `python3`):
 
 ```
 python -I sf-load-order.py --version
 ```
 
+To see whether the optional `lz4` package is installed (step 2.2), run:
+
+```
+python -I -c "import lz4; print(lz4.__version__)"
+```
+
+With it, this prints its version (for example `4.4.5`) and exits 0. Without it, it ends with
+`ModuleNotFoundError: No module named 'lz4'` and exits 1; that is fine unless the person wants LZ4-packed archive
+contents compared (then install it as in step 3.3).
+
 ## 5. Common tasks
 
 Run these in the unzipped folder. `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. Replace each
 `<...>` with the person's real path, in double quotes. Every run starts with the byline on stderr (left out with
-`--quiet`) and ends with one `RESULT:` line on stdout naming the report.
+`--quiet`) and ends with one `RESULT:` line on stdout naming the report, for example:
+
+```
+RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
+```
+
+The exit code is 0 whenever the report was written, even when it lists problems. Only with `--strict` is it 1 when
+the report lists at least one problem (see 8).
+
+In a sandbox, a test folder or any run that shouldn't touch the person's profile, add `--state "<folder>"` (or
+`--no-state`). Without it, every run reads and writes the snapshot and cache in the default state folder, which is
+in the user profile (`%LOCALAPPDATA%\sf-load-order`, on Linux `~/.local/state/sf-load-order`), so an earlier run
+there changes what "changed since the last run" reports.
 
 - Check the order the game reads (its own Plugins.txt, Data folder found on Steam or Game Pass):
   `.\sf-load-order.cmd`

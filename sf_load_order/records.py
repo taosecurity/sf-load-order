@@ -33,8 +33,11 @@ Ratings per enabled mod plugin (labels in RATING_LABEL):
   unchecked     sf-mod-check didn't load it (unreadable, a master missing, not in its load order)
 
 Pair advice (key, label): built "no action: built on it", samemod "no action: same mod", same "no action: same
-edit", merge "patch candidate", conflict "pick a winner". "built" can't come from sf-mod-check itself (it leaves
-out pairs where the winner has the loser as a master); it is kept for files made another way.
+edit", merge "patch candidate", conflict "pick a winner", navi "no action: navmesh info map". "built" can't come from
+sf-mod-check itself (it leaves out pairs where the winner has the loser as a master); it is kept for files made another
+way. The navmesh info map (NAVI) never counts as a lost change: each plugin's copy lists only its own navmeshes, so its
+entries (outcome "navi") go in a pair's "navi" list, not its "records", and get a note of their own; a pair with only
+NAVI entries gets the advice "navi", and NAVI under an official loser isn't counted in official_undone.
 
 ctx.results["records"] (for recommend.py and the report):
   {"source": "run"|"file", "file": conflicts.json path, "program": Program.to_dict() or None,
@@ -46,11 +49,12 @@ ctx.results["records"] (for recommend.py and the report):
              "fields": [{"field", "label", "weight", "winner_changed_too", "loser_value", "winner_value",
                          "differences": [str]}]}],
    "pairs": [{"loser", "winner", "winner_official", "advice", "label", "mod", "records": [index into lost],
+              "navi": [index into lost: the pair's navmesh info map entries, left out of everything below],
               "n": {"same", "merge", "conflict"}, "fields": {"Forwardable": n, "Choice": n, "No effect": n},
               "gain_if_flipped": weighted sum of the loser's lost Forwardable + Choice fields,
               "known_cost_if_flipped": weighted sum of the Choice fields (the winner's own changes there),
               "cost_complete": False}],
-   "official_undone": [index into lost],   loser official, winner a mod
+   "official_undone": [index into lost],   loser official, winner a mod, not the navmesh info map
    "itms": [{"plugin", "fk", "type", "edid"}],
    "type_changes": [{"fk", "edid", "plugin", "plugin_type", "first", "first_type", "text"}],
    "problems": [{"text", "plugin", "kind", "seen_by"}],  kind: missing-file / master / master-order / unreadable /
@@ -65,7 +69,7 @@ Field weights are recommend.py's: 0 bookkeeping or No effect, 1 cosmetic (lighti
 import json
 import os
 
-from . import log, sfmodcheck
+from . import inputs, log, sfmodcheck
 from .model import Finding
 
 SECTION = "records"
@@ -74,7 +78,7 @@ NO_PROGRAM = ("sf-mod-check wasn't found. Get it from https://github.com/taosecu
 RATING_LABEL = {"neutral": "neutral", "neutral-here": "neutral here", "matters": "order matters",
                 "unchecked": "not checked"}
 ADVICE_LABEL = {"built": "no action: built on it", "samemod": "no action: same mod", "same": "no action: same edit",
-                "merge": "patch candidate", "conflict": "pick a winner"}
+                "merge": "patch candidate", "conflict": "pick a winner", "navi": "no action: navmesh info map"}
 ACTION = {"merge", "conflict"}
 FORWARDABLE, CHOICE, NO_EFFECT = "Forwardable", "Choice", "No effect"
 # field weights: bookkeeping 0, cosmetic 1, everything else 3
@@ -86,7 +90,10 @@ COSMETIC = {"Lighting", "LightingTemplate", "ImageSpace", "AcousticSpace", "Musi
             "ActorFadeMult"}
 # record types whose edits are lists of entries: two mods adding entries can always be merged
 LIST_TYPES = {"LeveledItem", "LeveledNpc", "LeveledPackIn", "LeveledSpaceshipBaseList", "LeveledBaseForm",
-              "FormList", "Container", "Outfit", "NavigationMeshInfoMap"}
+              "FormList", "Container", "Outfit"}
+# the navmesh info map (NAVI): each plugin's copy lists only its own navmeshes, so it isn't a record one plugin wins
+# whole; it is never patched and isn't a real loss (sf-mod-check ConflictImpact.IsNavi, NaviBlueprintNote)
+NAVI = "NavigationMeshInfoMap"
 DELETED_RISKY = {"REFR", "ACHR", "NAVM"}
 REQUIRED_KEYS = ("loadOrder", "lost")
 
@@ -122,7 +129,14 @@ def weight(field, lab=None):
     return 1 if field in COSMETIC else 3
 
 
+def is_navi(rtype):
+    """The navmesh info map (record type NavigationMeshInfoMap, NAVI)."""
+    return (rtype or "").lower() == NAVI.lower()
+
+
 def _outcome(rtype, fields):
+    if is_navi(rtype):
+        return "navi"
     real = [f for f in fields if f["label"] != NO_EFFECT]
     if not real:
         return "same"
@@ -197,8 +211,9 @@ def analyse(cj, lo):
         if key not in by_pair:
             by_pair[key] = len(pairs)
             pairs.append({"loser": x["loser"], "winner": x["winner"], "winner_official": x["winner_official"],
-                          "records": [], "mod": None})
-        pairs[by_pair[key]]["records"].append(i)
+                          "records": [], "navi": [], "mod": None})
+        # the navmesh info map stays out of the pair's records, counts, gain and advice (it gets a note of its own)
+        pairs[by_pair[key]]["navi" if x["outcome"] == "navi" else "records"].append(i)
     for p in pairs:
         recs = [lost[i] for i in p["records"]]
         outs = [r["outcome"] for r in recs]
@@ -213,6 +228,8 @@ def analyse(cj, lo):
             p["advice"] = "built"
         elif modof.get(ll) and modof.get(ll) == modof.get(lw):
             p["advice"], p["mod"] = "samemod", modof[ll]
+        elif not recs:
+            p["advice"] = "navi"
         elif "conflict" in outs:
             p["advice"] = "conflict"
         elif "merge" in outs:
@@ -221,7 +238,13 @@ def analyse(cj, lo):
             p["advice"] = "same"
         p["label"] = ADVICE_LABEL[p["advice"]]
 
-    official_undone = [i for i, x in enumerate(lost) if x["loser_official"] and not x["winner_official"]]
+    # a mod's copy of the navmesh info map over an official one undoes nothing: each copy lists its own navmeshes
+    official_undone = [i for i, x in enumerate(lost) if x["loser_official"] and not x["winner_official"]
+                       and x["outcome"] != "navi"]
+    for x in lost:
+        if x["loser_official"] and not x["winner_official"] and x["outcome"] == "navi":
+            log.info(SECTION, f"{x['winner']} over {x['loser']} on the navmesh info map {x['fk']}: not counted as "
+                              "undoing an official change (each plugin's copy lists only its own navmeshes)")
     itms = [{"plugin": (x.get("Plugin") or ""), "fk": (x.get("formKey") or ""), "type": (x.get("RecordType") or ""),
              "edid": x.get("EditorID")} for x in cj.get("itms", []) or []]
     tcs = [{"fk": (x.get("formKey") or ""), "edid": x.get("EditorID"), "plugin": (x.get("Plugin") or ""),
@@ -243,6 +266,18 @@ def analyse(cj, lo):
     res["plugins"] = _ratings(lo, res, {n.lower() for n in order})
     res["differs"] = _differs(lo, cj)
     return res
+
+
+def is_blueprint(name):
+    """An official BlueprintShips-*.esm. The game loads these after every other plugin, so no plugin can load after
+    one and no load order or patch brings back what it overrides (sf-mod-check 0.12.0, BlueprintAdvice)."""
+    return bool(inputs.BLUEPRINT_RE.match(name or "")) and inputs.is_official(name)
+
+
+def acts_on(p):
+    """A pair a load order or a patch can change: "patch candidate" or "pick a winner", and the winner isn't an
+    official BlueprintShips file."""
+    return p["advice"] in ACTION and not is_blueprint(p["winner"])
 
 
 def _mod_plugins(lo):
@@ -321,10 +356,29 @@ def _names(fields, n=6):
     return ", ".join(out[:n]) + ("..." if len(out) > n else "")
 
 
+def navi_note(p, lost):
+    """The note for a pair's navmesh info map entries (sf-mod-check ConflictImpact.NaviBlueprintNote, worded for any
+    winner): not a patch candidate, not a pick-a-winner choice, not a real loss. A note with no fix, so it sorts after
+    the notes that have one."""
+    L, W = p["loser"], p["winner"]
+    n = len(p["navi"])
+    where = ("loads after every mod, so its copy of the navmesh info map loads last" if is_blueprint(W) else
+             f"loads after {L}, so its copy of the navmesh info map loads later")
+    text = (f"{W} and {L} both change the navmesh info map ({n} record(s)). {W} {where}. Each plugin's copy lists "
+            "only its own navmeshes, so this isn't a record one plugin wins whole: it isn't patched, and don't copy "
+            "it by hand either (the Creation Kit rebuilds it when a navmesh is finalized).")
+    log.info(SECTION, f"{L} vs {W}: {n} navmesh info map record(s) get a note, not patch or pick-a-winner advice, and "
+                      "aren't counted as lost changes")
+    return Finding("note", SECTION, text, plugins=[L, W],
+                   data={"advice": "navi", "records": [lost[i]["fk"] for i in p["navi"]][:50]})
+
+
 def add_findings(ctx, res, source):
     add = ctx.report.add
     lost = res["lost"]
     for p in res["pairs"]:
+        if p.get("navi") and p["advice"] not in ("built", "samemod"):
+            add(navi_note(p, lost))
         if p["advice"] not in ACTION:
             continue
         recs = [lost[i] for i in p["records"]]
@@ -341,7 +395,19 @@ def add_findings(ctx, res, source):
             text = head + f" Both changed the same fields, so one has to win (pick a winner)."
             fix = (f"Decide which version you want: the plugin that loads later wins. Keep {W} after {L}, or move "
                    f"{L} below {W}; a patch can combine the two.")
-        if p["winner_official"]:
+        if is_blueprint(W):
+            # nothing loads after a BlueprintShips file, so neither "patch candidate" nor "pick a winner" applies
+            n = len(recs)
+            ships = all(r["type"] == "GenericBaseForm" for r in recs)
+            what = ("ship" if n == 1 else "ships") if ships else ("record" if n == 1 else "records")
+            text = (f"{W} wins over {L} on {n} record(s) (fields: {_names(real)}). {W} loads after every mod, so no "
+                    f"load order or patch brings this change back; the edit {L} makes to "
+                    f"{f'this {what}' if n == 1 else f'these {n} {what}'} doesn't reach the game.")
+            fix = (f"Nothing to change in the load order. If you need {L}'s version, ask its author for an update "
+                   f"made for {W}.")
+            log.info(SECTION, f"{L} vs {W}: {W} is an official BlueprintShips file, which the game loads after every "
+                              "mod, so the pair gets no patch or pick-a-winner advice")
+        elif p["winner_official"]:
             fix = (f"{W} is an official file that loads after every mod, so no order fixes this; a patch that loads "
                    f"after it can.")
         add(Finding(level, SECTION, text, fix=fix, plugins=[L, W],
@@ -570,7 +636,7 @@ def run(ctx):
     add_findings(ctx, res, source)
     status = {"status": "done", "source": source, "file": path,
               "lost": len(res["lost"]), "pairs": len(res["pairs"]),
-              "action_pairs": sum(1 for p in res["pairs"] if p["advice"] in ACTION),
+              "action_pairs": sum(1 for p in res["pairs"] if acts_on(p)),
               "official_undone": len(res["official_undone"]), "itms": len(res["itms"]),
               "type_changes": len(res["type_changes"])}
     if result_line:

@@ -197,6 +197,178 @@ class Mapping(unittest.TestCase):
         self.assertIn("can't read", records.load(os.path.join(self.t, "none.json"))[1])
 
 
+BP = "BlueprintShips-SFBGS003.esm"
+
+
+class BlueprintWinner(unittest.TestCase):
+    """0.1.2: an official BlueprintShips file loads after every mod, so a pair it wins gets sf-mod-check 0.12.0's
+    wording (BlueprintAdvice), never "patch candidate", "pick a winner" or "a patch that loads after it can"."""
+    def setUp(self):
+        import io
+        from sf_load_order import log
+        self.t = tempfile.mkdtemp()
+        self.lo = make_lo(["A.esm", "B.esm", "C.esm"], official=("Starfield.esm", "SFBGS003.esm", BP))
+        entries = [("Starfield.esm", True, []), ("SFBGS003.esm", True, ["Starfield.esm"]),
+                   ("A.esm", False, ["Starfield.esm"]), ("B.esm", False, ["Starfield.esm"]),
+                   ("C.esm", False, ["Starfield.esm"]), (BP, True, ["Starfield.esm", "SFBGS003.esm"])]
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"), entries, lost=[
+            # a ship both changed (Choice): would be "pick a winner" between two mods
+            lost("000100:SFBGS003.esm", "A.esm", BP, [field("Flags", winner_too=True)], rtype="GenericBaseForm"),
+            # two records only A changed (Forwardable): would be "patch candidate" between two mods
+            lost("000200:SFBGS003.esm", "B.esm", BP, [field("Keywords")], rtype="GenericBaseForm"),
+            lost("000201:SFBGS003.esm", "B.esm", BP, [field("Keywords")], rtype="Npc"),
+            # an ordinary official winner keeps today's text
+            lost("000300:Starfield.esm", "C.esm", "SFBGS003.esm", [field("Keywords")]),
+        ])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        self.res = records.analyse(cj, self.lo)
+        self.buf = io.StringIO()
+        log._sinks.append(self.buf)
+        self.addCleanup(log._sinks.remove, self.buf)
+        self.ctx = ctx_for(self.t, self.lo)
+        records.add_findings(self.ctx, self.res, "run")
+        self.by = {tuple(f.plugins): f for f in self.ctx.report.findings}
+
+    def test_is_blueprint(self):
+        self.assertTrue(records.is_blueprint("blueprintships-starfield.esm"))
+        self.assertTrue(records.is_blueprint(BP))
+        self.assertFalse(records.is_blueprint("BlueprintShips-MyMod.esm"))  # not official: the game drops it
+        self.assertFalse(records.is_blueprint("SFBGS003.esm"))
+
+    def test_ship_pair(self):
+        f = self.by[("A.esm", BP)]
+        whole = f.text + " " + f.fix
+        self.assertIn(f"{BP} loads after every mod, so no load order or patch brings this change back; the edit "
+                      "A.esm makes to this ship doesn't reach the game.", f.text)
+        for bad in ("patch candidate", "pick a winner", "a patch that loads after it can"):
+            self.assertNotIn(bad, whole)
+        self.assertEqual(f.level, "caution")  # a functional field, as before
+
+    def test_mergeable_pair(self):
+        f = self.by[("B.esm", BP)]
+        whole = f.text + " " + f.fix
+        self.assertIn("the edit B.esm makes to these 2 records doesn't reach the game.", f.text)
+        for bad in ("patch candidate", "pick a winner", "a patch that loads after it can", "a patch can keep"):
+            self.assertNotIn(bad, whole)
+
+    def test_ordinary_official_winner_unchanged(self):
+        f = self.by[("C.esm", "SFBGS003.esm")]
+        self.assertIn("(patch candidate)", f.text)
+        self.assertIn("a patch that loads after it can", f.fix)
+
+    def test_not_counted_as_to_act_on(self):
+        acts = [(p["loser"], p["winner"]) for p in self.res["pairs"] if records.acts_on(p)]
+        self.assertEqual(acts, [("C.esm", "SFBGS003.esm")])
+        self.assertEqual(self.res["plugins"]["a.esm"]["rating"], "neutral-here")
+
+    def test_verbose_reason(self):
+        self.assertIn(f"A.esm vs {BP}: {BP} is an official BlueprintShips file", self.buf.getvalue())
+
+
+NAVI_TYPE = "NavigationMeshInfoMap"
+NAVI_SHARED = ("Each plugin's copy lists only its own navmeshes, so this isn't a record one plugin wins whole: it isn't "
+               "patched, and don't copy it by hand either (the Creation Kit rebuilds it when a navmesh is finalized).")
+NAVI_BAD = ("patch candidate", "pick a winner", "a patch that loads after it can", "a patch can keep",
+            "doesn't reach the game")
+
+
+class NaviNote(unittest.TestCase):
+    """0.1.2: the navmesh info map (NAVI) under any winner gets a note of its own (sf-mod-check NaviBlueprintNote):
+    each plugin's copy lists only its own navmeshes, so it is never a patch candidate, a pick-a-winner choice, a lost
+    change to count or something to act on. A pair with NAVI and real records keeps its advice for the real ones."""
+    def setUp(self):
+        import io
+        from sf_load_order import log
+        self.t = tempfile.mkdtemp()
+        self.lo = make_lo(["A.esm", "B.esm", "D.esm", "C.esm"], official=("Starfield.esm", "SFBGS003.esm", BP))
+        entries = [("Starfield.esm", True, []), ("SFBGS003.esm", True, ["Starfield.esm"]),
+                   ("A.esm", False, ["Starfield.esm"]), ("B.esm", False, ["Starfield.esm"]),
+                   ("D.esm", False, ["Starfield.esm"]), ("C.esm", False, ["Starfield.esm"]),
+                   (BP, True, ["Starfield.esm", "SFBGS003.esm"])]
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"), entries, lost=[
+            # NAVI under a BlueprintShips file (the 8 rows of the 2026-11-21 real run had this shape)
+            lost("000100:Starfield.esm", "A.esm", BP, [field("MapInfos")], rtype=NAVI_TYPE),
+            # NAVI under a mod
+            lost("000100:Starfield.esm", "B.esm", "C.esm", [field("MapInfos")], rtype=NAVI_TYPE),
+            # NAVI mixed with a real record in one pair
+            lost("000100:Starfield.esm", "D.esm", "C.esm", [field("MapInfos")], rtype=NAVI_TYPE),
+            lost("000200:Starfield.esm", "D.esm", "C.esm", [field("Keywords")]),
+            # NAVI of an official file under a mod: not an official change undone
+            lost("000100:Starfield.esm", "SFBGS003.esm", "C.esm", [field("MapInfos")], rtype=NAVI_TYPE,
+                 loser_official=True),
+        ])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        self.buf = io.StringIO()
+        log._sinks.append(self.buf)
+        self.addCleanup(log._sinks.remove, self.buf)
+        self.res = records.analyse(cj, self.lo)
+        self.pair = {(x["loser"], x["winner"]): x for x in self.res["pairs"]}
+        self.ctx = ctx_for(self.t, self.lo)
+        records.add_findings(self.ctx, self.res, "run")
+        self.found = self.ctx.report.findings
+
+    def of(self, loser, winner):
+        return [f for f in self.found if f.plugins == [loser, winner]]
+
+    def test_navi_under_blueprint(self):
+        p = self.pair[("A.esm", BP)]
+        self.assertEqual((p["advice"], p["label"], p["records"], len(p["navi"])),
+                         ("navi", "no action: navmesh info map", [], 1))
+        self.assertEqual(p["gain_if_flipped"], 0)
+        self.assertFalse(records.acts_on(p))
+        (f,) = self.of("A.esm", BP)
+        self.assertEqual(f.level, "note")
+        self.assertIsNone(f.fix)
+        self.assertEqual(f.text, f"{BP} and A.esm both change the navmesh info map (1 record(s)). {BP} loads after "
+                                 f"every mod, so its copy of the navmesh info map loads last. {NAVI_SHARED}")
+        for bad in NAVI_BAD:
+            self.assertNotIn(bad, f.text)
+        self.assertEqual(self.res["plugins"]["a.esm"]["rating"], "neutral-here")
+        self.assertEqual(self.res["plugins"]["a.esm"]["lost_records"], 0)
+
+    def test_navi_under_mod(self):
+        p = self.pair[("B.esm", "C.esm")]
+        self.assertEqual((p["advice"], p["records"], p["gain_if_flipped"]), ("navi", [], 0))
+        self.assertFalse(records.acts_on(p))
+        (f,) = self.of("B.esm", "C.esm")
+        self.assertEqual(f.level, "note")
+        self.assertIsNone(f.fix)
+        self.assertIn("C.esm loads after B.esm, so its copy of the navmesh info map loads later. " + NAVI_SHARED,
+                      f.text)
+        for bad in NAVI_BAD:
+            self.assertNotIn(bad, f.text)
+        self.assertEqual(self.res["plugins"]["b.esm"]["rating"], "neutral-here")  # not "order matters"
+
+    def test_navi_mixed_with_a_real_record(self):
+        p = self.pair[("D.esm", "C.esm")]
+        self.assertEqual((p["advice"], len(p["records"]), len(p["navi"])), ("merge", 1, 1))
+        self.assertEqual(p["gain_if_flipped"], 3)  # Keywords only, not MapInfos
+        self.assertEqual(p["fields"], {"Forwardable": 1, "Choice": 0, "No effect": 0})
+        self.assertTrue(records.acts_on(p))
+        fs = self.of("D.esm", "C.esm")
+        self.assertEqual(sorted(f.level for f in fs), ["caution", "note"])
+        real = next(f for f in fs if f.level == "caution")
+        self.assertIn("C.esm wins over D.esm on 1 record(s)", real.text)
+        self.assertIn("(patch candidate)", real.text)
+        self.assertNotIn("MapInfos", real.text)
+        navi = next(f for f in fs if f.level == "note")
+        self.assertIn(NAVI_SHARED, navi.text)
+        self.assertEqual(self.res["plugins"]["d.esm"]["rating"], "matters")
+        acts = sorted((x["loser"], x["winner"]) for x in self.res["pairs"] if records.acts_on(x))
+        self.assertEqual(acts, [("D.esm", "C.esm")])
+
+    def test_official_navi_not_counted_as_undone(self):
+        self.assertEqual(self.res["official_undone"], [])
+        self.assertFalse(any("undoes official changes" in f.text for f in self.found))
+        self.assertIn("not counted as undoing an official change", self.buf.getvalue())
+
+    def test_verbose_reason(self):
+        self.assertIn(f"A.esm vs {BP}: 1 navmesh info map record(s) get a note", self.buf.getvalue())
+        self.assertIn("B.esm vs C.esm: 1 navmesh info map record(s) get a note", self.buf.getvalue())
+
+
 class Program(unittest.TestCase):
     def setUp(self):
         self.t = tempfile.mkdtemp()

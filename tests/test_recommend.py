@@ -355,5 +355,69 @@ class Helpers(unittest.TestCase):
 
 LABEL = recommend.LABEL_CURRENT
 
+
+class BlueprintWinner(Base):
+    """0.1.2: a pair an official BlueprintShips file wins is never moved, counted or put in the merged-patch note
+    (the game loads that file after every plugin, so neither an order nor a patch can load after it)."""
+    BP = "BlueprintShips-SFBGS003.esm"
+
+    def test_not_moved_and_not_in_merged_patch_note(self):
+        lo = make_lo(["A.esm", "B.esm"])
+        lo.plugins.append(model.Plugin(self.BP, True, official=True, masters=["Starfield.esm"]))
+        lost_ = [entry("1", "A.esm", self.BP, [("Keywords", "Forwardable")], rtype="GenericBaseForm"),
+                 entry("2", "B.esm", self.BP, [("Flags", "Choice")], rtype="GenericBaseForm")]
+        lost_[0]["winner_official"] = lost_[1]["winner_official"] = True
+        ps = [pair("A.esm", self.BP, [0], lost_), pair("B.esm", self.BP, [1], lost_, advice="conflict")]
+        for p in ps:
+            p["winner_official"] = True
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, ps))
+        self.assertTrue(r["same_as_current"])
+        self.assertEqual(r["moves"], [])
+        self.assertEqual(r["order"][-1], self.BP)
+        self.assertEqual(r["remaining"], [])
+        self.assertFalse(any("merged patch" in t for t in self.texts(ctx)))
+
+    def test_navi_under_a_mod_is_not_moved_or_scored(self):
+        """The navmesh info map is never a lost change (each plugin's copy lists only its own navmeshes), so a pair
+        with only NAVI scores nothing and moves nothing (before 0.1.2 A.esm moved below C.esm for it)."""
+        lo = make_lo(["A.esm", "B.esm", "C.esm"])
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"),
+                                    [(n, n in OFFICIAL, []) for n in lo.enabled()],
+                                    lost=[lost("000100:Starfield.esm", "A.esm", "C.esm", [field("MapInfos")],
+                                               rtype="NavigationMeshInfoMap")])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        ctx, st, r = self.run_rec(lo, records.analyse(cj, lo))
+        self.assertEqual((r["score_current"], r["score_recommended"]), (0, 0))
+        self.assertEqual(r["moves"], [])
+        self.assertEqual(r["remaining"], [])
+
+    def test_navi_left_out_of_merged_patch_note(self):
+        """A pair with NAVI and a real record that can't be fixed by moving: the merged-patch note lists the real
+        record only."""
+        lo = make_lo(["A.esm", "B.esm", "C.esm"])
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"),
+                                    [(n, n in OFFICIAL, []) for n in lo.enabled()],
+                                    lost=[lost("000100:Starfield.esm", "A.esm", "C.esm", [field("MapInfos")],
+                                               rtype="NavigationMeshInfoMap", edid="NaviMap"),
+                                          lost("000200:Starfield.esm", "A.esm", "C.esm", [field("Keywords")],
+                                               edid="SomeNpc")])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        # the user's pick keeps C.esm after A.esm, so no move keeps A's changes
+        ctx, st, r = self.run_rec(lo, records.analyse(cj, lo), picks=[{"plugin": "C.esm", "after": "A.esm"}])
+        self.assertEqual([m["plugin"] for m in r["moves"]], ["C.esm"])  # the pick only; A.esm stays above C.esm
+        self.assertEqual([x["edid"] for x in r["remaining"]], ["SomeNpc"])
+        note = next(t for t in self.texts(ctx) if "merged patch" in t)
+        self.assertNotIn("NaviMap", note)
+        self.assertNotIn("NavigationMeshInfoMap", note)
+
+    def test_ordinary_mod_winner_still_in_merged_patch_note(self):
+        lo = make_lo(["A.esm", "B.esm"])
+        lost_ = [entry("1", "A.esm", "B.esm", [("Keywords", "Forwardable")])]
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A.esm", "B.esm", [0], lost_, cost=10, complete=True)]))
+        self.assertEqual([x["loser"] for x in r["remaining"]], ["A.esm"])
+
+
 if __name__ == "__main__":
     unittest.main()

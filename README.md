@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.1.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.1.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -77,7 +77,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.1.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.1.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -90,6 +90,10 @@ which mod each file comes from.
 Two details matter only if a script reads the output:
 
 - The byline goes to stderr, so a script reading stdout sees only the RESULT line. `--quiet` leaves the byline out.
+- The exit code is 0 whenever the report was written, even when it lists problems. Add `--strict` to get exit code 1
+  when the report lists at least one problem (see [Exit codes](#exit-codes)).
+- A test in a sandbox or a fresh folder should add `--state "<folder>"` (or `--no-state`). Otherwise the run uses
+  the snapshot in your user profile, and an earlier run there changes what "changed since the last run" reports.
 - The screen output uses your console's character set. A character it can't show (for example the Ł in a folder
   named Łukasz on a Western-European Windows console) is written as an escape such as `Ł`, so the run never
   stops on it. Scripts that need the exact paths should read `report.json` (`outputs`), which is always UTF-8.
@@ -99,12 +103,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.1.1.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.1.1.zip SHA256`.
+2. Download `sf-load-order-0.1.2.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.1.2.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.1.1 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.1.2 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -113,6 +117,8 @@ Optional extras:
 
 - **lz4**, for archives packed with LZ4 (some newer mod archives are): `python -m pip install lz4`. Without it,
   sf-load-order still lists which archives share files, but says "can't compare" for the contents of LZ4 archives.
+  To see whether it's installed, run `python -I -c "import lz4; print(lz4.__version__)"`: it prints a version
+  number when it is, and ends with `ModuleNotFoundError: No module named 'lz4'` when it isn't.
 - **sf-mod-check** 0.8.0 or newer, for record conflicts: https://github.com/taosecurity/sf-mod-check/releases. Put
   it on PATH, or give its path with `--sf-mod-check`. Without it the tool runs at light depth (see [Depth](#depth)):
   every check except record conflicts still runs. Versions before 0.8.0 are refused with a note saying where to
@@ -322,6 +328,20 @@ changes what you get), or **not checked** (sf-mod-check couldn't load it). Each 
 it, same mod, same edit), **patch candidate**, or **pick a winner**. Official changes that a mod undoes are listed
 too: no order fixes those.
 
+When the winner is an official `BlueprintShips-*.esm` file, the pair gets neither label. The game loads those files
+after every mod, so no load order or patch brings the mod's change back, and the report says that the mod's edit to
+those ships (or other records) doesn't reach the game. Such a pair isn't counted as one "to act on", isn't moved,
+and isn't in the merged-patch note.
+
+The navmesh info map (record type `NavigationMeshInfoMap`, shown as "navmesh map") is never a lost change, whichever
+plugin wins it. Each plugin's copy lists only its own navmeshes, so it isn't a record one plugin wins whole: it isn't
+patched, and it shouldn't be copied by hand either, because the Creation Kit rebuilds it when a navmesh is finalized.
+
+The report gives such a pair a note (advice "no action: navmesh info map") instead of "patch candidate" or "pick a
+winner". The navmesh info map isn't counted in the pair's records, in what's "to act on", in the order's score or in
+the merged-patch note, and a mod's copy over an official one isn't counted as undoing an official change. A pair that
+also has other records keeps its advice for those records.
+
 sf-mod-check reads plugins from the Data folder. Under MO2 it only sees your mods when it is started from MO2 (see
 [Traps](#traps)).
 
@@ -484,6 +504,10 @@ before you post it.
   Windows a mod id like `Mod9.` finds the folder `Mod9`. On Linux and macOS, `Mod9.` and `Mod9` can be two
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
   run sf-load-order on Windows, or such a mod shows no folder and its loose files aren't checked.
+- **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
+  after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an
+  update of the mod made for that file does. The report says so instead of suggesting a patch (see
+  [Record conflicts](#record-conflicts-sf-mod-check)).
 
 ## Similar tools
 

@@ -409,6 +409,11 @@ def run(ctx):
         for k, p in enumerate(rec["pairs"]):
             if p.get("advice") not in ACTION:
                 continue
+            if records.is_blueprint(p["winner"]):
+                # the game loads BlueprintShips files after every plugin, so a merged patch can't load after one
+                log.info(SECTION, f"{p['loser']} vs {p['winner']}: left out of the merged-patch note (nothing "
+                                  "loads after a BlueprintShips file)")
+                continue
             flip = k in flipped
             loser, winner = (p["winner"], p["loser"]) if flip else (p["loser"], p["winner"])
             if loser.lower() not in pos or winner.lower() not in pos:

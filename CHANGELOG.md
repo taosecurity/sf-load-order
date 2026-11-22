@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.1.2 (unreleased)
+
+### What's new
+
+This release changes how record conflicts are worded in two cases, to match sf-mod-check 0.12.0, and adds a few notes to AGENTS.md. No option or output file changes.
+
+### Example
+
+This is a real run on a small made-up load order. An official `BlueprintShips-SFBGS050.esm` file wins over ShipMod.esm on a ship, and over OutpostMod.esm on the navmesh info map:
+
+    > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --conflicts conflicts.json --state state --out report
+    sf-load-order 0.1.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 1 caution(s), 2 note(s) (report: report\report.txt)
+
+The Top 10 in `report.txt` now says:
+
+     1. [Caution] BlueprintShips-SFBGS050.esm wins over ShipMod.esm on 1 record(s) (fields: record flags (Flags)).
+        BlueprintShips-SFBGS050.esm loads after every mod, so no load order or patch brings this change back; the edit
+        ShipMod.esm makes to this ship doesn't reach the game.
+        Fix: Nothing to change in the load order. If you need ShipMod.esm's version, ask its author for an update made for
+        BlueprintShips-SFBGS050.esm.
+     2. [Note] BlueprintShips-SFBGS050.esm and OutpostMod.esm both change the navmesh info map (1 record(s)).
+        BlueprintShips-SFBGS050.esm loads after every mod, so its copy of the navmesh info map loads last. Each plugin's
+        copy lists only its own navmeshes, so this isn't a record one plugin wins whole: it isn't patched, and don't copy
+        it by hand either (the Creation Kit rebuilds it when a navmesh is finalized).
+     3. [Note] Keep your current order (LOOT's if you just sorted): no move the data supports makes it lose less (loss
+        score 3, lower is better). The files written equal the current order.
+
+On the same files, 0.1.1 gave 2 cautions: it called the navmesh info map a "patch candidate" and the ship "pick a winner", said "a patch that loads after it can" fix both, and added a note asking for a merged patch of both records.
+
+### Record conflicts
+
+- **BlueprintShips winner:** when an official `BlueprintShips-*.esm` file wins a record conflict, the report says what sf-mod-check 0.12.0 says. That file loads after every mod, so no load order or patch brings the change back, and the mod's edit doesn't reach the game.
+- Such a pair is no longer called a "patch candidate" or "pick a winner". It isn't counted as one to act on, and it is left out of the merged-patch note. `--verbose` logs the reason.
+- **Navmesh info map:** the navmesh info map (NAVI) gets a note of its own under any winner, as in sf-mod-check. Each plugin's copy lists only its own navmeshes, so it isn't patched, isn't a real loss and shouldn't be copied by hand.
+- The navmesh info map is no longer called a "patch candidate". It is left out of a pair's record count, the "to act on" count, the order's score, the merged-patch note and the official changes a mod undoes.
+- A pair with other records too keeps its advice for those records. `--verbose` logs the reason.
+
+### Docs
+
+- AGENTS.md and the README say that the exit code is 0 even when the report lists problems, unless `--strict` is given.
+- AGENTS.md quotes the exact lines `--version` prints, and `tests/run_agents.py` checks that they match.
+- AGENTS.md and the README give a command that shows whether the optional `lz4` package is installed.
+- AGENTS.md and the README say that a sandbox or fresh-folder test should use `--state "<folder>"` or `--no-state`, because the default state folder is in the user profile.
+- The README's Traps list says that a mod's change to a ship can't win over a BlueprintShips file.
+
 ## 0.1.1 - 2026-11-20
 
 ### What's new
@@ -8,7 +54,7 @@ This is a small fix release. It finds Vortex mod folders whose names start with 
 
 ### Example
 
-A real run on a small made-up Vortex setup, where one mod's staging folder is named ` Spaced Mod-2` (with a leading space, as Vortex allows):
+This is a real run on a small made-up Vortex setup, where one mod's staging folder is named ` Spaced Mod-2` (with a leading space, as Vortex allows):
 
     > .\sf-load-order.cmd --vortex-loadorder loadorder.json --vortex-staging Staging --data Game\Data --depth light --no-state
     sf-load-order 0.1.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
@@ -39,13 +85,13 @@ This is the first public release. sf-load-order checks your Starfield load order
 
 ### Example
 
-A real run on a small made-up load order (three mod plugins and the official ones):
+This is a real run on a small made-up load order (three mod plugins and the official ones):
 
     > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
     sf-load-order 0.1.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
     RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 
-The top of `sf-load-order-report\report.txt`:
+This is the top of `sf-load-order-report\report.txt`:
 
     Top 10
     ------
@@ -62,15 +108,15 @@ The top of `sf-load-order-report\report.txt`:
 
 ### What it checks
 
-- **Load order sources:** the game's Plugins.txt, a Mod Organizer 2 profile (`--mo2`, `--profile`) or a file exported from Vortex's Load Order page (`--vortex-loadorder`, `--vortex-staging`, plus Vortex's deployment record for mods with no plugin). It finds the Data folder on Steam (every library) and Game Pass (`XboxGames` and `.GamingRoot`), or takes `--data`.
-- **Order and masters:** missing, turned-off, dropped and late masters, unreadable plugins, and plugin counts per kind (full, medium, light) with a caution near each limit. BlueprintShips files are placed last, as the game does.
-- **Patches built for an older master:** a scan of record headers, and a snapshot (`--state`, `--no-state`) that catches a master changing kind since the last run. Records that a plugin numbers past its master list are counted as its own (as the game reads them), not as a problem.
-- **Known clashes:** LOOT's masterlist and userlist from your own LOOT install (requirements, incompatibilities, warnings, cleaning), plus your own `--clashes`, `--accept` (pinned to SHA-256) and `--picks` files.
-- **Archives:** the game's exact archive names, archives that never load, shared paths with advice, and content comparison (stored, zlib, texture pixel data, and LZ4 with the optional `lz4` package).
-- **Loose files:** mods shipping the same file (MO2 priority; Vortex's deployed copy), loose files hiding archived ones, and stray files in Data.
-- **Record conflicts:** through sf-mod-check 0.8.0 or newer (`--depth medium`, the default; `--depth heavy` adds a check of each plugin), or from a `--conflicts` file. It reports lost changes, a rating for each plugin and advice for each pair.
-- **Suggested order:** scored by the changes an order throws away, with the near-tie rule (a saving under 10 points or 3% keeps your order), estimates marked as such, and a comparison with a LOOT-sorted order (`--loot-order`). It writes `plugins.txt`, `vortex-loadorder-recommended.json` (Vortex) and `HOW-TO-APPLY.txt`. For MO2, the files to apply are `plugins.txt` and `loadorder.txt`, because MO2 takes the order from `loadorder.txt`.
-- **Report:** text, HTML (self-contained, light and dark) and JSON (schema 1).
+- **Load order sources:** it reads the game's Plugins.txt, a Mod Organizer 2 profile (`--mo2`, `--profile`) or a file exported from Vortex's Load Order page (`--vortex-loadorder`, `--vortex-staging`, plus Vortex's deployment record for mods with no plugin). It finds the Data folder on Steam (every library) and Game Pass (`XboxGames` and `.GamingRoot`), or takes `--data`.
+- **Order and masters:** it reports missing, turned-off, dropped and late masters, unreadable plugins, and plugin counts per kind (full, medium, light) with a caution near each limit. BlueprintShips files are placed last, as the game does.
+- **Patches built for an older master:** it uses a scan of record headers, and a snapshot (`--state`, `--no-state`) that catches a master changing kind since the last run. Records that a plugin numbers past its master list are counted as its own (as the game reads them), not as a problem.
+- **Known clashes:** it reads LOOT's masterlist and userlist from your own LOOT install (requirements, incompatibilities, warnings, cleaning), plus your own `--clashes`, `--accept` (pinned to SHA-256) and `--picks` files.
+- **Archives:** it checks the game's exact archive names, archives that never load, shared paths with advice, and content comparison (stored, zlib, texture pixel data, and LZ4 with the optional `lz4` package).
+- **Loose files:** it finds mods shipping the same file (MO2 priority; Vortex's deployed copy), loose files hiding archived ones, and stray files in Data.
+- **Record conflicts:** it checks them through sf-mod-check 0.8.0 or newer (`--depth medium`, the default; `--depth heavy` adds a check of each plugin), or reads them from a `--conflicts` file. It reports lost changes, a rating for each plugin and advice for each pair.
+- **Suggested order:** it is scored by the changes an order throws away, with the near-tie rule (a saving under 10 points or 3% keeps your order), estimates marked as such, and a comparison with a LOOT-sorted order (`--loot-order`). It writes `plugins.txt`, `vortex-loadorder-recommended.json` (Vortex) and `HOW-TO-APPLY.txt`. For MO2, the files to apply are `plugins.txt` and `loadorder.txt`, because MO2 takes the order from `loadorder.txt`.
+- **Report:** it comes as text, HTML (self-contained, light and dark) and JSON (schema 1).
 
 ### Safety and troubleshooting
 

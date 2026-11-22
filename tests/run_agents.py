@@ -187,13 +187,22 @@ def prints(text):
     return check
 
 
+def version_lines_quoted(r):
+    """AGENTS.md quotes the exact --version lines; each line printed must appear there as its own line."""
+    with open(AGENTS, encoding="utf-8") as f:
+        doc = set(x.strip() for x in f.read().splitlines())
+    lines = [x.strip() for x in r["stdout"].splitlines() if x.strip()]
+    missing = [x for x in lines if x not in doc]
+    return f"AGENTS.md doesn't quote these --version lines: {missing}" if missing else None
+
+
 # ---------------------------------------------------------------- the commands (keep in step with AGENTS.md)
 # text: exactly as in AGENTS.md. expect: exit code. checks: run after it. game: "ok" or "broken" (a plugin whose
 # master is missing), used for the fake LOCALAPPDATA Plugins.txt and the added --data. report: False for commands
 # that write no report (--version, --help).
 C = r".\sf-load-order.cmd"
 COMMANDS = [
-    dict(text=C + " --version", expect=0, report=False, checks=[prints("sf-load-order ")]),
+    dict(text=C + " --version", expect=0, report=False, checks=[prints("sf-load-order "), version_lines_quoted]),
     dict(text="python -I sf-load-order.py --version", expect=0, report=False, checks=[prints("sf-load-order ")]),
     dict(text=C + " --help", expect=0, report=False, checks=[prints("--vortex-loadorder")]),
     dict(text=C, checks=[source_is("plugins.txt"), default_state,
