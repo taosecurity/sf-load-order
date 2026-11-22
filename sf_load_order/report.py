@@ -243,10 +243,10 @@ def _item_text_(x):
             bits.append(_plural(x["files"], "file"))
         if isinstance(x.get("records"), list) and (x["records"] or not x.get("navi")):
             bits.append(_plural(len(x["records"]), "record"))
-        if isinstance(x.get("navi"), list) and x["navi"]:
-            bits.append(_plural(len(x["navi"]), "navmesh info map record"))
         elif isinstance(x.get("records"), int):
             bits.append(_plural(x["records"], "record"))
+        if isinstance(x.get("navi"), list) and x["navi"]:
+            bits.append(_plural(len(x["navi"]), "navmesh info map record"))
         f = x.get("fields")
         if isinstance(f, dict):  # records.py pair: {label: count of fields}
             counts = ", ".join(f"{k} {_n(v)}" for k, v in f.items() if v)

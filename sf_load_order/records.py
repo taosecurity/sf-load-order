@@ -203,7 +203,7 @@ def analyse(cj, lo):
         lost.append({"fk": (e.get("formKey") or ""), "type": (e.get("RecordType") or ""), "edid": e.get("EditorID"),
                      "loser": loser, "winner": winner,
                      "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
-                     "winner_official": winner.lower() in official,
+                     "winner_official": bool(e.get("WinnerOfficial")) or winner.lower() in official,
                      "outcome": _outcome((e.get("RecordType") or ""), fields), "fields": fields})
 
     pairs, by_pair = [], {}
@@ -284,7 +284,7 @@ def is_blueprint(name, official=False):
 def acts_on(p):
     """A pair a load order or a patch can change: "patch candidate" or "pick a winner" (a pair an official
     BlueprintShips file wins has the advice "blueprint" instead)."""
-    return p["advice"] in ACTION and not is_blueprint(p["winner"], p.get("blueprint"))
+    return p["advice"] in ACTION and not is_blueprint(p["winner"], p.get("winner_official"))
 
 
 def _mod_plugins(lo):
@@ -300,9 +300,10 @@ def _ratings(lo, res, loaded):
     out = {}
     for p in _mod_plugins(lo):
         n = p.name.lower()
-        # a pair with only navmesh info map entries isn't a lost change, so it doesn't make a plugin "neutral here"
+        # a pair with only navmesh info map entries (whatever its advice) isn't a lost change, so it doesn't make a
+        # plugin "neutral here"
         mine = [i for i, x in enumerate(res["pairs"]) if n in (x["loser"].lower(), x["winner"].lower())
-                and x["advice"] != "navi"]
+                and x["records"]]
         lost_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["loser"].lower() == n)
         won_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["winner"].lower() == n)
         undo = sum(1 for i in res["official_undone"] if res["lost"][i]["winner"].lower() == n)

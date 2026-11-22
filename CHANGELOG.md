@@ -4,7 +4,7 @@
 
 ### What's new
 
-This release changes how record conflicts are worded in two cases, to match sf-mod-check 0.12.0, and adds a few notes to AGENTS.md. No option or output file changes; `report.json` gains one count and one advice value.
+This release changes how record conflicts are worded in two cases, to match sf-mod-check 0.12.0, and adds a few notes to AGENTS.md. No option or output file changes. In `report.json`, `results.records.lost` no longer counts navmesh info map entries (they are in the new `results.records.navi`), and a pair can have the new advice value "blueprint".
 
 ### Example
 

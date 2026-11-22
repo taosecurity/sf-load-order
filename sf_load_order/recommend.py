@@ -407,12 +407,14 @@ def run(ctx):
     if rated:
         pos = {n.lower(): i for i, n in enumerate(full)}
         for k, p in enumerate(rec["pairs"]):
-            if p.get("advice") not in ACTION and p.get("advice") != "blueprint":
-                continue
-            if p.get("advice") == "blueprint" or records.is_blueprint(p["winner"], p.get("blueprint")):
-                # the game loads BlueprintShips files after every plugin, so a merged patch can't load after one
+            # the game loads BlueprintShips files after every plugin, so a merged patch can't load after one
+            # (records.analyse gives such a pair the advice "blueprint"; a hand-made pair may still say merge/conflict)
+            if p.get("advice") == "blueprint" or (p.get("advice") in ACTION
+                                                   and records.is_blueprint(p["winner"], p.get("winner_official"))):
                 log.info(SECTION, f"{p['loser']} vs {p['winner']}: left out of the merged-patch note (nothing "
                                   "loads after a BlueprintShips file)")
+                continue
+            if p.get("advice") not in ACTION:
                 continue
             flip = k in flipped
             loser, winner = (p["winner"], p["loser"]) if flip else (p["loser"], p["winner"])
