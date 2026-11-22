@@ -292,6 +292,7 @@ def run(ctx):
         best = score(_full(current, order, fixed))[0]
         pos0 = {n.lower(): i for i, n in enumerate(movable)}
         cands = [k for k, p in enumerate(pairs) if p.get("advice") in ACTION and not p.get("winner_official")
+                 and not p.get("blueprint")
                  and p["loser"].lower() in pos0 and p["winner"].lower() in pos0]
         tried = {}
 

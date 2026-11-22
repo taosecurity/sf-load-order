@@ -313,7 +313,7 @@ def _ratings(lo, res, loaded):
         undo = sum(1 for i in res["official_undone"] if res["lost"][i]["winner"].lower() == n)
         itms = sum(1 for x in res["itms"] if x["plugin"].lower() == n)
         tcs = sum(1 for x in res["type_changes"] if x["plugin"].lower() == n)
-        movable = [i for i in mine if res["pairs"][i]["advice"] in ACTION and not res["pairs"][i]["winner_official"]]
+        movable = [i for i in mine if acts_on(res["pairs"][i]) and not res["pairs"][i]["winner_official"]]
         if n in skipped or n not in loaded:
             rating = "unchecked"
             why = skipped.get(n) or "sf-mod-check didn't load it (it isn't in conflicts.json's load order)"

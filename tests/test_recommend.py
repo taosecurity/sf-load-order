@@ -391,6 +391,20 @@ class BlueprintWinner(Base):
         self.assertEqual(r["remaining"], [])
         self.assertFalse(any("merged patch" in t for t in self.texts(ctx)))
 
+    def test_blueprint_key_alone_is_never_moved(self):
+        """code review 0.1.2, round 4: a pair with "blueprint": True isn't a flip candidate, even when the load order
+        doesn't flag the BlueprintShips file official. A guard only: it passes on the round-3 code too, because the
+        recommender already keeps every BlueprintShips- name in place, so such a pair can never be a candidate."""
+        W = "BlueprintShips-sfta01.esm"
+        lo = make_lo(["A.esm", W])
+        # enough lost records that the saving would be worth a move if W could move
+        lost_ = [entry(str(i), "A.esm", W, [("Keywords", "Forwardable")], rtype="GenericBaseForm") for i in range(40)]
+        p = pair("A.esm", W, list(range(40)), lost_)
+        p["blueprint"] = True
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [p]))
+        self.assertEqual(r["moves"], [])
+        self.assertTrue(r["same_as_current"])
+
     def test_navi_under_a_mod_is_not_moved_or_scored(self):
         """The navmesh info map is never a lost change (each plugin's copy lists only its own navmeshes), so a pair
         with only NAVI scores nothing and moves nothing (before 0.1.2 A.esm moved below C.esm for it)."""
