@@ -377,6 +377,20 @@ class BlueprintWinner(Base):
         self.assertEqual(r["remaining"], [])
         self.assertFalse(any("merged patch" in t for t in self.texts(ctx)))
 
+    def test_blueprint_key_alone_keeps_it_out_of_merged_patch_note(self):
+        """code review 0.1.2, round 3: a pair with "blueprint": True (a BlueprintShips file sf-mod-check marks
+        official but this tool doesn't know) stays out of the merged-patch note even without winner_official."""
+        W = "BlueprintShips-sfta01.esm"
+        lo = make_lo(["A.esm"])
+        lo.plugins.append(model.Plugin(W, True, official=True, masters=["Starfield.esm"]))
+        lost_ = [entry("1", "A.esm", W, [("Keywords", "Forwardable")], rtype="GenericBaseForm")]
+        p = pair("A.esm", W, [0], lost_)
+        p["blueprint"] = True
+        self.assertFalse(records.acts_on(p))
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [p]))
+        self.assertEqual(r["remaining"], [])
+        self.assertFalse(any("merged patch" in t for t in self.texts(ctx)))
+
     def test_navi_under_a_mod_is_not_moved_or_scored(self):
         """The navmesh info map is never a lost change (each plugin's copy lists only its own navmeshes), so a pair
         with only NAVI scores nothing and moves nothing (before 0.1.2 A.esm moved below C.esm for it)."""

@@ -409,8 +409,8 @@ def run(ctx):
         for k, p in enumerate(rec["pairs"]):
             # the game loads BlueprintShips files after every plugin, so a merged patch can't load after one
             # (records.analyse gives such a pair the advice "blueprint"; a hand-made pair may still say merge/conflict)
-            if p.get("advice") == "blueprint" or (p.get("advice") in ACTION
-                                                   and records.is_blueprint(p["winner"], p.get("winner_official"))):
+            if p.get("advice") == "blueprint" or (p.get("advice") in ACTION and (
+                    p.get("blueprint") or records.is_blueprint(p["winner"], p.get("winner_official")))):
                 log.info(SECTION, f"{p['loser']} vs {p['winner']}: left out of the merged-patch note (nothing "
                                   "loads after a BlueprintShips file)")
                 continue

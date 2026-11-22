@@ -360,12 +360,12 @@ class NaviCounts(unittest.TestCase):
         self.assertEqual(j["results"]["records"]["navi"], 1)
 
 
-
 class ReviewRound2(unittest.TestCase):
-    """code review 0.1.2, round 2."""
+    """code review 0.1.2, rounds 2 and 3."""
     def analyse(self, entries, lost_, mods=None):
-        t = tempfile.mkdtemp()
-        p = fixtures.conflicts_json(os.path.join(t, "conflicts.json"), entries, lost=lost_)
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        p = fixtures.conflicts_json(os.path.join(d.name, "conflicts.json"), entries, lost=lost_)
         cj, err = records.load(p)
         self.assertIsNone(err)
         return records.analyse(cj, make_lo([n for n, off, _ in entries if not off]))
@@ -390,8 +390,32 @@ class ReviewRound2(unittest.TestCase):
         res = self.analyse([("Starfield.esm", True, []), ("A.esm", False, ["Starfield.esm"]),
                             (W, False, ["Starfield.esm"])], [e])
         (p,) = res["pairs"]
-        self.assertEqual((p["winner_official"], p["blueprint"], p["advice"]), (True, True, "blueprint"))
+        # round 3: the flag feeds only the BlueprintShips check, not winner_official (ratings, recommender)
+        self.assertEqual((p["winner_official"], p["blueprint"], p["advice"]), (False, True, "blueprint"))
         self.assertFalse(records.acts_on(p))
+
+    def test_winner_official_on_a_later_entry(self):
+        """Any entry of the pair marking the BlueprintShips winner official counts, not only the first."""
+        W = "BlueprintShips-sfta01.esm"
+        e1 = lost("000100:Starfield.esm", "A.esm", W, [field("Flags", winner_too=True)], rtype="GenericBaseForm")
+        e2 = lost("000200:Starfield.esm", "A.esm", W, [field("Keywords")], rtype="GenericBaseForm")
+        e2["WinnerOfficial"] = True
+        res = self.analyse([("Starfield.esm", True, []), ("A.esm", False, ["Starfield.esm"]),
+                            (W, False, ["Starfield.esm"])], [e1, e2])
+        (p,) = res["pairs"]
+        self.assertEqual((p["blueprint"], p["advice"], len(p["records"])), (True, "blueprint", 2))
+
+    def test_winner_official_on_a_mod_name_changes_nothing(self):
+        """WinnerOfficial on a winner that isn't a BlueprintShips file leaves the pair as it was: still to act on,
+        and the loser still "order matters"."""
+        e = lost("000100:Starfield.esm", "A.esm", "B.esm", [field("Keywords")])
+        e["WinnerOfficial"] = True
+        res = self.analyse([("Starfield.esm", True, []), ("A.esm", False, ["Starfield.esm"]),
+                            ("B.esm", False, ["Starfield.esm"])], [e])
+        (p,) = res["pairs"]
+        self.assertEqual((p["winner_official"], p["blueprint"], p["advice"]), (False, False, "merge"))
+        self.assertTrue(records.acts_on(p))
+        self.assertEqual(res["plugins"]["a.esm"]["rating"], "matters")
 
     def test_pair_line_with_a_record_count_and_navi(self):
         from sf_load_order import report

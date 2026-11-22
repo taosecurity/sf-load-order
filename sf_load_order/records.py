@@ -203,9 +203,12 @@ def analyse(cj, lo):
         lost.append({"fk": (e.get("formKey") or ""), "type": (e.get("RecordType") or ""), "edid": e.get("EditorID"),
                      "loser": loser, "winner": winner,
                      "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
-                     "winner_official": bool(e.get("WinnerOfficial")) or winner.lower() in official,
+                     "winner_official": winner.lower() in official,
                      "outcome": _outcome((e.get("RecordType") or ""), fields), "fields": fields})
 
+    # sf-mod-check's WinnerOfficial on a lost entry feeds only the BlueprintShips check (per winner name, so any entry
+    # counts); it doesn't make the winner fixed for the ratings or the recommender, which keep the load order's flags
+    marked = {(e.get("Winner") or "").lower() for e in (cj.get("lost") or []) if e.get("WinnerOfficial")}
     pairs, by_pair = [], {}
     for i, x in enumerate(lost):
         if x["loser_official"]:
@@ -214,7 +217,8 @@ def analyse(cj, lo):
         if key not in by_pair:
             by_pair[key] = len(pairs)
             pairs.append({"loser": x["loser"], "winner": x["winner"], "winner_official": x["winner_official"],
-                          "blueprint": is_blueprint(x["winner"], x["winner_official"]),
+                          "blueprint": is_blueprint(x["winner"], x["winner_official"]
+                                                    or x["winner"].lower() in marked),
                           "records": [], "navi": [], "mod": None})
         # the navmesh info map stays out of the pair's records, counts, gain and advice (it gets a note of its own)
         pairs[by_pair[key]]["navi" if x["outcome"] == "navi" else "records"].append(i)
@@ -284,7 +288,7 @@ def is_blueprint(name, official=False):
 def acts_on(p):
     """A pair a load order or a patch can change: "patch candidate" or "pick a winner" (a pair an official
     BlueprintShips file wins has the advice "blueprint" instead)."""
-    return p["advice"] in ACTION and not is_blueprint(p["winner"], p.get("winner_official"))
+    return p["advice"] in ACTION and not (p.get("blueprint") or is_blueprint(p["winner"], p.get("winner_official")))
 
 
 def _mod_plugins(lo):
