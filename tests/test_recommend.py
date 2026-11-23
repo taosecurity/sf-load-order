@@ -380,30 +380,59 @@ class BlueprintWinner(Base):
     def test_blueprint_key_alone_keeps_it_out_of_merged_patch_note(self):
         """code review 0.1.2, round 3: a pair with "blueprint": True (a BlueprintShips file sf-mod-check marks
         official but this tool doesn't know) stays out of the merged-patch note even without winner_official."""
-        W = "BlueprintShips-sfta01.esm"
-        lo = make_lo(["A.esm"])
-        lo.plugins.append(model.Plugin(W, True, official=True, masters=["Starfield.esm"]))
+        W = "W.esm"  # 0.1.3: an ordinary name, so only the key keeps the pair out (no second rule)
+        lo = make_lo(["A.esm", W])
         lost_ = [entry("1", "A.esm", W, [("Keywords", "Forwardable")], rtype="GenericBaseForm")]
+        p = pair("A.esm", W, [0], lost_)
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [p]))
+        self.assertTrue(r["moves"] or r["remaining"])  # without the key the pair is acted on (moved or listed)
         p = pair("A.esm", W, [0], lost_)
         p["blueprint"] = True
         self.assertFalse(records.acts_on(p))
         ctx, st, r = self.run_rec(lo, rec_data(lost_, [p]))
+        self.assertEqual(r["moves"], [])
         self.assertEqual(r["remaining"], [])
         self.assertFalse(any("merged patch" in t for t in self.texts(ctx)))
 
     def test_blueprint_key_alone_is_never_moved(self):
-        """code review 0.1.2, round 4: a pair with "blueprint": True isn't a flip candidate, even when the load order
-        doesn't flag the BlueprintShips file official. A guard only: it passes on the round-3 code too, because the
-        recommender already keeps every BlueprintShips- name in place, so such a pair can never be a candidate."""
-        W = "BlueprintShips-sfta01.esm"
-        lo = make_lo(["A.esm", W])
-        # enough lost records that the saving would be worth a move if W could move
-        lost_ = [entry(str(i), "A.esm", W, [("Keywords", "Forwardable")], rtype="GenericBaseForm") for i in range(40)]
-        p = pair("A.esm", W, list(range(40)), lost_)
+        """code review 0.1.2, round 4, reworked in 0.1.3: a pair with "blueprint": True isn't a flip candidate. The
+        winner W.esm is an ordinary movable mod and not official, so only the key keeps the pair out (the same pair
+        without the key is moved, which the first half proves). Proof it can fail: with the key check dropped from
+        records.acts_on (see NOTES) the second half fails."""
+        lo = make_lo(["A.esm", "W.esm"])
+        # enough lost records that the saving is worth a move
+        lost_ = [entry(str(i), "A.esm", "W.esm", [("Keywords", "Forwardable")], rtype="GenericBaseForm")
+                 for i in range(40)]
+        p = pair("A.esm", "W.esm", list(range(40)), lost_)
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [p]))
+        self.assertEqual(len(r["moves"]), 1)  # without the key the pair is a move candidate
+        p = pair("A.esm", "W.esm", list(range(40)), lost_)
         p["blueprint"] = True
         ctx, st, r = self.run_rec(lo, rec_data(lost_, [p]))
         self.assertEqual(r["moves"], [])
         self.assertTrue(r["same_as_current"])
+
+    def test_pair_without_advice_is_not_acted_on(self):
+        """0.1.3: records.acts_on reads advice with get, so a pair without the key is not acted on (it raised before)."""
+        self.assertFalse(records.acts_on({"loser": "A.esm", "winner": "B.esm"}))
+
+    def test_move_candidates_use_the_shared_acts_on_rule(self):
+        """0.1.3: the recommender's move candidates come from records.acts_on, not a second copy of the rule.
+        With acts_on forced to False a pair that would be moved stays put (fails on the 0.1.2 code, which ignored it)."""
+        from unittest import mock
+        lo = make_lo(["A.esm", "B.esm", "C.esm"])
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"),
+                                    [(n, n in OFFICIAL, []) for n in lo.enabled()],
+                                    lost=[lost("000100:Starfield.esm", "A.esm", "C.esm", [field("Keywords")],
+                                               edid="SomeNpc")])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        rec = records.analyse(cj, lo)
+        ctx, st, r = self.run_rec(lo, rec)
+        self.assertEqual([m["plugin"] for m in r["moves"]], ["A.esm"], "control: a move candidate without the patch")
+        with mock.patch.object(records, "acts_on", return_value=False):
+            ctx, st, r = self.run_rec(lo, rec)
+        self.assertEqual(r["moves"], [])
 
     def test_navi_under_a_mod_is_not_moved_or_scored(self):
         """The navmesh info map is never a lost change (each plugin's copy lists only its own navmeshes), so a pair

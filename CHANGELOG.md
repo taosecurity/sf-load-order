@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.3 (unreleased)
+
+This release is a fix pass. It is not finished yet.
+
+### Fixes
+
+- The recommender's move candidates now use the same "acts on" rule as the ratings and the merged-patch note (`records.acts_on`), not a second copy of it.
+- A pair without an `advice` key is simply not acted on, instead of raising an error.
+
+### Docs
+
+- The 0.1.2 line about conflicts.json's official flag was wrong and is fixed in place. The flag does more than change the wording: it makes the pair a BlueprintShips pair, which also keeps it out of "order matters" and the move candidates. The ratings and the official changes a mod undoes still use the load order's own flags.
+
 ## 0.1.2 - 2026-11-22
 
 ### What's new
@@ -34,7 +47,7 @@ On the same files, 0.1.1 gave 2 cautions: it called the navmesh info map a "patc
 
 - **BlueprintShips winner:** when an official `BlueprintShips-*.esm` file wins a record conflict, the report says what sf-mod-check 0.12.0 says. That file loads after every mod, so no load order or patch brings the change back, and the mod's edit doesn't reach the game.
 - Such a pair is no longer called a "patch candidate" or "pick a winner". Its advice is "no action: BlueprintShips file wins" in the report and in `report.json`. It isn't counted as one to act on, doesn't make a plugin "order matters", and is left out of the merged-patch note. `--verbose` logs the reason.
-- A `BlueprintShips-` file counts as official when sf-mod-check's conflicts.json marks it so (in its load order or on a lost entry), even if sf-load-order's own list of official names doesn't have it. This is used only for the BlueprintShips wording, not for the ratings or the suggested order.
+- A `BlueprintShips-` file counts as official when sf-mod-check's conflicts.json marks it so (in its load order or on a lost entry), even if sf-load-order's own list of official names doesn't have it. That makes the pair a BlueprintShips pair: its wording changes, and it stays out of "order matters" and the move candidates. The ratings and the official changes a mod undoes keep the load order's own official flags.
 - **Navmesh info map:** the navmesh info map (NAVI) gets a note of its own under any winner, as in sf-mod-check. Each plugin's copy lists only its own navmeshes, so it isn't patched, isn't a real loss and shouldn't be copied by hand.
 - The navmesh info map is no longer called a "patch candidate". It is left out of a pair's record count, the "to act on" count, the order's score, the merged-patch note and the official changes a mod undoes.
 - The records summary counts navmesh info map entries apart from the lost change entries (`report.json` `results.records.navi`), and a pair's line shows them as navmesh info map records.

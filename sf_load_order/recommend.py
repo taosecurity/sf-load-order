@@ -291,8 +291,9 @@ def run(ctx):
         flipped0 = set(f0)
         best = score(_full(current, order, fixed))[0]
         pos0 = {n.lower(): i for i, n in enumerate(movable)}
-        cands = [k for k, p in enumerate(pairs) if p.get("advice") in ACTION and not p.get("winner_official")
-                 and not p.get("blueprint")
+        # records.acts_on is the one "acts on" rule (advice merge/conflict, not a BlueprintShips winner); an
+        # ordinary official winner is never moved either, which acts_on doesn't cover
+        cands = [k for k, p in enumerate(pairs) if records.acts_on(p) and not p.get("winner_official")
                  and p["loser"].lower() in pos0 and p["winner"].lower() in pos0]
         tried = {}
 

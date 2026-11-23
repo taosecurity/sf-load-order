@@ -206,8 +206,9 @@ def analyse(cj, lo):
                      "winner_official": winner.lower() in official,
                      "outcome": _outcome((e.get("RecordType") or ""), fields), "fields": fields})
 
-    # sf-mod-check's WinnerOfficial on a lost entry feeds only the BlueprintShips check (per winner name, so any entry
-    # counts); it doesn't make the winner fixed for the ratings or the recommender, which keep the load order's flags
+    # sf-mod-check's WinnerOfficial on a lost entry (like the Official flag in loadOrder) makes the pair a BlueprintShips
+    # pair, per winner name so any entry counts. That changes its wording and keeps it out of "order matters" and the
+    # move candidates. winner_official, the ratings and official_undone keep the load order's own flags.
     marked = {(e.get("Winner") or "").lower() for e in (cj.get("lost") or []) if e.get("WinnerOfficial")}
     pairs, by_pair = [], {}
     for i, x in enumerate(lost):
@@ -288,7 +289,7 @@ def is_blueprint(name, official=False):
 def acts_on(p):
     """A pair a load order or a patch can change: "patch candidate" or "pick a winner" (a pair an official
     BlueprintShips file wins has the advice "blueprint" instead)."""
-    return p["advice"] in ACTION and not (p.get("blueprint") or is_blueprint(p["winner"], p.get("winner_official")))
+    return p.get("advice") in ACTION and not (p.get("blueprint") or is_blueprint(p["winner"], p.get("winner_official")))
 
 
 def _mod_plugins(lo):
