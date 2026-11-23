@@ -371,6 +371,16 @@ class StalenessOfficialNames(unittest.TestCase):
             self.assertTrue(inputs.modcheck_official(n), n)
         self.assertFalse(inputs.is_official("sfta01.esm"))  # is_official is unchanged
 
+    def test_flagged_official_is_left_out_of_our_side_too(self):
+        """code review 0.1.3 round 1: a name only conflicts.json flags Official is dropped from both sides."""
+        d = self.differs(["A.esm", "BlueprintShips-Foo.esm"], [("A.esm", False), ("BlueprintShips-Foo.esm", True)])
+        self.assertIsNone(d)
+
+    def test_name_rule_follows_sf_mod_check_exactly(self):
+        """code review 0.1.3 round 1: SFBGS names are hex only, and other BlueprintShips- files aren't on its lists."""
+        for n in ("sfbgs0zz.esm", "BlueprintShips-Constellation.esm", "BlueprintShips-ShatteredSpace.esm"):
+            self.assertFalse(inputs.modcheck_official(n), n)
+
     def test_verbose_log_names_what_is_left_out(self):
         buf = io.StringIO()
         log._sinks[:] = [buf]

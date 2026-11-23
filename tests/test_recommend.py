@@ -397,8 +397,8 @@ class BlueprintWinner(Base):
     def test_blueprint_key_alone_is_never_moved(self):
         """code review 0.1.2, round 4, reworked in 0.1.3: a pair with "blueprint": True isn't a flip candidate. The
         winner W.esm is an ordinary movable mod and not official, so only the key keeps the pair out (the same pair
-        without the key is moved, which the first half proves). Proof it can fail: with the key check dropped from
-        records.acts_on (see NOTES) the second half fails."""
+        without the key is moved, which the first half proves), so the second half fails if acts_on stops reading
+        the key."""
         lo = make_lo(["A.esm", "W.esm"])
         # enough lost records that the saving is worth a move
         lost_ = [entry(str(i), "A.esm", "W.esm", [("Keywords", "Forwardable")], rtype="GenericBaseForm")

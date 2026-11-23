@@ -348,18 +348,24 @@ def _ratings(lo, res, loaded):
 def _differs(lo, cj):
     """Does the --conflicts file's load order differ from ours? Plugins conflicts.json lists as Official, and names
     sf-mod-check counts official (sfta01 to sfta06 and the like), aren't mods, so they aren't compared."""
+    entries = [(e, (e.get("FileName") or "").lower()) for e in (cj.get("loadOrder") or [])]
+    flagged = {n for e, n in entries if n and e.get("Official")}
     left = []
+    seen = set()
     ours = []
     for p in _mod_plugins(lo):
-        if inputs.modcheck_official(p.name):
-            left.append(p.name)
+        n = p.name.lower()
+        if n in flagged or inputs.modcheck_official(n):
+            if n not in seen:
+                seen.add(n)
+                left.append(p.name)
         else:
-            ours.append(p.name.lower())
+            ours.append(n)
     theirs = []
-    for e in (cj.get("loadOrder") or []):
-        n = (e.get("FileName") or "").lower()
+    for e, n in entries:
         if e.get("Official") or inputs.modcheck_official(n):
-            if n and n not in {x.lower() for x in left}:
+            if n and n not in seen:
+                seen.add(n)
                 left.append(n)
         else:
             theirs.append(n)
