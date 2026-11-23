@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-23)
 
 This release adds the checks that used to need a private page builder: Vortex profiles by name with a check that the profile is the deployed one, a Vortex mod rules check, merged patches checked with `sf-mod-check patch check`, `settled_if_current` in the clashes file, per-kind counts of missing files, and `sf-load-order candidate <zip>` for a new mod build. No option or report.json key was renamed or removed; new keys were added. A normal report now has nine sections (the new one is "Vortex mod rules", after "Loose files").
 
