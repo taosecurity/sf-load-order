@@ -36,6 +36,12 @@ OFFICIAL_ORDER = ["starfield.esm", "constellation.esm", "oldmars.esm", "shattere
                   "sfbgs050.esm"]
 OFFICIAL_RE = re.compile(r"^(starfield|constellation|oldmars|shatteredspace|sfbgs[0-9a-z]{3})\.esm$", re.I)
 BLUEPRINT_RE = re.compile(r"^blueprintships-(.+\.esm)$", re.I)
+# The names sf-mod-check 0.12.0 counts official (src/ConflictLoadOrder.cs, OfficialPattern, tag v0.12.0): SFBGS plus
+# 3 hex digits, sfta plus 2 digits, their BlueprintShips- files, and BlueprintShips-Starfield.esm. It leaves such
+# plugins out of conflicts.json's mod list. is_official() doesn't use this: the sfta files are Creations that need
+# a Plugins.txt line. Only the comparison with a --conflicts file uses it (records._differs).
+MODCHECK_OFFICIAL_RE = re.compile(r"^(blueprintships-)?(sfbgs[0-9a-f]{3}|sfta[0-9]{2})\.esm\Z|^blueprintships-starfield\.esm\Z", re.I)
+
 
 # File names Starfield removes from Plugins.txt when it rewrites the file (tested in game, 2026-11-12).
 DROPPED_PLUGIN_NAMES = [
@@ -65,6 +71,12 @@ def is_official(name):
         return True
     m = BLUEPRINT_RE.match(n)
     return bool(m and OFFICIAL_RE.match(m.group(1)))
+
+
+def modcheck_official(name):
+    """True if sf-mod-check 0.12.0 counts the plugin official (and so leaves it out of conflicts.json's mod list)."""
+    n = (name or '').lower()
+    return bool(OFFICIAL_RE.match(n) or MODCHECK_OFFICIAL_RE.match(n))
 
 
 def bad_name(name):

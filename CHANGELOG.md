@@ -8,6 +8,7 @@ This release is a fix pass. It is not finished yet.
 
 - The recommender's move candidates now use the same "acts on" rule as the ratings and the merged-patch note (`records.acts_on`), not a second copy of it.
 - A pair without an `advice` key is simply not acted on, instead of raising an error.
+- With `--conflicts`, sfta01.esm to sfta06.esm (and any file sf-mod-check counts official, such as BlueprintShips-sfta03.esm) no longer give the false "made for another load order" caution. sf-mod-check leaves them out of its mod list, so they are not compared. A mod that is really missing, an extra mod or a changed order still gives the caution, and a mod named like `sfta01Fixes.esm` still counts. `--verbose` logs the plugins left out of the comparison.
 
 ### Docs
 

@@ -14,7 +14,7 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sf_load_order import model, records, sfmodcheck  # noqa: E402
+from sf_load_order import inputs, log, model, records, sfmodcheck  # noqa: E402
 from tests import fixtures  # noqa: E402
 
 FAKE = textwrap.dedent(r'''
@@ -320,6 +320,63 @@ class BlueprintOfficialFlag(unittest.TestCase):
             for bad in ("patch candidate", "pick a winner", "a patch that loads after it can", "a patch can keep"):
                 self.assertNotIn(bad, whole)
         self.assertTrue(any(f"{self.W} loads after every mod" in f.text for f in self.ctx.report.findings))
+
+
+class StalenessOfficialNames(unittest.TestCase):
+    """0.1.3: sf-mod-check counts sfta01 to sfta06 official and leaves them out of its mod list, so the staleness
+    comparison must not call them missing. A real difference still counts."""
+    SFTA = ["sfta01.esm", "sfta02.esm", "sfta03.esm", "sfta04.esm", "sfta05.esm", "sfta06.esm"]
+
+    def differs(self, ours, theirs):
+        """ours: names enabled here; theirs: (name, official) pairs in conflicts.json's loadOrder."""
+        t = tempfile.mkdtemp()
+        entries = [("Starfield.esm", True, [])] + [(n, o, ["Starfield.esm"]) for n, o in theirs]
+        p = fixtures.conflicts_json(os.path.join(t, "conflicts.json"), entries, lost=[])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        return records._differs(make_lo(ours), cj)
+
+    def test_sfta_listed_official_is_not_missing(self):
+        d = self.differs(["A.esm"] + self.SFTA, [(n, True) for n in self.SFTA] + [("A.esm", False)])
+        self.assertIsNone(d)
+
+    def test_sfta_left_out_of_the_file_is_not_missing(self):
+        self.assertIsNone(self.differs(["A.esm"] + self.SFTA, [("A.esm", False)]))
+
+    def test_name_rule_counts_when_the_flag_is_false(self):
+        self.assertIsNone(self.differs(["A.esm", "BlueprintShips-sfta03.esm"], [("A.esm", False)]))
+
+    def test_real_missing_mod_still_counts_next_to_sfta(self):
+        d = self.differs(["A.esm", "B.esm"] + self.SFTA, [(n, True) for n in self.SFTA] + [("A.esm", False)])
+        self.assertEqual(d, {"missing": ["b.esm"], "extra": [], "order": False})
+
+    def test_extra_and_order_still_count(self):
+        d = self.differs(["B.esm", "A.esm", "sfta01.esm"], [("sfta01.esm", True), ("A.esm", False),
+                                                           ("B.esm", False), ("C.esm", False)])
+        self.assertEqual(d, {"missing": [], "extra": ["c.esm"], "order": True})
+
+    def test_a_mod_named_like_sfta_is_not_official(self):
+        for n in ("sfta01Fixes.esm", "SFBGS003Fixes.esm", "sfta1.esm", "sfta001.esm", "BlueprintShips-MyMod.esm"):
+            self.assertFalse(inputs.modcheck_official(n), n)
+            d = self.differs(["A.esm", n], [("A.esm", False)])
+            self.assertEqual(d["missing"], [n.lower()], n)
+
+    def test_name_rule(self):
+        for n in ("sfta06.esm", "SFTA03.ESM", "SFBGS00D.esm", "BlueprintShips-sfta03.esm",
+                  "BlueprintShips-Starfield.esm", "Starfield.esm", "ShatteredSpace.esm"):
+            self.assertTrue(inputs.modcheck_official(n), n)
+        self.assertFalse(inputs.is_official("sfta01.esm"))  # is_official is unchanged
+
+    def test_verbose_log_names_what_is_left_out(self):
+        buf = io.StringIO()
+        log._sinks[:] = [buf]
+        try:
+            self.differs(["A.esm", "sfta01.esm"], [("A.esm", False)])
+            text = buf.getvalue()
+        finally:
+            log._sinks[:] = []
+        self.assertIn("left out of the load order comparison", text)
+        self.assertIn("sfta01.esm", text)
 
 
 class NaviCounts(unittest.TestCase):
