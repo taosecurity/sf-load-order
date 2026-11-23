@@ -19,6 +19,11 @@ What conflicts.json holds (sf-mod-check src\\ConflictReport.cs, 0.8.0) and what 
   itms, typeChanges, loadOrderProblems, Errors / UnreadableFields (records not compared), missingAssets,
   archiveLimitWarnings, loadOrder (plugins sf-mod-check loaded, with Official and Masters).
 
+Odd shapes (a hand-made or damaged file) never crash the run: a list that isn't a list holds nothing, an item that
+should be an object and isn't is skipped, a name or text that isn't text reads as "" (EditorID as None), names are
+trimmed, a flag counts only when it is JSON true, and a count that isn't a whole number is left out (_list, _objs,
+_text, _flag below). LoserValue and WinnerValue are kept as they are: nothing here reads them.
+
 What it can't tell: the file lists only losses. A plugin's own edits that nobody undoes, and edits two mods make
 the same way, aren't listed, so a plugin with no entry is "neutral" in the sense "nothing of it is lost and it
 undoes nothing", not proven to add only new records (that would take every override, which the file doesn't list).
@@ -119,11 +124,11 @@ def load(path):
 
 def label(f):
     """sf-mod-check's label for one lost field (ConflictImpact.IsMinor, then WinnerChangedToo)."""
-    lc = [x for x in (f.get("LoserChanges") or []) if isinstance(x, dict)]  # an item that isn't an object says nothing
-    df = [x for x in (f.get("Differences") or []) if isinstance(x, dict)]
-    if (lc and all(x.get("Minor") for x in lc)) or (df and all(x.get("Minor") for x in df)):
+    lc = _objs(f.get("LoserChanges"))  # an item that isn't an object says nothing
+    df = _objs(f.get("Differences"))
+    if (lc and all(_flag(x.get("Minor")) for x in lc)) or (df and all(_flag(x.get("Minor")) for x in df)):
         return NO_EFFECT
-    return CHOICE if f.get("WinnerChangedToo") else FORWARDABLE
+    return CHOICE if _flag(f.get("WinnerChangedToo")) else FORWARDABLE
 
 
 def weight(field, lab=None):
@@ -149,39 +154,74 @@ def _outcome(rtype, fields):
 
 
 def _text(v):
-    """A plugin name from conflicts.json, trimmed the same way as the loadOrder FileName (non-text gives "")."""
+    """A name or text from conflicts.json, trimmed the same way as the loadOrder FileName (non-text gives "")."""
     return v.strip() if isinstance(v, str) else ""
 
 
+def _list(v):
+    """A conflicts.json value that should be a list: anything else (an object, text, a number, true) holds nothing."""
+    return v if isinstance(v, list) else []
+
+
+def _objs(v):
+    """The object items of a conflicts.json list; a value that isn't a list, and items that aren't objects, are left
+    out."""
+    return [x for x in _list(v) if isinstance(x, dict)]
+
+
+def _flag(v):
+    """A conflicts.json flag: only JSON true counts (sf-mod-check writes true or false)."""
+    return v is True
+
+
+def _edid(v):
+    """An EditorID: trimmed text, or None when there is none or it isn't text."""
+    return _text(v) or None
+
+
+def _masters(e):
+    """An entry's master names, trimmed, blanks and non-text dropped, each once (any case), in their order."""
+    out, seen = [], set()
+    for m in _list(e.get("Masters")):
+        t = _text(m)
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
 def _load_entries(cj):
-    """conflicts.json's loadOrder entries that are objects with a usable file name (a string with text in it), each
-    with FileName trimmed. Anything else (not an object, no or empty or blank or non-text FileName) names no plugin
-    and is skipped, so it can't skew the load order shown, the ratings or the --conflicts comparison."""
+    """conflicts.json's loadOrder entries that are objects with a usable file name (a string with text in it), one per
+    plugin, with FileName trimmed, Masters cleaned (_masters) and Official a real flag (_flag). Anything else (not an
+    object, no or empty or blank or non-text FileName) names no plugin and is skipped, so it can't skew the load order
+    shown, the ratings or the --conflicts comparison. A plugin listed twice (any case or padding) is one entry in its
+    first place, with the masters of every copy, and counts as Official only when every copy says so (a stray flag
+    on one copy can't hide a mod). So the result can be shorter than the loadOrder list: don't index the two
+    together."""
     out, seen = [], {}
-    for e in (cj.get("loadOrder") or []):
-        if not isinstance(e, dict) or not isinstance(e.get("FileName"), str) or not e["FileName"].strip():
+    for e in _list(cj.get("loadOrder")):
+        if not isinstance(e, dict) or not _text(e.get("FileName")):
             continue
-        e = dict(e, FileName=e["FileName"].strip())
+        e = dict(e, FileName=_text(e["FileName"]), Masters=_masters(e), Official=_flag(e.get("Official")))
         first = seen.get(e["FileName"].lower())
         if first is None:
             seen[e["FileName"].lower()] = e
             out.append(e)
             continue
-        # a plugin listed twice (any case) is one plugin: it keeps its first place, and the entries' masters and
-        # Official flag are merged into it
-        ms = [m for x in (first, e) for m in (x.get("Masters") if isinstance(x.get("Masters"), list) else [])]
-        first["Masters"] = ms
-        first["Official"] = bool(first.get("Official") or e.get("Official"))
+        first["Masters"] = _masters({"Masters": first["Masters"] + e["Masters"]})
+        if first["Official"] != e["Official"]:
+            log.info(SECTION, f"conflicts.json lists {first['FileName']} more than once with different Official "
+                              "flags; it is counted as a mod (official only when every copy says so)")
+        first["Official"] = first["Official"] and e["Official"]
     return out
 
 
 def _closure(load_order):
     direct = {}
     for e in load_order:
-        ms = e.get("Masters")
-        ms = ms if isinstance(ms, list) else []  # a text or number Masters value names no masters
-        # master names are trimmed and blank ones dropped; entries naming the same plugin (any case) share one set
-        direct.setdefault(e["FileName"].lower(), set()).update(_text(m).lower() for m in ms if _text(m))
+        # _masters: a Masters value that isn't a list names none; names trimmed, blanks dropped. Entries naming the
+        # same plugin (any case) share one set (_load_entries already merges them; this keeps a raw list safe too).
+        direct.setdefault(e["FileName"].lower(), set()).update(m.lower() for m in _masters(e))
     out = {}
 
     def walk(n, seen):
@@ -222,30 +262,28 @@ def analyse(cj, lo):
             modof[p.lower()] = m.name
 
     lost = []
-    raw = cj.get("lost")
     # a non-object item names no record; a lost value that isn't a list holds none (load() already refuses it)
-    lost_in = [e for e in (raw if isinstance(raw, list) else []) if isinstance(e, dict)]
+    lost_in = _objs(cj.get("lost"))
     for e in lost_in:
         fields = []
-        for f in [f for f in (e.get("Fields") or []) if isinstance(f, dict)]:
+        for f in _objs(e.get("Fields")):
             lab = label(f)
             name = _text(f.get("Field")) or "?"
             fields.append({"field": name, "label": lab, "weight": weight(name, lab),
-                           "winner_changed_too": bool(f.get("WinnerChangedToo")),
+                           "winner_changed_too": _flag(f.get("WinnerChangedToo")),
                            "loser_value": f.get("LoserValue"), "winner_value": f.get("WinnerValue"),
-                           "differences": [_text(x.get("Text")) for x in (f.get("Differences") or [])
-                                           if isinstance(x, dict)]})  # non-object items are skipped, as in label()
+                           "differences": [_text(x.get("Text")) for x in _objs(f.get("Differences"))]})
         loser, winner = _text(e.get("Loser")), _text(e.get("Winner"))
-        lost.append({"fk": _text(e.get("formKey")), "type": _text(e.get("RecordType")), "edid": e.get("EditorID"),
+        lost.append({"fk": _text(e.get("formKey")), "type": _text(e.get("RecordType")), "edid": _edid(e.get("EditorID")),
                      "loser": loser, "winner": winner,
-                     "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
+                     "loser_official": _flag(e.get("LoserOfficial")) or loser.lower() in official,
                      "winner_official": winner.lower() in official,
                      "outcome": _outcome(_text(e.get("RecordType")), fields), "fields": fields})
 
     # sf-mod-check's WinnerOfficial on a lost entry (like the Official flag in loadOrder) makes the pair a BlueprintShips
     # pair, per winner name so any entry counts. That changes its wording and keeps it out of "order matters" and the
     # move candidates. winner_official, the ratings and official_undone keep the load order's own flags.
-    marked = {_text(e.get("Winner")).lower() for e in lost_in if e.get("WinnerOfficial")}
+    marked = {_text(e.get("Winner")).lower() for e in lost_in if _flag(e.get("WinnerOfficial"))}
     pairs, by_pair = [], {}
     for i, x in enumerate(lost):
         if x["loser_official"]:
@@ -292,23 +330,33 @@ def analyse(cj, lo):
         if x["loser_official"] and not x["winner_official"] and x["outcome"] == "navi":
             log.info(SECTION, f"{x['winner']} over {x['loser']} on the navmesh info map {x['fk']}: not counted as "
                               "undoing an official change (each plugin's copy lists only its own navmeshes)")
-    itms = [{"plugin": (x.get("Plugin") or ""), "fk": (x.get("formKey") or ""), "type": (x.get("RecordType") or ""),
-             "edid": x.get("EditorID")} for x in cj.get("itms", []) or []]
-    tcs = [{"fk": (x.get("formKey") or ""), "edid": x.get("EditorID"), "plugin": (x.get("Plugin") or ""),
-            "plugin_type": x.get("PluginType"), "first": x.get("First"), "first_type": x.get("FirstType"),
-            "text": x.get("finding")} for x in cj.get("typeChanges", []) or []]
+    # the other lists get the same care as lost: non-object items skipped, names trimmed, non-text read as ""
+    itms = [{"plugin": _text(x.get("Plugin")), "fk": _text(x.get("formKey")), "type": _text(x.get("RecordType")),
+             "edid": _edid(x.get("EditorID"))} for x in _objs(cj.get("itms"))]
+    tcs = [{"fk": _text(x.get("formKey")), "edid": _edid(x.get("EditorID")), "plugin": _text(x.get("Plugin")),
+            "plugin_type": _text(x.get("PluginType")) or None, "first": _text(x.get("First")),
+            "first_type": _text(x.get("FirstType")) or None, "text": _text(x.get("finding"))}
+           for x in _objs(cj.get("typeChanges"))]
     problems = []
-    for t in cj.get("loadOrderProblems", []) or []:
-        plugin, kind, seen_by = _problem(str(t))
-        problems.append({"text": str(t), "plugin": plugin, "kind": kind, "seen_by": seen_by})
+    for t in _list(cj.get("loadOrderProblems")):
+        t = _text(t)
+        if not t:
+            continue  # a line that isn't text, or is blank, says nothing
+        plugin, kind, seen_by = _problem(t)
+        problems.append({"text": t, "plugin": plugin or None, "kind": kind, "seen_by": seen_by})
+    uf = cj.get("UnreadableFields")
+    uf = {str(k): v for k, v in uf.items() if isinstance(v, int) and not isinstance(v, bool)} if isinstance(uf, dict) else {}
+    missing = [dict(m, plugin=_text(m.get("plugin")), kind=_text(m.get("kind")))
+               for m in _objs(cj.get("missingAssets"))]
 
-    res = {"load_order": order, "generated": cj.get("generated"), "lost": lost, "pairs": pairs,
+    res = {"load_order": order, "generated": _text(cj.get("generated")) or None, "lost": lost, "pairs": pairs,
            "official_undone": official_undone, "itms": itms, "type_changes": tcs, "problems": problems,
-           "not_compared": {"errors": list(cj.get("Errors") or []),
-                            "unreadable_fields": dict(cj.get("UnreadableFields") or {})},
-           "assets": {"checked": cj.get("assetsChecked"), "missing": list(cj.get("missingAssets") or []),
+           "not_compared": {"errors": [x for x in (_text(x) for x in _list(cj.get("Errors"))) if x],
+                            "unreadable_fields": uf},
+           "assets": {"checked": cj.get("assetsChecked"), "missing": missing,
                       "archive_counts": cj.get("archiveCounts"),
-                      "archive_limit_warnings": list(cj.get("archiveLimitWarnings") or [])},
+                      "archive_limit_warnings": [x for x in (_text(x) for x in _list(cj.get("archiveLimitWarnings")))
+                                                 if x]},
            "heavy": None}
     res["plugins"] = _ratings(lo, res, {n.lower() for n in order})
     res["differs"] = _differs(lo, cj)
