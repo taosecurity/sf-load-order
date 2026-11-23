@@ -388,6 +388,42 @@ def _staging_copy(lo, low):
     return None
 
 
+def _profile_mods(lo, modlist):
+    """When Data holds another profile, make lo.mods this profile's mods: the deployment record marked the deployed
+    profile's mods enabled (and added the ones with no plugin), and a staging folder found only through the record
+    (stagingPath, e.g. a staging folder on another drive) left the export's own mods without folders. The modlist
+    says which mods this profile enables; a mod it doesn't name stays enabled only when one of its plugins is."""
+    staging = (lo.files or {}).get("vortex_staging")
+    named, on = set(), {}
+    for e in modlist:
+        vid = e.get("vortexId")
+        if not isinstance(vid, (str, int)) or isinstance(vid, bool) or not str(vid).strip():
+            continue
+        key = str(vid).strip().lower()
+        named.add(key)
+        if e.get("enabled") is True:
+            on.setdefault(key, e)
+    plugin_on = {p.name.lower() for p in lo.plugins if p.enabled}
+    known = set()
+    for m in lo.mods or []:
+        key = (m.id or m.name).strip().lower()
+        known.add(key)
+        m.enabled = key in on if key in named else any(p.lower() in plugin_on for p in m.plugins or [])
+        if m.path is None and m.id:
+            m.path = paths.mod_folder(staging, m.id)
+    added = 0
+    for key, e in on.items():
+        if key in known:
+            continue
+        raw = str(e["vortexId"])
+        pl = [p for p in e.get("plugins") if isinstance(p, str)] if isinstance(e.get("plugins"), list) else []
+        lo.mods.append(Mod(raw.strip(), True, path=paths.mod_folder(staging, raw), plugins=pl, id=raw.strip()))
+        added += 1
+    log.info(SECTION, f"vortex profile: mods now follow the modlist: {sum(1 for m in lo.mods if m.enabled)} enabled "
+                      f"({added} added from the modlist), {sum(1 for m in lo.mods if m.enabled and m.path)} with a "
+                      "staging folder")
+
+
 def deployed_check(lo, modlist, plugins_export=None, live_plugins_txt=None):
     """{deployed, extra_plugins, extra_mods, missing_plugins[, plugins_txt_matches]} for a Vortex profile. The profile
     is the deployed one when Data holds no mod plugin it doesn't list and the deployment record names no mod it
@@ -450,13 +486,16 @@ def from_vortex_profile(args, env, drives, registry):
     log.info(SECTION, f"vortex profile {profile} {stamp}: deployed {vp['deployed']}, {len(vp['extra_plugins'])} extra "
                       f"plugin(s), {len(vp['extra_mods'])} extra mod(s), {len(vp['missing_plugins'])} missing")
     if vp["deployed"] is False:
+        _profile_mods(lo, modlist)
         # read the plugins this profile has but Data doesn't from their staging folders, so order and archive checks
         # describe this profile, not the deployed one
         moved = 0
         for p in lo.plugins:
             if p.path is None and not p.official:
                 p.path = _staging_copy(lo, p.name.lower())
-                moved += bool(p.path)
+                if p.path:
+                    p.name = os.path.basename(p.path)  # the export's lower case name, as the file is spelled
+                    moved += 1
         log.info(SECTION, f"vortex profile: {moved} plugin(s) read from staging folders instead of Data")
         n = len(vp["extra_plugins"]) + len(vp["extra_mods"])
         extra.insert(0, Finding(
@@ -468,7 +507,8 @@ def from_vortex_profile(args, env, drives, registry):
             fix=f"Deploy the profile {profile} in Vortex and run again.",
             data={"extra_plugins": vp["extra_plugins"][:50], "extra_mods": vp["extra_mods"][:50], "count": n,
                   "missing_plugins": len(vp["missing_plugins"])}))
-    if vp.get("plugins_txt_matches") is False:
+    if vp.get("plugins_txt_matches") is False and vp["deployed"] is not False:
+        # (when Data holds another profile, the game's Plugins.txt is that profile's, so a difference says nothing)
         extra.append(Finding("note", SECTION, f"The export's plugins file ({os.path.basename(files['plugins'])}) "
                              f"differs from the game's Plugins.txt ({live}), so the export is older than the last "
                              "load order change.", fix="Switch to the profile in Vortex once so the extension exports "

@@ -107,7 +107,7 @@ def candidate_parser():
     chk.add_argument("--sf-mod-check", metavar="EXE",
                      help="the sf-mod-check program, for --depth heavy (default: found on PATH)")
     _state_options(chk)
-    _output_options(p, "the report")
+    _output_options(p, "the report files")
     return p
 
 

@@ -192,11 +192,14 @@ given more than once) reads another folder, `--vortex-stamp YYYYMMDD-HHMMSS` pic
 yourself. The modlist gives each mod's version and archive name, and its rules when the export has them.
 
 With `--vortex-profile`, the tool also checks that the Data folder holds this profile: no mod plugin may be in Data
-that the profile doesn't list, and no profile mod may be missing. When it isn't (Vortex has another profile
-deployed, or hasn't deployed yet), one caution says so and replaces the "file wasn't found" problems, and the record
-and merged-patch checks are skipped, since they would describe another load order. The plugins that aren't in Data
-are read from the mod's staging folder, so the order and archive checks still describe the profile. The report notes
-when the export's plugin list differs from the game's own Plugins.txt (the export is older than the last change).
+that the profile doesn't list, and Vortex's deployment record may name no mod that the profile doesn't enable. When
+it isn't (Vortex has another profile deployed), one caution says so and replaces the "file wasn't found" problems,
+and the record and merged-patch checks are skipped, since they would describe another load order.
+
+The other checks still describe the profile: its mods are the ones its modlist enables, the plugins that aren't in
+Data are read from their mods' staging folders, and the loose-file check doesn't use Data's copies to say which mod
+wins. When the profile is the deployed one, the report notes when the export's plugin list differs from the game's
+own Plugins.txt (the export is older than the last change).
 
 Vortex writes mod plugin names in lower case in its export, so sf-load-order takes each name's real spelling from
 the files in Data (or staging). It never reads Vortex's own database.
@@ -406,7 +409,7 @@ doesn't change a plugin's rating. A pair that also has other records keeps its a
 
 The records an enabled plugin uses can point at files that aren't installed (not loose and not in an archive the game
 loads). The finding counts them by kind, for example "1 script(s), 1 model(s) and 2 texture(s) its records use
-aren't installed" (kinds: script, model, material, texture, sound). It is a caution when a script is missing, else
+aren't installed" (kinds: script, model, mesh, material, texture, sound; "mesh" is a `.mesh` geometry file). It is a caution when a script is missing, else
 a note. The kinds come from a conflicts.json whose entries name them (newer sf-mod-check versions do); an entry with no kind
 counts as a model.
 
@@ -577,8 +580,8 @@ New in 0.2.0 (nothing was renamed):
 | `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, winner, deployed, rule}`), `no_shared`, `unmatched` and `findings` (counts). |
 | `candidate` | `candidate` runs: `zips`, `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`) and `heavy`. `null` in a normal run. |
 
-The "files its records use aren't installed" findings count the files by kind (script, model, material, texture,
-sound) in their text, and their `data` has a `kinds` count.
+The "files its records use aren't installed" findings count the files by kind (script, model, mesh, material,
+texture, sound) in their text, and their `data` has a `kinds` count.
 
 Readers should ignore keys they don't know: new keys can appear in any version without a schema change.
 

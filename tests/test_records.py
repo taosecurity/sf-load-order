@@ -743,6 +743,15 @@ class MissingFileKinds(unittest.TestCase):
         self.assertNotIn("script", b.text)
         self.assertIn("C.esm: 1 flipbook(s) its records", c.text)  # a kind this tool doesn't know yet
 
+    def test_mesh_kind_wording(self):
+        """Bug hunt 2026-11-23: sf-mod-check 0.15.0 writes kind "mesh" for .mesh geometry; the text names it plainly
+        and keeps the kind word in the data."""
+        fs = self.findings({"missingAssets": [self.m("A.esm", "model", "Meshes/a.nif")],
+                            "missingFiles": [self.m("A.esm", "mesh", "Geometries/a.mesh"),
+                                             self.m("A.esm", "mesh", "Geometries/b.mesh")]})
+        self.assertIn("A.esm: 1 model(s) and 2 .mesh geometry file(s) its records use", fs["A.esm"].text)
+        self.assertEqual(fs["A.esm"].data["kinds"], {"model": 1, "mesh": 2})
+
     def test_old_file_without_missing_files_and_no_kind(self):
         fs = self.findings({"missingAssets": [{"plugin": "A.esm", "path": "Meshes/a.nif"},
                                               self.m("A.esm", "Script", "Scripts/a.pex")]})

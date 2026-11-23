@@ -209,6 +209,34 @@ class Deployed(Base):
         self.assertEqual(modc.path, os.path.join(self.staging, "modc-3", "ModC.esm"))
         self.assertEqual(modc.masters, ["Starfield.esm"])
 
+    def test_other_profile_mods_follow_the_modlist(self):
+        """Bug hunt 2026-11-23: with the staging folder known only from the deployment record (no --vortex-staging,
+        no default), a profile that isn't deployed still reads its own plugins from staging, and its mods are the
+        modlist's enabled ones, not the deployed profile's."""
+        os.makedirs(os.path.join(self.staging, "modf-6", "textures"))
+        with open(os.path.join(self.staging, "modf-6", "textures", "f.dds"), "wb") as f:
+            f.write(b"F")
+        self.export_set("20261102-100000", [("Starfield.esm", True), ("ModA.esm", True, "moda-1"),
+                                            ("ModC.esm", True, "modc-3")],
+                        [("moda-1", True, ["ModA.esm"]), ("modc-3", True, ["ModC.esm"]), ("modf-6", True, []),
+                         ("modb-2", False, ["ModB.esp"])])
+        with open(os.path.join(self.data, "vortex.deployment.starfield-data-folder.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"stagingPath": self.staging, "files": [
+                {"relPath": "ModA.esm", "source": "moda-1"}, {"relPath": "ModB.esp", "source": "modb-2"},
+                {"relPath": "textures\\e.dds", "source": "mode-5"}]}, f)
+        fixtures.plugins_txt(paths.default_plugins_txt(self.env), [("ModA.esm", True), ("ModB.esp", True)])
+        lo = self.ok("--vortex-profile", PROFILE, "--vortex-exports", self.exports, "--data", self.data)
+        self.assertIs(lo._vortex_profile["deployed"], False)
+        modc = next(p for p in lo.plugins if p.name == "ModC.esm")
+        self.assertEqual(modc.path, os.path.join(self.staging, "modc-3", "ModC.esm"))
+        on = {m.id: m.path for m in lo.mods if m.enabled}
+        self.assertEqual(sorted(on), ["moda-1", "modc-3", "modf-6"])
+        self.assertEqual(on["modf-6"], os.path.join(self.staging, "modf-6"))
+        # the game's Plugins.txt is the deployed profile's, so its difference isn't reported
+        self.assertIs(lo._vortex_profile["plugins_txt_matches"], False)
+        self.assertFalse(any("differs from the game's Plugins.txt" in f.text for f in inputs.findings(lo)))
+
     def test_deployment_record_naming_a_mod_not_enabled(self):
         self.deployed_set()
         with open(os.path.join(self.data, "vortex.deployment.starfield-data-folder.json"), "w",
@@ -263,6 +291,23 @@ class Run(Base):
         for section in ("patches", "records"):
             self.assertEqual(d["sections"][section]["status"], "skipped")
             self.assertIn("another profile", d["sections"][section]["why"])
+
+    def test_other_profile_loose_pairs_ignore_data(self):
+        """Bug hunt 2026-11-23: when Data holds another profile, its loose copies don't say which of this profile's
+        copies wins."""
+        for mod, body in (("moda-1", b"A"), ("modc-3", b"C")):
+            os.makedirs(os.path.join(self.staging, mod, "textures"))
+            with open(os.path.join(self.staging, mod, "textures", "t.dds"), "wb") as f:
+                f.write(body)
+        os.makedirs(os.path.join(self.data, "textures"), exist_ok=True)
+        with open(os.path.join(self.data, "textures", "t.dds"), "wb") as f:
+            f.write(b"A")
+        self.other_set()
+        report, d = self.run_tool()
+        pair = [f for f in d["findings"] if f["section"] == "loose" and "both ship" in f["text"]]
+        self.assertEqual(len(pair), 1, [f["text"] for f in d["findings"]])
+        self.assertNotIn("Data holds", pair[0]["text"])
+        self.assertEqual(pair[0]["data"]["in_data"], {})
 
     def test_deployed_runs_patches(self):
         self.deployed_set()

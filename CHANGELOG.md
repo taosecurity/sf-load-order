@@ -16,7 +16,7 @@ The caution reads: "This build overrides 2 file(s) of CoreTools, which it is bui
 
 ### What's new
 
-- `--vortex-profile NAME` reads the newest export set of a Vortex profile (modlist and load order) from the Modlist Backup extension's folder, with `--vortex-exports`, `--vortex-stamp` and `--vortex-modlist`. It checks that Data holds that profile; if not, one caution replaces the per-plugin "file wasn't found" problems, and the record and merged-patch checks are skipped. New report.json key `vortex_profile`.
+- `--vortex-profile NAME` reads the newest export set of a Vortex profile (modlist and load order) from the Modlist Backup extension's folder, with `--vortex-exports`, `--vortex-stamp` and `--vortex-modlist`. It checks that Data holds that profile; if not, one caution replaces the per-plugin "file wasn't found" problems, and the record and merged-patch checks are skipped. The other checks still describe the profile: its mods come from its modlist and its plugins from their staging folders. New report.json key `vortex_profile`.
 - A "Vortex mod rules" section (`rules` in report.json): for each pair of mods that ship different copies of a loose file, who won; with the rules in the export (Modlist Backup 0.6.2 or later), a caution for a real clash with no rule, and notes for rules that order nothing.
 - Merged patches: the Patches section runs `sf-mod-check patch check` (sf-mod-check 0.15.0 or newer, depth medium or heavy) on each `patch-sources.json` found in Data, beside the enabled plugins or in Vortex staging, or named with the new `--patch-sources`. New report.json key `patches`.
 - `--clashes` entries may carry `settled_if_current` (a plugin and its SHA-256): the clash is settled while that build is installed.

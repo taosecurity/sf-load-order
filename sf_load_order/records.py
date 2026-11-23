@@ -480,7 +480,8 @@ def navi_note(p, lost):
                    data={"advice": "navi", "records": [lost[i]["fk"] for i in p["navi"]][:50]})
 
 
-KIND_ORDER = ("script", "model", "material", "texture", "sound")
+KIND_ORDER = ("script", "model", "mesh", "material", "texture", "sound")
+KIND_WORDS = {"mesh": ".mesh geometry file"}  # sf-mod-check 0.15.0's kind for .mesh files ("1 mesh(s)" read badly)
 
 
 def missing_kinds(ms):
@@ -497,7 +498,7 @@ def missing_kinds(ms):
 
 
 def _kinds_text(kinds):
-    bits = [f"{c} {k}(s)" for k, c in kinds.items()]
+    bits = [f"{c} {KIND_WORDS.get(k, k)}(s)" for k, c in kinds.items()]
     return bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + " and " + bits[-1]
 
 

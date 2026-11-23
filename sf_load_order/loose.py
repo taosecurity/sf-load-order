@@ -279,6 +279,10 @@ def analyse(lo, cache, arc_cache, arc_result):
             return None
 
     dsub, dtop = data_files(data) if data else ({}, {})
+    # a Vortex profile that isn't the deployed one (inputs.from_vortex_profile): Data's copies are another profile's,
+    # so they say nothing about which of this profile's copies wins
+    other = (getattr(lo, "_vortex_profile", None) or {}).get("deployed") is False
+    mine = {} if other else dsub
     out_paths, pairs = [], {}
     for p, who in sorted(ships.items()):
         if len(who) < 2:
@@ -286,7 +290,7 @@ def analyse(lo, cache, arc_cache, arc_result):
         facts = [(mn, info(full)) for mn, full in who]
         sig = {mn: (f["crc"], f["size"]) if f else None for mn, f in facts}
         here = None
-        if not mo2 and p in dsub:
+        if not mo2 and p in mine:
             d = info(dsub[p])
             here = (d["crc"], d["size"]) if d else None
         if mo2:
@@ -297,7 +301,7 @@ def analyse(lo, cache, arc_cache, arc_result):
         known = [s for s in sig.values() if s is not None]
         identical = len(known) == len(who) and len(set(known)) == 1
         out_paths.append({"path": p, "mods": [mn for mn, _ in who], "winner": winner, "identical": identical,
-                          "in_data": p in dsub, "data_matches_none": here is not None and here not in known})
+                          "in_data": p in mine, "data_matches_none": here is not None and here not in known})
         for i in range(len(who)):
             for j in range(i + 1, len(who)):
                 a, b = who[i][0], who[j][0]
@@ -333,7 +337,7 @@ def analyse(lo, cache, arc_cache, arc_result):
     for p, who in ships.items():
         if mo2:
             view[p] = who[-1]
-        elif p in dsub:  # Vortex deployed it: name the mod whose copy Data holds
+        elif p in mine:  # Vortex deployed it: name the mod whose copy Data holds
             d = info(dsub[p])
             mt = None
             if d:
