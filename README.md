@@ -584,7 +584,7 @@ New in 0.2.0 (nothing was renamed):
 |---|---|
 | `vortex_profile` | With `--vortex-profile`: `name`, `stamp`, `files` (modlist, loadorder, plugins) and the deployed check (`deployed`, `extra_plugins`, `extra_mods`, `missing_plugins`, `plugins_txt_matches`). `null` for other sources. |
 | `patches` | Merged patches: a list of `{patch, manifest, state, level, rebuild, reasons, checked, result, findings}` (`state` is `up to date`, `rebuild`, `not enabled` or `cannot check`; `smc_state` is sf-mod-check's own word), `[]` when no manifest was found, or `{"not_checked": why}`. |
-| `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, winner, deployed, rule}`), `no_shared`, `unmatched` and `findings` (counts). |
+| `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, differ, unknown, winner, deployed, deployed_from, rule, overrides, sample}`; `deployed_from` is `record`, `data` or null), `no_shared`, `unmatched` and `findings` (counts). |
 | `candidate` | `candidate` runs: `zips` (each with `path`, `files`, `loose`, `archives`, `plugins`, `fomod` and `not_compared`), `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`) and `heavy`. `null` in a normal run. |
 
 The "files its records use aren't installed" findings count the files by kind (script, model, mesh, material,

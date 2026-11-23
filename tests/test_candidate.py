@@ -320,6 +320,18 @@ class Heavy(Setup):
         self.assertFalse(any("nothing to clean" in t for t in texts))
         self.assertTrue(any("couldn't check Build.esm: its output couldn't be read" in t for t in texts))
 
+    def test_other_profile_deployed(self):
+        from types import SimpleNamespace
+        found = []
+        rep = SimpleNamespace(vortex_profile={"name": "B", "deployed": False}, add=found.append)
+        ctx = SimpleNamespace(args=SimpleNamespace(), load_order=SimpleNamespace(data=self.data), report=rep)
+        with mock.patch.object(sfmodcheck, "find") as find, mock.patch.object(sfmodcheck, "run_check") as rc:
+            out = candidate._heavy(ctx, {"plugins": [{"name": "Build.esm", "copy": "x", "masters": []}]}, rep)
+        find.assert_not_called()
+        rc.assert_not_called()
+        self.assertIn("another profile", out["why"])
+        self.assertTrue(any("Deploy B in Vortex" in (f.fix or "") for f in found))
+
     def test_no_program(self):
         with mock.patch.object(sfmodcheck, "find", return_value=(None, None)):
             _code, _out, j = self.run_candidate("--depth", "heavy")

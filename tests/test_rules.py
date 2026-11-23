@@ -102,7 +102,14 @@ class NoRules(unittest.TestCase):
     def test_without_a_record_the_copy_in_data_decides(self):
         with tempfile.TemporaryDirectory() as d:
             _ctx, _st, found = run(d, [entry(m) for m in MODS], record=False)
-        self.assertIn("Vortex deployed S2's copies", next(f.text for f in found if "S1 and S2" in f.text))
+        t = next(f.text for f in found if "S1 and S2" in f.text)
+        self.assertIn("Vortex deployed S2's copies (the copies in Data)", t)
+        self.assertNotIn("deployment record", t)
+
+    def test_with_a_record_the_note_names_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            _ctx, _st, found = run(d, [entry(m) for m in MODS])
+        self.assertIn("(Vortex's deployment record)", next(f.text for f in found if "S1 and S2" in f.text))
 
     def test_not_deployed_profile_names_no_winner(self):
         with tempfile.TemporaryDirectory() as d:
@@ -153,6 +160,19 @@ class WithRules(unittest.TestCase):
             _ctx, _st, found = run(d, [entry("S1", overrides=["textures/t.dds"])] + [entry(m) for m in MODS[1:]])
         self.assertEqual(len([f for f in found if f.level == "caution"]), 1)
 
+    def test_a_third_mods_copy_doesnt_count_against_a_pair(self):
+        # A and B ship the same x.dds (C's differs) and differ only on y.nif, which A's fileOverrides cover
+        loose_result = {
+            "paths": [{"path": "textures\\x.dds", "mods": ["A", "B", "C"], "identical": False},
+                      {"path": "meshes\\y.nif", "mods": ["A", "B"], "identical": False}],
+            "pairs": [{"mods": ["A", "B"], "files": 2, "same": 1, "differ": 1, "unknown": 0, "advice": "differ",
+                       "in_data": {}, "not_same": ["meshes\\y.nif"], "sample": ["meshes\\y.nif"]}]}
+        lo = model.LoadOrder(source="vortex", mods=[])
+        r = rules.analyse(lo, [entry("A", rules_=[], overrides=["meshes/y.nif"]), entry("B"), entry("C")],
+                          loose_result)
+        self.assertTrue(r["pairs"][0]["overrides"], r["pairs"][0])
+        self.assertFalse(any("A and B" in f.text for f in rules._findings(None, r, True) if f.level == "caution"))
+
     def test_rule_over_identical_copies_and_over_nothing_shared(self):
         with tempfile.TemporaryDirectory() as d:
             _ctx, _st, found = run(d, [entry("S1"), entry("S2", [rule("after", id="S1")]),
@@ -183,6 +203,8 @@ class Skips(unittest.TestCase):
         self.assertEqual(rules._differ_words({"differ": 2, "paths": 3}), "ship 2 loose file(s) with different copies")
         self.assertEqual(rules._differ_words({"differ": 0, "paths": 3}),
                          "share 3 loose file(s) that couldn't be compared")
+        self.assertEqual(rules._differ_words({"differ": 0, "paths": 50, "unknown": 2}),
+                         "share 2 loose file(s) that couldn't be compared")
 
     def test_pair_that_couldnt_be_compared_isnt_a_real_clash(self):
         r = {"has_rules": True, "pairs": [{"mods": ["A", "B"], "same": False, "rule": [], "overrides": [],

@@ -307,12 +307,14 @@ def analyse(lo, cache, arc_cache, arc_result):
                 a, b = who[i][0], who[j][0]
                 key = (a, b) if rank[a] < rank[b] else (b, a)
                 pr = pairs.setdefault(key, {"mods": list(key), "files": 0, "same": 0, "differ": 0, "unknown": 0,
-                                            "sample": [], "in_data": defaultdict(int), "nomatch": 0})
+                                            "sample": [], "in_data": defaultdict(int), "nomatch": 0,
+                                            "not_same": []})
                 pr["files"] += 1
                 sa, sb = sig[a], sig[b]
                 how = "unknown" if sa is None or sb is None else ("same" if sa == sb else "differ")
                 pr[how] += 1
                 if how != "same":
+                    pr["not_same"].append(p)  # this pair's own differing or unreadable paths (rules reads them)
                     if len(pr["sample"]) < SAMPLES:
                         pr["sample"].append(p)
                     if here is not None:
@@ -413,7 +415,7 @@ def _findings(report, lo, r):
                 text += f" {pr['nomatch']} file(s) in Data match neither mod's copy (edited or left over)."
             fix = ("Check the conflict icon on Vortex's Mods page and set which mod loads after the other, then "
                    "deploy.")
-        report.add(Finding("caution", SECTION, text, fix, [], {k: pr[k] for k in pr if k not in ("advice",)}))
+        report.add(Finding("caution", SECTION, text, fix, [], {k: pr[k] for k in pr if k not in ("advice", "not_same")}))
     if quiet:
         names = [f"{pr['mods'][0]} / {pr['mods'][1]} ({pr['files']})" for pr in quiet]
         report.add(Finding("note", SECTION, f"{len(quiet)} pair(s) of mods ship the same loose files with identical "

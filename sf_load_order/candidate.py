@@ -401,6 +401,12 @@ def _heavy(ctx, build, report):
     """sf-mod-check check on each build plugin. Returns {plugin: run_check dict} (or {"why": ...})."""
     args, lo = ctx.args, ctx.load_order
     add = report.add
+    vp = getattr(ctx.report, "vortex_profile", None) or {}
+    if vp.get("deployed") is False:  # the check reads the masters in Data, which are another profile's
+        why = f"Data holds another profile, not {vp.get('name')}"
+        add(Finding("caution", SECTION, f"The cleaning check (--depth heavy) didn't run: {why}, and it reads the "
+                    "build's masters there.", fix=f"Deploy {vp.get('name')} in Vortex and run again."))
+        return {"why": why}
     prog, err = sfmodcheck.find(args)
     if not err and prog is None:
         err = (f"sf-mod-check wasn't found on PATH. Fix: give --sf-mod-check the path of sf-mod-check.exe "

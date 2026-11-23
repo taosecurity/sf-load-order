@@ -33,6 +33,7 @@ from . import log, vortex_deploy
 from .model import Finding
 
 SECTION = "rules"
+SOURCE_WORDS = {"record": "Vortex's deployment record", "data": "the copies in Data"}
 ORDER_TYPES = ("before", "after")
 LIST = 10  # names shown in one grouped note
 
@@ -126,12 +127,13 @@ def _overrides(modlist):
 
 
 def _deployed(pr, differ_paths, dep, deployed_profile):
-    """(winner or None, {mod: count}) for a pair: whose copies of the differing paths Vortex deployed. The deployment
-    record decides; without one, the copy Data holds (the loose check's in_data)."""
+    """(winner or None, {mod: count}, source) for a pair: whose copies of the differing paths Vortex deployed. The
+    deployment record decides (source "record"); without one, the copy Data holds (the loose check's in_data; source
+    "data"). source is None when neither says."""
     if deployed_profile is False:
-        return None, {}
+        return None, {}, None
     a, b = pr["mods"]
-    counts = {}
+    counts, source = {}, "record"
     if dep is not None:
         for p in differ_paths:
             o = _key(vortex_deploy.owner(dep, p))
@@ -139,25 +141,12 @@ def _deployed(pr, differ_paths, dep, deployed_profile):
                 if o and o == _key(m):
                     counts[m] = counts.get(m, 0) + 1
     if not counts:
-        counts = {m: n for m, n in (pr.get("in_data") or {}).items() if n}
+        counts, source = {m: n for m, n in (pr.get("in_data") or {}).items() if n}, "data"
+    if not counts:
+        source = None
     if len(counts) == 1:
-        return next(iter(counts)), counts
-    return None, counts
-
-
-def _pair_paths(loose_result):
-    """{(a lower, b lower): ([shared paths], [paths whose copies aren't all identical])}."""
-    out = {}
-    for x in loose_result.get("paths") or []:
-        ms = [_key(m) for m in x.get("mods") or []]
-        for i in range(len(ms)):
-            for j in range(i + 1, len(ms)):
-                k = frozenset((ms[i], ms[j]))
-                allp, diff = out.setdefault(k, ([], []))
-                allp.append(x["path"])
-                if not x.get("identical"):
-                    diff.append(x["path"])
-    return out
+        return next(iter(counts)), counts, source
+    return None, counts, source
 
 
 def _deployed_words(winner, counts):
@@ -173,19 +162,19 @@ def analyse(lo, modlist, loose_result, deployed_profile=None):
     with_rules = has_rules(modlist)
     edges, unmatched = ordering(modlist) if with_rules else ({}, [])
     overrides = _overrides(modlist) if with_rules else {}
-    per_pair = _pair_paths(loose_result)
     pairs, seen = [], set()
     for pr in loose_result.get("pairs") or []:
         a, b = pr["mods"]
         k = frozenset((_key(a), _key(b)))
         seen.add(k)
-        allp, diff = per_pair.get(k, ([], []))
-        winner, counts = _deployed(pr, diff, dep, deployed_profile)
+        diff = [vortex_deploy.norm(p) for p in pr.get("not_same") or []]  # this pair's own two copies differ or can't be read
+        winner, counts, source = _deployed(pr, diff, dep, deployed_profile)
         rule = edges.get(k)
         covered = bool(diff) and all(p in overrides.get(_key(a), set()) | overrides.get(_key(b), set())
                                      for p in diff)
-        pairs.append({"mods": [a, b], "paths": pr.get("files", len(allp)), "same": pr.get("advice") == "same",
-                      "differ": pr.get("differ", 0), "winner": winner, "deployed": counts, "rule": rule,
+        pairs.append({"mods": [a, b], "paths": pr.get("files", 0), "same": pr.get("advice") == "same",
+                      "differ": pr.get("differ", 0), "unknown": pr.get("unknown", 0), "winner": winner,
+                      "deployed": counts, "deployed_from": source, "rule": rule,
                       "overrides": covered, "sample": pr.get("sample") or []})
     folders = {_key(m.id or m.name) for m in lo.mods or [] if m.enabled and m.path and os.path.isdir(m.path)}
     no_shared = []
@@ -202,7 +191,7 @@ def analyse(lo, modlist, loose_result, deployed_profile=None):
 def _differ_words(p):
     if p["differ"]:
         return f"ship {p['differ']} loose file(s) with different copies"
-    return f"share {p['paths']} loose file(s) that couldn't be compared"
+    return f"share {p.get('unknown') or p['paths']} loose file(s) that couldn't be compared"
 
 
 def _rule_words(rs):
@@ -221,7 +210,8 @@ def _findings(report, r, deployed_profile):
             dw = _deployed_words(p["winner"], p["deployed"])
             out.append(Finding("note", SECTION,
                                f"Mods {a} and {b} {_differ_words(p)}. "
-                               + (f"{dw} (Vortex's deployment record)." if dw else
+                               + (f"{dw} ({SOURCE_WORDS.get(p.get('deployed_from'), 'as far as can be told')})."
+                                  if dw else
                                   "Which copies Vortex deployed isn't known." if not not_here else "")
                                + not_here, None, [], dict(p)))
         out.append(Finding("note", SECTION, NO_RULES,
