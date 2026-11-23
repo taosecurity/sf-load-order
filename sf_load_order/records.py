@@ -574,20 +574,22 @@ def add_findings(ctx, res, source):
         if not real:
             continue
         offs = sorted({x["loser"] for x in xs})
-        recs = sorted({x["fk"] for x in xs})
+        recs = sorted({x["fk"] for x in xs if x["fk"]})
+        n = len(recs) + sum(1 for x in xs if not x["fk"])  # an entry with no usable formKey counts on its own
         add(Finding("caution" if any(f["weight"] >= 3 for f in real) else "note", SECTION,
-                    f"{w} undoes official changes from {', '.join(offs)} on {len(recs)} record(s) (fields: "
+                    f"{w} undoes official changes from {', '.join(offs)} on {n} record(s) (fields: "
                     f"{_names(real)}): it wasn't built with them as masters.",
                     fix=(f"Look for an update of {w} made for the current game and DLCs, or a patch that carries the "
                          "official changes forward. Moving it won't help: official files always load first."),
                     plugins=[w] + offs, data={"records": recs[:50]}))
 
     for t in res["type_changes"]:
-        fk = t["fk"] or "a record"  # formKey missing or not text
+        name = t["edid"] or t["fk"]
+        rec = f"record {name}" if name else "a record"  # EditorID and formKey both missing or not text
         if t["plugin"] and t["first"]:
-            said = f"{t['plugin']} gives {fk} a different record type than {t['first']}."
+            said = f"{t['plugin']} gives {rec} a different record type than {t['first']}."
         else:  # analyse keeps a type change that names at least one of the two
-            said = f"{t['plugin'] or t['first']} and another plugin give {fk} different record types."
+            said = f"{t['plugin'] or t['first']} and another plugin give {rec} different record types."
         add(Finding("problem", SECTION, t["text"] or said,
                     fix=("The game keeps whichever record loads first and drops the other. Tell the mod's author: "
                          "the record needs its own FormID (xEdit: right-click > Change FormID)."),

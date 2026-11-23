@@ -228,6 +228,20 @@ class OnlyWrittenListed(unittest.TestCase):
         self.check_without("html")
 
 
+class ItemText(unittest.TestCase):
+    def test_lost_record_named_like_the_note(self):
+        """Opus round 6: a lost record with no EditorID or form key reads "a record" (or "a <type> record") in the
+        report's record list, as in the merged-patch note above it; a plugin pair (no fk or edid key) is unchanged."""
+        it = report._item_text_
+        self.assertEqual(it({"fk": "", "edid": "", "type": "", "loser": "A.esm", "winner": "B.esm"}),
+                         "a record: A.esm loses to B.esm")
+        self.assertEqual(it({"fk": "", "edid": "", "type": "Keyword", "loser": "A.esm", "winner": "B.esm"}),
+                         "a Keyword record: A.esm loses to B.esm")
+        self.assertEqual(it({"fk": "000100:A.esm", "edid": "", "type": "Npc", "loser": "A.esm",
+                             "winner": "B.esm"}), "Npc 000100:A.esm: A.esm loses to B.esm")
+        self.assertEqual(it({"loser": "A.esm", "winner": "B.esm"}), "A.esm loses to B.esm")
+
+
 class EndToEnd(unittest.TestCase):
     def test_light_run_writes_all_three(self):
         with tempfile.TemporaryDirectory() as t:

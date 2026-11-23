@@ -589,10 +589,40 @@ class StalenessOfficialNames(unittest.TestCase):
         # Opus round 4: no formKey reads "a record", not a blank
         self.assertIn("A.esm gives a record a different record type than B.esm.", texts)
         self.assertFalse([t for t in texts if "  " in t])
-        self.assertIn("B.esm and another plugin give 1 different record types.", texts)
-        self.assertIn("A.esm and another plugin give 2 different record types.", texts)
-        tc = [f for f in ctx.report.findings if "and another plugin give 2" in f.text][0]
+        # Opus round 6: the form key is labeled "record", so a short key doesn't read as a count
+        self.assertIn("B.esm and another plugin give record 1 different record types.", texts)
+        self.assertIn("A.esm and another plugin give record 2 different record types.", texts)
+        tc = [f for f in ctx.report.findings if "and another plugin give record 2" in f.text][0]
         self.assertEqual(tc.plugins, ["A.esm"])
+
+    def test_type_change_text_prefers_editor_id(self):
+        """Opus round 6: the fallback type-change text names the record by its EditorID when it has one."""
+        base = [{"FileName": "A.esm"}, {"FileName": "B.esm"}]
+        lo = make_lo(["A.esm", "B.esm"])
+        res = records.analyse({"loadOrder": base, "lost": [],
+                               "typeChanges": [{"Plugin": "A.esm", "First": "B.esm", "formKey": "000100:A.esm",
+                                                "EditorID": "MyRec"}]}, lo)
+        with tempfile.TemporaryDirectory() as t:
+            ctx = ctx_for(t, lo)
+            records.add_findings(ctx, res, "file")
+        self.assertIn("A.esm gives record MyRec a different record type than B.esm.",
+                      [f.text for f in ctx.report.findings])
+
+    def test_official_undone_counts_nameless_records(self):
+        """Opus round 6: three lost entries with no usable formKey are three records, not one blank key."""
+        base = [{"FileName": "Starfield.esm", "Official": True}, {"FileName": "W.esm"}]
+        lo = make_lo(["W.esm"])
+        f = [field("FULL")]
+        res = records.analyse({"loadOrder": base,
+                               "lost": [lost(fk, "Starfield.esm", "W.esm", f, loser_official=True, edid=None)
+                                        for fk in (None, 5, "")]}, lo)
+        with tempfile.TemporaryDirectory() as t:
+            ctx = ctx_for(t, lo)
+            records.add_findings(ctx, res, "file")
+        und = [x for x in ctx.report.findings if "undoes official changes" in x.text]
+        self.assertEqual(len(und), 1)
+        self.assertIn("on 3 record(s)", und[0].text)
+        self.assertEqual(und[0].data["records"], [])
 
     def test_other_lists_with_odd_shapes_are_harmless(self):
         """Opus rerun round 1: loadOrderProblems, Errors, UnreadableFields, missingAssets and archiveLimitWarnings

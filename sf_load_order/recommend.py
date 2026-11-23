@@ -91,13 +91,15 @@ def plain(fields):
     return out
 
 
-def _record_name(r):
-    """A lost record for the merged-patch note: "<type> <EditorID or form key>", or "a <type> record" / "a record"
-    when conflicts.json gave no usable EditorID or form key (records.analyse keeps those as "")."""
-    name = r["edid"] or r["fk"]
+def record_name(r):
+    """A lost record for the merged-patch note and its record list in the report: "<type> <EditorID or form key>",
+    or "a <type> record" / "a record" when conflicts.json gave no usable EditorID or form key (records.analyse
+    keeps those as ""; a missing key reads the same)."""
+    name = r.get("edid") or r.get("fk")
+    kind = r.get("type") or ""
     if name:
-        return f"{r['type']} {name}" if r["type"] else name
-    return f"a {r['type']} record" if r["type"] else "a record"
+        return f"{kind} {name}" if kind else name
+    return f"a {kind} record" if kind else "a record"
 
 
 # ---------- ordering ----------
@@ -450,7 +452,7 @@ def run(ctx):
         remaining.sort(key=lambda r: (-r["weight"], r["edid"] or r["fk"]))
     if remaining:
         top = remaining[:8]
-        names = "; ".join(f"{_record_name(r)} ({', '.join(r['fields'][:4])}: "
+        names = "; ".join(f"{record_name(r)} ({', '.join(r['fields'][:4])}: "
                           f"{r['loser']} loses to {r['winner']})" for r in top)
         quest = [r for r in remaining if QUEST in r["fields"]]
         imp = (f" The important part: {len(quest)} location(s) where one mod's {QUEST} are dropped, which can stop a "
