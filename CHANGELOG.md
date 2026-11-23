@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.1 (2026-11-23)
+
+This release fixes the docs. It changes no behavior, option or report.json key.
+
+### Example
+
+The `candidate` Example below is the one from 0.2.0 with its RESULT line corrected: it ends in "1 note(s)", because the note that names the older copy left out is counted. The same run, rebuilt from the made-up files:
+
+    > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
+    sf-load-order 0.2.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+
+### Fixes
+
+- The `candidate` Example's RESULT line said "0 note(s)" in the README and the CHANGELOG; the release prints "1 note(s)".
+- The README's `.pex` row for "Checking a new mod build" pointed at "the row below", which is no longer the row it meant. It now names the row.
+- The README's Install section named 0.1.3; it now names 0.2.1.
+
+### Docs
+
+- A test, `tests\test_doc_examples.py`, runs the `candidate` Example and fails when the RESULT line in the README or the CHANGELOG differs from what the run prints.
+
 ## 0.2.0 (2026-11-23)
 
 This release adds the checks that used to need a private page builder: Vortex profiles by name with a check that the profile is the deployed one, a Vortex mod rules check, merged patches checked with `sf-mod-check patch check`, `settled_if_current` in the clashes file, per-kind counts of missing files, and `sf-load-order candidate <zip>` for a new mod build. No option or report.json key was renamed or removed; new keys were added. A normal report now has nine sections (the new one is "Vortex mod rules", after "Loose files").
@@ -10,9 +32,9 @@ This is a real run on a small made-up load order: ShipMod.esm 0.3.0 is a new bui
 
     > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
     sf-load-order 0.2.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
-    RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
+    RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 
-The caution reads: "This build overrides 2 file(s) of CoreTools, which it is built on, with different content (loose): meshes\crate.nif, scripts\shared.pex." It is a caution, not a problem, because overriding the mod it is built on is usual. A script or a file shared with a mod the build isn't built on would be a problem.
+The note names the older ShipMod that was left out: "1 installed mod(s) or plugin(s) were left out as this build's own older copy ...: OldShipMod." The caution reads: "This build overrides 2 file(s) of CoreTools, which it is built on, with different content (loose): meshes\crate.nif, scripts\shared.pex." It is a caution, not a problem, because overriding the mod it is built on is usual. A script or a file shared with a mod the build isn't built on would be a problem.
 
 ### What's new
 
