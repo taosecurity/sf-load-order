@@ -19,7 +19,7 @@ On the same files, 0.1.2 gave 2 cautions: "The --conflicts file was made for ano
 - The recommender's move candidates now use the same "acts on" rule as the ratings and the merged-patch note (`records.acts_on`), not a second copy of it.
 - A pair without an `advice` key is simply not acted on, instead of raising an error.
 - With `--conflicts`, sfta01.esm to sfta06.esm (and any file sf-mod-check counts official, such as BlueprintShips-sfta03.esm) no longer give the false "made for another load order" caution. sf-mod-check leaves them out of its mod list, so they are not compared. A mod that is really missing, an extra mod or a changed order still gives the caution, and a mod named like `sfta01Fixes.esm` still counts. A plugin that conflicts.json flags Official is left out of both lists, and the name rule matches sf-mod-check 0.12.0 exactly (SFBGS names are hex only). `--verbose` logs the plugins left out of the comparison.
-- A `loadOrder` entry in a `--conflicts` file with no file name (missing, null or empty) is ignored. Before, it counted as an extra plugin named "" and gave the false caution.
+- A `loadOrder` entry in a `--conflicts` file with no usable file name (missing, null, empty, blank, not text, or not an object) is ignored everywhere: in the load order comparison, the load order shown and the ratings. Before, it counted as an extra plugin named "" and gave the false caution, and it also stayed in the load order list.
 - The caution for a `--conflicts` file with the wrong shape now says what the file needs ("it needs a loadOrder list and a lost list"). The old wording read as if the keys were missing, even when they were there but weren't lists.
 
 ### Docs

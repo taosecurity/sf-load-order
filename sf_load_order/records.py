@@ -148,6 +148,18 @@ def _outcome(rtype, fields):
     return "conflict"
 
 
+def _load_entries(cj):
+    """conflicts.json's loadOrder entries that are objects with a usable file name (a string with text in it), each
+    with FileName trimmed. Anything else (not an object, no or empty or blank or non-text FileName) names no plugin
+    and is skipped, so it can't skew the load order shown, the ratings or the --conflicts comparison."""
+    out = []
+    for e in (cj.get("loadOrder") or []):
+        if not isinstance(e, dict) or not isinstance(e.get("FileName"), str) or not e["FileName"].strip():
+            continue
+        out.append(dict(e, FileName=e["FileName"].strip()))
+    return out
+
+
 def _closure(load_order):
     direct = {(e.get("FileName") or "").lower(): {str(m or "").lower() for m in (e.get("Masters") or [])}
               for e in load_order}
@@ -181,9 +193,10 @@ def _problem(text):
 
 def analyse(cj, lo):
     """Turn conflicts.json (dict) into ctx.results["records"] (see the module text). lo: the LoadOrder checked."""
-    order = [(e.get("FileName") or "") for e in (cj.get("loadOrder") or [])]
-    official = {(e.get("FileName") or "").lower() for e in (cj.get("loadOrder") or []) if e.get("Official")}
-    need = _closure((cj.get("loadOrder") or []))
+    entries = _load_entries(cj)
+    order = [e["FileName"] for e in entries]
+    official = {e["FileName"].lower() for e in entries if e.get("Official")}
+    need = _closure(entries)
     modof = {}
     for m in (getattr(lo, "mods", None) or []):
         for p in (m.plugins or []):
@@ -348,8 +361,8 @@ def _ratings(lo, res, loaded):
 def _differs(lo, cj):
     """Does the --conflicts file's load order differ from ours? Plugins conflicts.json lists as Official, and names
     sf-mod-check counts official (sfta01 to sfta06 and the like), aren't mods, so they aren't compared."""
-    entries = [(e, (e.get("FileName") or "").lower()) for e in (cj.get("loadOrder") or [])]
-    flagged = {n for e, n in entries if n and e.get("Official")}
+    entries = [(e, e["FileName"].lower()) for e in _load_entries(cj)]
+    flagged = {n for e, n in entries if e.get("Official")}
     left = []
     seen = set()
     ours = []
@@ -363,8 +376,6 @@ def _differs(lo, cj):
             ours.append(n)
     theirs = []
     for e, n in entries:
-        if not n:  # no usable FileName: nothing to compare
-            continue
         if e.get("Official") or inputs.modcheck_official(n):
             if n not in seen:
                 seen.add(n)

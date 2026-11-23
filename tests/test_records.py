@@ -387,6 +387,21 @@ class StalenessOfficialNames(unittest.TestCase):
         cj = {"loadOrder": [{"FileName": "A.esm"}, {"Official": False}, {"FileName": None}, {"FileName": ""}]}
         self.assertIsNone(records._differs(make_lo(["A.esm"]), cj))
 
+    def test_blank_and_odd_entries_are_ignored(self):
+        """code review 0.1.3 round 3: a blank FileName, a non-text FileName and a non-object entry name no plugin."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "   "}, {"FileName": 7}, "junk", None, ["x"]]}
+        self.assertIsNone(records._differs(make_lo(["A.esm"]), cj))
+
+    def test_nameless_entries_stay_out_of_the_parsed_load_order(self):
+        """code review 0.1.3 round 3: analyse() (the full parse path) drops nameless entries from load_order, the
+        ratings and the masters closure, not only the --conflicts comparison."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"Official": False}, {"FileName": ""}, {"FileName": None},
+                            {"FileName": " B.esm ", "Masters": ["A.esm"]}, 5],
+              "lost": []}
+        res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
+        self.assertEqual(res["load_order"], ["A.esm", "B.esm"])
+        self.assertNotIn("", res["plugins"])
+
     def test_verbose_log_names_what_is_left_out(self):
         buf = io.StringIO()
         log._sinks[:] = [buf]
