@@ -465,7 +465,7 @@ build (one plugin each). It uses the same load order options as a normal run and
 A mod that already holds a plugin with the same name as one of the build's, or whose name is a build zip's name
 with another version (such as `ShipMod-Loose-0.2.0` for `ShipMod-Loose-0.3.0.zip`), is taken to be the older copy
 of this build and is left out of the comparison. A zip whose files all sit in one folder of their own (such as
-`ShipMod\ShipMod.esm`) is read as if that folder were Data.
+`ShipMod\ShipMod.esm`, with or without a readme beside it) is read as if that folder were Data.
 
 Example, with a new build of ShipMod, built on the installed CoreTools:
 
@@ -478,7 +478,7 @@ RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
 | Finding | Level |
 |---|---|
 | A script (`.pex`) the build ships that another enabled mod also ships | problem |
-| Another file the build ships with different content than an enabled mod's copy | problem; a caution when the other mod is a master of the build; a note when the content is identical |
+| Another file the build ships with different content than an enabled mod's copy | problem; a caution when the other mod is a master of the build; a note when the content is identical. When one copy is loose and the other archived, the text says the loose copy always wins (kind `wins` when it is the build's, `hidden` when it is the other mod's) |
 | Two parts of the build shipping the same path | problem for scripts, a caution for other files |
 | Two zips of the build shipping an archive with the same name | problem |
 | The installed mods left out as the build's older copy | note |

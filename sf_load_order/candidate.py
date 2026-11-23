@@ -43,6 +43,7 @@ SAMPLES = 5
 PLUGIN_EXT = (".esm", ".esp", ".esl")
 NOT_ZIP = (".7z", ".rar")
 DELETED_RISKY = {"REFR", "ACHR", "NAVM"}
+DATA_OWNER = "the Data folder (loose)"  # a plain Plugins.txt: Data's loose files have no mod
 
 
 class CandidateError(Exception):
@@ -58,13 +59,15 @@ def _raw_path(name):
 
 def wrapper_folder(names):
     """The one top folder every member sits under when it isn't a game folder, Data or fomod (a zip packed with
-    its mod's own folder, such as MyMod\\MyMod.esm), else None."""
+    its mod's own folder, such as MyMod\\MyMod.esm), else None. A readme or other document at the top doesn't count."""
     tops = set()
     for n in names:
         p = _raw_path(n)
         if not p:
             continue
         if "\\" not in p:
+            if loose.DOC.search(p.lower()):
+                continue
             return None
         tops.add(p.split("\\", 1)[0].lower())
         if len(tops) > 1:
@@ -252,7 +255,7 @@ def installed_files(lo, build_names, build_stems=()):
         sub, _top = loose.data_files(data)
         for p, full in sub.items():
             if not (p.endswith(loose.SKIP_EXT) or loose.DOC.search(p)):
-                out[p].append(("the Data folder (loose)", [], "loose", full))
+                out[p].append((DATA_OWNER, [], "loose", full))
     mine = [p for p in lo.plugins if p.enabled and not p.dropped and not archives.is_official(p) and p.path]
     for p in mine:
         if p.name.lower() in build_names:
@@ -288,10 +291,15 @@ def _ex(paths_):
     return ", ".join(paths_[:SAMPLES]) + (f" and {len(paths_) - SAMPLES} more" if len(paths_) > SAMPLES else "")
 
 
-def compare(build_paths, inst, masters, cache, depth):
-    """{(level, kind, owner, where): [paths]} for every build path an installed mod also ships."""
+def compare(build_paths, inst, masters, cache, depth, build_loose=None):
+    """{(level, kind, owner, where): [paths]} for every build path an installed mod also ships. build_loose: the
+    paths the build ships loose (None: the same kind as the installed copy). A differing pair is "differ" when
+    both copies are loose or both archived, "wins" when only the build's copy is loose (it always replaces the
+    other) and "hidden" when only the installed copy is loose (the build's copy never shows)."""
     deep = depth != "light"
     groups = defaultdict(set)
+    master_archived = {p for p, entries in inst.items()  # a plain Plugins.txt: a master's paths in its archives
+                       if any(w == "archive" and any(x.lower() in masters for x in pl) for _o, pl, w, _f in entries)}
     for p, ours in sorted(build_paths.items()):
         for owner, plugs, where, full in inst.get(p, ()):
             how = "unknown"
@@ -308,13 +316,17 @@ def compare(build_paths, inst, masters, cache, depth):
                     theirs = cache.digest(full, p)
                 if theirs and ours and all(ours):  # every copy the build ships was read (copies may repeat)
                     how = "same" if set(ours) == {theirs} else "differ"
-            built_on = any(x.lower() in masters for x in plugs)
+            built_on = any(x.lower() in masters for x in plugs) or (owner == DATA_OWNER and p in master_archived)
             if built_on:
                 key = ("caution", "master-differ") if how == "differ" else ("note", "master")
             elif p.endswith(".pex"):
                 key = ("problem", "script")
             elif how == "differ":
-                key = ("problem", "differ")
+                ours_loose = (where == "loose") if build_loose is None else (p in build_loose)
+                if ours_loose == (where == "loose"):
+                    key = ("problem", "differ")
+                else:
+                    key = ("problem", "wins" if ours_loose else "hidden")
             elif how == "same":
                 key = ("note", "same")
             else:
@@ -337,6 +349,15 @@ def _text(kind, owner, where, n, ex):
                 + f": {ex}.",
                 "Make sure the copy you want wins (plugin order for archives, the mod manager's rules for loose "
                 "files), or give this build's files their own paths.")
+    if kind == "wins":
+        return (f"{owner} ships an archived copy of {n} path(s) this build ships loose, with different content: a "
+                f"loose copy beats every archive, so this build's copy always replaces {owner}'s: {ex}.",
+                "Make sure that is meant, or give this build's files their own paths.")
+    if kind == "hidden":
+        return (f"{owner} ships a loose copy of {n} path(s) this build ships in an archive, with different content: "
+                f"a loose copy beats every archive, so this build's copy never shows, whatever the load order: {ex}.",
+                f"Ship these files loose and let them win over {owner}'s (the mod manager's rules), or give this "
+                "build's files their own paths.")
     if kind == "master-differ":
         return (f"This build overrides {n} file(s) of {owner}, which it is built on, with different content "
                 f"({where}): {ex}.", "Check that these overrides are meant.")
@@ -515,7 +536,7 @@ def run(ctx, zips):
 
         def digest(self, full, name):
             return cache.digest(full, name)
-    groups = compare(build_paths, inst, masters, _Both(), depth)
+    groups = compare(build_paths, inst, masters, _Both(), depth, set(build["loose"]))
     for (lvl, kind, owner, where), ps in sorted(groups.items(), key=lambda kv: (
             ("problem", "caution", "note").index(kv[0][0]), kv[0][2].lower(), kv[0][1])):
         text, fix = _text(kind, owner, where, len(ps), _ex(ps))
@@ -530,7 +551,8 @@ def run(ctx, zips):
                     f"{_ex([os.path.basename(u) for u in unreadable])}.", fix="Reinstall the mod they belong to."))
     if lo.mods is None:
         add(Finding("note", SECTION, "With a plain Plugins.txt the Data folder's loose files can't be told apart by "
-                    "mod, so a loose file of an installed copy of this build counts as shared with the Data folder.",
+                    "mod, so a loose file of an installed copy of this build counts as shared with the Data folder, "
+                    "and so does a master's loose file unless one of the master's archives ships the same path.",
                     fix="Use --mo2 or --vortex-profile to compare mod by mod."))
     heavy = None
     if depth == "heavy":

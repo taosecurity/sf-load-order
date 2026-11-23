@@ -348,6 +348,53 @@ class Parsers(unittest.TestCase):
         self.assertIsNone(candidate.wrapper_folder(["Data/a.esm", "Data/b.esm"]))
         self.assertIsNone(candidate.wrapper_folder(["MyMod/a.esm", "b.esm"]))
         self.assertIsNone(candidate.wrapper_folder(["A/a.esm", "B/b.esm"]))
+        # code review round 4: a readme at the top doesn't hide the mod's own folder
+        self.assertEqual(candidate.wrapper_folder(["README.txt", "MyMod/MyMod.esm", "MyMod/Scripts/a.pex"]), "mymod")
+
+    def test_wrapper_folder_with_readme_read_as_data(self):
+        with tempfile.TemporaryDirectory() as t:
+            z = make_zip(os.path.join(t, "MyMod-1.0.zip"), {"README.txt": b"r", "MyMod/MyMod.esm": ("plugin", ()),
+                                                             "MyMod/Scripts/foo.pex": b"s"})
+            b = candidate.read_zips([z], os.path.join(t, "work"), True)
+            self.assertEqual([p["name"] for p in b["plugins"]], ["MyMod.esm"])
+            self.assertEqual(list(b["loose"]), ["scripts\\foo.pex"])
+
+    def test_compare_mixed_loose_and_archive(self):
+        """Code review round 4: a differing pair of one loose and one archived copy names who always wins."""
+        class C:
+            def file(self, _full):
+                return {"digest": "T"}
+
+            def digest(self, _full, _name):
+                return "T"
+        loose_inst = {"textures\\x.dds": [("OtherMod", ["OtherMod.esm"], "loose", "x")]}
+        arch_inst = {"textures\\x.dds": [("OtherMod", ["OtherMod.esm"], "archive", "x")]}
+        bp = {"textures\\x.dds": ["M"]}
+        self.assertEqual(list(candidate.compare(bp, loose_inst, set(), C(), "medium", set())),
+                         [("problem", "hidden", "OtherMod", "loose")])
+        self.assertEqual(list(candidate.compare(bp, arch_inst, set(), C(), "medium", {"textures\\x.dds"})),
+                         [("problem", "wins", "OtherMod", "archive")])
+        self.assertEqual(list(candidate.compare(bp, loose_inst, set(), C(), "medium", {"textures\\x.dds"})),
+                         [("problem", "differ", "OtherMod", "loose")])
+        text, _fix = candidate._text("hidden", "OtherMod", "loose", 1, "textures\\x.dds")
+        self.assertIn("never shows", text)
+        self.assertNotIn("load order decides", text)
+
+    def test_compare_plain_data_loose_master_file(self):
+        """Code review round 4: with a plain Plugins.txt, a Data loose file a master's archive also ships is the
+        master's, so overriding it is a caution, not a problem."""
+        class C:
+            def file(self, _full):
+                return {"digest": "T"}
+
+            def digest(self, _full, _name):
+                return "T"
+        inst = {"textures\\x.dds": [(candidate.DATA_OWNER, [], "loose", "a"),
+                                    ("Foo.esm", ["Foo.esm"], "archive", "b")]}
+        g = candidate.compare({"textures\\x.dds": ["M"]}, inst, {"foo.esm"}, C(), "medium", {"textures\\x.dds"})
+        self.assertEqual(sorted(k[:2] for k in g), [("caution", "master-differ"), ("caution", "master-differ")])
+        g = candidate.compare({"textures\\x.dds": ["M"]}, inst, set(), C(), "medium", {"textures\\x.dds"})
+        self.assertIn(("problem", "differ", candidate.DATA_OWNER, "loose"), g)
 
     def test_compare_repeated_copies(self):
         """Code review round 2: a path the build ships twice with the same content is still compared."""

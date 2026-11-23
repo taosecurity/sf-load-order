@@ -192,7 +192,7 @@ def _summary_lines(ctx, section):
                    + f"{_plural(st.get('pairs', 0), 'pair')} of mods ship the same loose paths, "
                      f"{_n(st.get('differ', 0))} with different copies.")
     elif section == "records" and st.get("status") == "done":
-        src ="a conflicts.json you gave (--conflicts)" if st.get("source") == "file" else "an sf-mod-check run"
+        src = "a conflicts.json you gave (--conflicts)" if st.get("source") == "file" else "an sf-mod-check run"
         navi = (f" (and {_plural(st['navi'], 'navmesh info map entry', 'navmesh info map entries')}, which aren't "
                 "lost changes)") if st.get("navi") else ""
         out.append(f"Read from {src}: {_plural(st.get('lost', 0), 'lost change entry', 'lost change entries')}{navi}, "
