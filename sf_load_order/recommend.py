@@ -91,6 +91,15 @@ def plain(fields):
     return out
 
 
+def _record_name(r):
+    """A lost record for the merged-patch note: "<type> <EditorID or form key>", or "a <type> record" / "a record"
+    when conflicts.json gave no usable EditorID or form key (records.analyse keeps those as "")."""
+    name = r["edid"] or r["fk"]
+    if name:
+        return f"{r['type']} {name}" if r["type"] else name
+    return f"a {r['type']} record" if r["type"] else "a record"
+
+
 # ---------- ordering ----------
 def topo(current, edges):
     """Stable topological sort: keep the current order wherever the edges (a before b) allow. None on a cycle."""
@@ -441,7 +450,7 @@ def run(ctx):
         remaining.sort(key=lambda r: (-r["weight"], r["edid"] or r["fk"]))
     if remaining:
         top = remaining[:8]
-        names = "; ".join(f"{r['type']} {r['edid'] or r['fk']} ({', '.join(r['fields'][:4])}: "
+        names = "; ".join(f"{_record_name(r)} ({', '.join(r['fields'][:4])}: "
                           f"{r['loser']} loses to {r['winner']})" for r in top)
         quest = [r for r in remaining if QUEST in r["fields"]]
         imp = (f" The important part: {len(quest)} location(s) where one mod's {QUEST} are dropped, which can stop a "

@@ -22,8 +22,8 @@ What conflicts.json holds (sf-mod-check src\\ConflictReport.cs, 0.8.0) and what 
 Odd shapes (a hand-made or damaged file) never crash the run: a list that isn't a list holds nothing, an item that
 should be an object and isn't is skipped, a name or text that isn't text reads as "" (EditorID as None), names are
 trimmed, a flag counts only when it is JSON true, a count that isn't a whole number above 0 is left out, and an ITM
-or missing asset that names no plugin, or a type change that names neither its Plugin nor its First, is skipped and
-counted under --verbose (_list, _objs, _text, _flag below). assetsChecked is
+or missing asset that names no plugin, or a type change that names neither its Plugin nor its First (or names the
+same plugin as both), is skipped and counted under --verbose (_list, _objs, _text, _flag below). assetsChecked is
 kept only when it is true or false and archiveCounts only when it is an object (else None). LoserValue and
 WinnerValue are kept as they are: nothing here reads them.
 
@@ -34,9 +34,10 @@ It also has no cost of the other order (sf-mod-check works that out, ReorderCost
 pair's flip cost below is only the part the Choice fields show.
 
 Ratings per enabled mod plugin (labels in RATING_LABEL):
-  neutral       no lost-change entry names it and no ITM or type change of its is listed
+  neutral       no lost-change entry names it, no ITM of its is listed and no type change names it (as Plugin or
+                First)
   neutral-here  it is in entries, but none that the order can change (built on it, same mod, same edit, it undoes
-                an official change, which no order fixes), or it has ITMs / type changes
+                an official change, which no order fixes), or it has ITMs or a type change names it
   matters       it is the loser or winner of a "patch candidate" or "pick a winner" pair between two mods
   unchecked     sf-mod-check didn't load it (unreadable, a master missing, not in its load order)
 
@@ -355,6 +356,12 @@ def analyse(cj, lo):
         if len(before) != len(kept[name]):
             log.info(SECTION, f"conflicts.json: {len(before) - len(kept[name])} {name} item(s) name no plugin; "
                               "skipped")
+    # a type change whose First is its own Plugin isn't a clash between two plugins, so it is skipped too
+    two = [x for x in kept["typeChanges"] if x["plugin"].lower() != x["first"].lower()]
+    if len(two) != len(kept["typeChanges"]):
+        log.info(SECTION, f"conflicts.json: {len(kept['typeChanges']) - len(two)} typeChanges item(s) name the same "
+                          "plugin as Plugin and First; skipped")
+        kept["typeChanges"] = two
     itms, tcs, missing = kept["itms"], kept["typeChanges"], kept["missingAssets"]
     problems = []
     for t in _list(cj.get("loadOrderProblems")):
@@ -438,7 +445,8 @@ def _ratings(lo, res, loaded):
             if itms:
                 bits.append(f"{itms} ITM record(s)")
             if tcs:
-                bits.append(f"{tcs} record type change(s)")
+                # "named in": each type change counts for both its plugins, so these don't add up to the summary total
+                bits.append(f"named in {tcs} record type change(s)")
             why = "; ".join(bits)
         else:
             rating = "neutral"

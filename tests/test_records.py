@@ -550,6 +550,35 @@ class StalenessOfficialNames(unittest.TestCase):
         for odd in ({"a": 1}, "abc", 5, True):
             r = records.analyse({"loadOrder": base, "lost": [], "itms": odd, "typeChanges": odd}, lo)
             self.assertEqual((r["itms"], r["type_changes"]), ([], []))
+        self._check_findings(res, lo)
+
+    def test_type_change_first_and_self_reference(self):
+        """Opus rerun round 5: a plugin named only as a type change's First (no ITM, pair or undo) is rated
+        "neutral-here" by that alone (round 4's check used a plugin that also had an ITM, so it couldn't fail), and a
+        type change whose First is its own Plugin is skipped and counted under --verbose."""
+        base = [{"FileName": "A.esm"}, {"FileName": "B.esm"}]
+        r = records.analyse({"loadOrder": base + [{"FileName": "C.esm"}], "lost": [],
+                             "typeChanges": [{"Plugin": "A.esm", "First": "C.esm", "formKey": "1"}]},
+                            make_lo(["A.esm", "B.esm", "C.esm"]))
+        self.assertEqual(r["plugins"]["c.esm"]["rating"], "neutral-here")
+        self.assertEqual(r["plugins"]["c.esm"]["why"], "named in 1 record type change(s)")
+        self.assertEqual(r["plugins"]["b.esm"]["rating"], "neutral")
+        # Opus round 5: a type change whose First is its own Plugin (any case or padding) can't be a clash between
+        # two plugins, so it is skipped and counted under --verbose
+        buf = io.StringIO()
+        log._sinks.append(buf)
+        try:
+            r = records.analyse({"loadOrder": base, "lost": [],
+                                 "typeChanges": [{"Plugin": "A.esm", "First": " a.esm ", "formKey": "000100:A.esm"},
+                                                 {"Plugin": "A.esm", "First": "B.esm", "formKey": "000200:A.esm"}]},
+                                make_lo(["A.esm", "B.esm"]))
+        finally:
+            log._sinks.remove(buf)
+        self.assertEqual([x["fk"] for x in r["type_changes"]], ["000200:A.esm"])
+        self.assertIn("1 typeChanges item(s) name the same plugin as Plugin and First", buf.getvalue())
+        self.assertEqual(r["plugins"]["a.esm"]["type_changes"], 1)
+
+    def _check_findings(self, res, lo):
         with tempfile.TemporaryDirectory() as t:
             ctx = ctx_for(t, lo)
             records.add_findings(ctx, res, "file")
