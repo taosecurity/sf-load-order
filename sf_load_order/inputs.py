@@ -4,7 +4,12 @@
   findings(lo)    -> [model.Finding] for section "inputs": enabled plugins whose file is missing, names the game
                      drops, and what read() noticed on the way (a plugin listed twice, no Data folder, no staging)
 
-Source choice (the first one given wins):
+Source choice (one source; --vortex-profile refuses any other):
+  --vortex-profile NAME           the newest complete export set (modlist + loadorder, same stamp) of that profile
+                                  from the Modlist Backup extension's export folder (--vortex-exports, default the
+                                  folder in %APPDATA%\\Vortex\\modlist-backup-auto-export.json plus its old\\), or
+                                  the set --vortex-stamp names; the loadorder file is read as --vortex-loadorder reads
+                                  it, then deployed_check() says whether Data holds this profile
   --mo2 FOLDER [--profile NAME]   an MO2 instance: profiles\\<profile>\\plugins.txt, loadorder.txt and modlist.txt;
                                   the profile defaults to MO2's selected_profile in ModOrganizer.ini
   --vortex-loadorder FILE         a Vortex Load Order page export; mod folders from --vortex-staging (default
@@ -310,6 +315,167 @@ def from_vortex(path, args, env, drives, registry):
     return lo, extra + more
 
 
+# ---------- source 2b: a Vortex profile's automatic export set ----------
+STAMP_RE = re.compile(r"^\d{8}-\d{6}\Z")
+
+
+def _export_re(profile):
+    """The file names the Vortex extension "Modlist Backup" writes for one Starfield profile (its own pattern)."""
+    return re.compile(r"^vortex-starfield-" + re.escape(profile) + r"-(modlist|loadorder|plugins)(?:-classic)?"
+                      r"(?:-backup)?-(\d{8}-\d{6})\.(json|txt)\Z", re.I)
+
+
+def find_vortex_set(profile, folders, stamp=None):
+    """(stamp, {"modlist": path, "loadorder": path[, "plugins": path]}) for the newest complete set (a modlist and a
+    loadorder file with the same stamp) of this profile, or the set with the given stamp. The first folder wins a
+    file found twice. Raises InputError naming the folders looked in."""
+    rx, sets = _export_re(profile), {}
+    for folder in folders:
+        try:
+            names = sorted(os.listdir(folder))
+        except OSError as e:
+            log.info(SECTION, f"vortex exports: can't list {folder}: {e.strerror}")
+            continue
+        for n in names:
+            m = rx.match(n)
+            if m and os.path.isfile(os.path.join(folder, n)):
+                sets.setdefault(m.group(2), {}).setdefault(m.group(1).lower(), os.path.join(folder, n))
+    complete = sorted((s for s, v in sets.items() if "modlist" in v and "loadorder" in v), reverse=True)
+    log.info(SECTION, f"vortex exports: profile {profile}: {len(complete)} complete set(s) in {len(folders)} folder(s)")
+    where = ", ".join(folders) or "(no folder)"
+    if stamp:
+        if stamp not in complete:
+            have = ", ".join(complete[:5]) or "none"
+            raise InputError(f"no complete export set (a modlist and a loadorder file) with stamp {stamp} for the "
+                             f"Vortex profile {profile} in {where} (newest stamps there: {have}). Fix: pass "
+                             "--vortex-stamp with one of those stamps, or leave it out for the newest set.")
+        return stamp, sets[stamp]
+    if not complete:
+        raise InputError(f"no complete export set (a modlist and a loadorder file with the same stamp) for the Vortex "
+                         f"profile {profile} in {where}. Fix: check the profile name (as in the export file names), "
+                         "pass --vortex-exports <the export folder>, or turn on Automatic Export in the Modlist "
+                         "Backup extension and switch to the profile once.")
+    return complete[0], sets[complete[0]]
+
+
+def read_vortex_modlist(path, option="--vortex-modlist"):
+    """[mod dict] from a Modlist Backup modlist export: a list of mods, each with a name or a vortexId."""
+    bad = f"{path} isn't a Modlist Backup modlist export. Fix: pass {option} a vortex-starfield-<profile>-modlist file."
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            d = json.load(f)
+    except OSError as e:
+        raise InputError(f"can't read {path}: {e.strerror}. Fix: check the file exists and you may read it.")
+    except (ValueError, UnicodeDecodeError):
+        raise InputError(bad + " (It isn't valid JSON.)")
+    if not isinstance(d, list) or not all(isinstance(m, dict) and (m.get("name") or m.get("vortexId")) for m in d):
+        raise InputError(bad + " (It should be a list of mods, each with a name.)")
+    return d
+
+
+def _enabled_mod_ids(modlist):
+    return {str(m["vortexId"]).strip().lower() for m in modlist
+            if m.get("enabled") is True and isinstance(m.get("vortexId"), (str, int)) and str(m["vortexId"]).strip()}
+
+
+def _staging_copy(lo, low):
+    """The plugin file in an enabled mod's staging folder, or None."""
+    for m in lo.mods or []:
+        if m.enabled and m.path and low in {p.lower() for p in m.plugins or []}:
+            real = listing(m.path).get(low)
+            if real:
+                return os.path.join(m.path, real)
+    return None
+
+
+def deployed_check(lo, modlist, plugins_export=None, live_plugins_txt=None):
+    """{deployed, extra_plugins, extra_mods, missing_plugins[, plugins_txt_matches]} for a Vortex profile. The profile
+    is the deployed one when Data holds no mod plugin it doesn't list and the deployment record names no mod it
+    doesn't enable (Vortex removes other profiles' files on deploy). deployed is None when Data is unknown."""
+    out = {"deployed": None, "extra_plugins": [], "extra_mods": [], "missing_plugins": []}
+    if lo.data:
+        listed = {p.name.lower() for p in lo.plugins}
+        here = listing(lo.data)
+        out["extra_plugins"] = sorted((real for low, real in here.items() if not is_official(low) and low not in listed),
+                                      key=str.lower)
+        dep = getattr(lo, "_vortex_deployment", None)
+        if dep is not None:
+            on = _enabled_mod_ids(modlist)
+            out["extra_mods"] = sorted({mid.strip() for mid in dep.by_mod() if mid.strip().lower() not in on},
+                                       key=str.lower)
+        out["missing_plugins"] = [p.name for p in lo.plugins
+                                  if p.enabled and not p.official and not p.dropped and p.path is None]
+        out["deployed"] = not out["extra_plugins"] and not out["extra_mods"]
+    if plugins_export and live_plugins_txt and os.path.isfile(live_plugins_txt):
+        try:
+            a = [(n.lower(), e) for n, e in read_plugins_list(plugins_export)]
+            b = [(n.lower(), e) for n, e in read_plugins_list(live_plugins_txt)]
+            out["plugins_txt_matches"] = a == b
+        except InputError as e:
+            log.info(SECTION, f"vortex profile: plugins file comparison skipped: {e}")
+    return out
+
+
+def from_vortex_profile(args, env, drives, registry):
+    profile = args.vortex_profile
+    stamp = getattr(args, "vortex_stamp", None)
+    if stamp and not STAMP_RE.match(stamp):
+        raise InputError(f"--vortex-stamp {stamp} isn't a stamp like 20261121-190400 (YYYYMMDD-HHMMSS, as in the "
+                         "export file names). Fix: copy the stamp from an export file name.")
+    if getattr(args, "vortex_exports", None):
+        folders = list(args.vortex_exports)
+        missing = [f for f in folders if not os.path.isdir(f)]
+        if missing:
+            raise InputError(f"--vortex-exports {missing[0]} is not a folder. Fix: give it the folder the Modlist "
+                             "Backup extension exports to.")
+    else:
+        folders, why = paths.default_vortex_exports(env)
+        if not folders:
+            raise InputError(f"no Vortex export folder was found: {why}. Fix: pass --vortex-exports <the folder the "
+                             "Modlist Backup extension exports to>, or turn on its Automatic Export.")
+        log.info(SECTION, f"vortex exports: {', '.join(folders)} ({why})")
+    stamp, files = find_vortex_set(profile, folders, stamp)
+    modlist = read_vortex_modlist(files["modlist"], "--vortex-profile")
+    lo, extra = from_vortex(files["loadorder"], args, env, drives, registry)
+    lo.profile = profile
+    lo.files["vortex_modlist"] = files["modlist"]
+    if files.get("plugins"):
+        lo.files["vortex_plugins_export"] = files["plugins"]
+    lo._vortex_modlist = modlist  # not a dataclass field, so report.json never sees it
+    live = paths.default_plugins_txt(env)
+    check = deployed_check(lo, modlist, files.get("plugins"), live)
+    vp = {"name": profile, "stamp": stamp, "files": {k: files.get(k) for k in ("modlist", "loadorder", "plugins")}}
+    vp.update(check)
+    lo._vortex_profile = vp
+    log.info(SECTION, f"vortex profile {profile} {stamp}: deployed {vp['deployed']}, {len(vp['extra_plugins'])} extra "
+                      f"plugin(s), {len(vp['extra_mods'])} extra mod(s), {len(vp['missing_plugins'])} missing")
+    if vp["deployed"] is False:
+        # read the plugins this profile has but Data doesn't from their staging folders, so order and archive checks
+        # describe this profile, not the deployed one
+        moved = 0
+        for p in lo.plugins:
+            if p.path is None and not p.official:
+                p.path = _staging_copy(lo, p.name.lower())
+                moved += bool(p.path)
+        log.info(SECTION, f"vortex profile: {moved} plugin(s) read from staging folders instead of Data")
+        n = len(vp["extra_plugins"]) + len(vp["extra_mods"])
+        extra.insert(0, Finding(
+            "caution", SECTION,
+            f"Data holds another profile: {len(vp['extra_plugins'])} mod plugin(s) in Data aren't in the Vortex profile "
+            f"{profile}" + (f", and Vortex's deployment record names {len(vp['extra_mods'])} mod(s) it doesn't enable"
+                           if vp["extra_mods"] else "") + ". Plugins missing from Data aren't listed as problems, "
+            "and the record and patch checks were skipped, since both read Data.",
+            fix=f"Deploy the profile {profile} in Vortex and run again.",
+            data={"extra_plugins": vp["extra_plugins"][:50], "extra_mods": vp["extra_mods"][:50], "count": n,
+                  "missing_plugins": len(vp["missing_plugins"])}))
+    if vp.get("plugins_txt_matches") is False:
+        extra.append(Finding("note", SECTION, f"The export's plugins file ({os.path.basename(files['plugins'])}) "
+                             f"differs from the game's Plugins.txt ({live}), so the export is older than the last "
+                             "load order change.", fix="Switch to the profile in Vortex once so the extension exports "
+                             "it again, or ignore this if you changed Plugins.txt on purpose."))
+    return lo, extra
+
+
 # ---------- source 3: MO2 ----------
 def _mo2_ini(instance):
     """{key lower: value} from ModOrganizer.ini, with @ByteArray(...) unwrapped. The first value of a key wins."""
@@ -433,15 +599,42 @@ def from_mo2(instance, args, env, drives, registry):
 
 
 # ---------- the two entry points ----------
+def _check_source_options(args):
+    """Refuse option mixes that would silently ignore one of them."""
+    g = lambda name: getattr(args, name, None)  # noqa: E731
+    if g("vortex_profile"):
+        other = [o for o, n in (("--plugins-txt", "plugins_txt"), ("--mo2", "mo2"),
+                                ("--vortex-loadorder", "vortex_loadorder"), ("--vortex-modlist", "vortex_modlist"))
+                 if g(n)]
+        if other:
+            raise InputError(f"--vortex-profile can't be combined with {other[0]}: give one load order source. Fix: "
+                             f"leave out {other[0]} (the profile's export set holds the load order and the mod list).")
+    else:
+        for o, n in (("--vortex-exports", "vortex_exports"), ("--vortex-stamp", "vortex_stamp")):
+            if g(n):
+                raise InputError(f"{o} works only with --vortex-profile. Fix: add --vortex-profile <name>, or leave "
+                                 f"out {o}.")
+    if g("vortex_modlist") and not g("vortex_loadorder"):
+        raise InputError("--vortex-modlist works only with --vortex-loadorder. Fix: add --vortex-loadorder <file>, "
+                         "or use --vortex-profile <name>, which finds both files.")
+
+
 def read(args, env=None, drives=None, registry=None):
     """(LoadOrder, None) or (None, error text). env, drives and registry are for tests (see paths.find_data)."""
     try:
-        if getattr(args, "mo2", None):
+        _check_source_options(args)
+        if getattr(args, "vortex_profile", None):
+            lo, extra = from_vortex_profile(args, env, drives, registry)
+            why = "--vortex-profile"
+        elif getattr(args, "mo2", None):
             lo, extra = from_mo2(args.mo2, args, env, drives, registry)
             why = "--mo2"
         elif getattr(args, "vortex_loadorder", None):
             lo, extra = from_vortex(args.vortex_loadorder, args, env, drives, registry)
             why = "--vortex-loadorder"
+            if getattr(args, "vortex_modlist", None):
+                lo._vortex_modlist = read_vortex_modlist(args.vortex_modlist)
+                lo.files["vortex_modlist"] = args.vortex_modlist
         elif getattr(args, "plugins_txt", None):
             lo, extra = from_plugins_txt(args.plugins_txt, args, env, drives, registry)
             why = "--plugins-txt"
@@ -467,6 +660,8 @@ def findings(lo):
     """[Finding] for section "inputs": names the game drops, enabled plugins whose file is missing (only when the
     Data folder is known), plus what read() noticed on the way."""
     out = []
+    vp = getattr(lo, "_vortex_profile", None)
+    other_deployed = bool(vp) and vp.get("deployed") is False  # one caution from read() covers missing files
     for p in lo.plugins:
         if p.dropped:
             # a PROBLEM only when it is meant to load; a disabled one is a note (it will be dropped if turned on)
@@ -476,7 +671,7 @@ def findings(lo):
                                + ("." if p.enabled else ", even if you enable it."),
                                fix=f"Rename it so it doesn't, for example {_addon_name(p.name)}, and update any "
                                "plugin that has it as a master.", plugins=[p.name]))
-        elif p.enabled and p.path is None and lo.data:
+        elif p.enabled and p.path is None and lo.data and not other_deployed:
             if lo.source == "vortex":
                 fix = "Deploy in Vortex (it may be installed but not deployed), or reinstall the mod."
             elif lo.source == "mo2":

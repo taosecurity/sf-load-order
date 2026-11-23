@@ -8,6 +8,7 @@ program and reads the conflicts.json it writes (records.py turns that into ratin
   write_plugins_txt(path, lo)      -> the load order as the game's Plugins.txt (mod plugins only; see below)
   run_conflict(prog, ...)          -> Run (exit code, RESULT line, conflicts.json path, timed out?)
   run_check(prog, plugin, data)    -> Run for `check <plugin>` (used at --depth heavy)
+  run_patch_check(prog, ...)       -> Run for `patch check <patch>` (merged.py; needs sf-mod-check 0.15.0)
 
 Exit codes of `sf-mod-check conflict` (its README, "Exit codes"): 0 report written, 2 couldn't run (bad arguments,
 a missing file, out of memory; the RESULT line says CANNOT CHECK), 3 stopped at --max-memory (RESULT: STOPPED).
@@ -275,6 +276,14 @@ def run_conflict(prog, plugins_txt, data, out_dir, max_memory=None, timeout=CONF
     r = _run(cmd, timeout)
     r.conflicts = cj if os.path.isfile(cj) else None
     return r
+
+
+def run_patch_check(prog, patch, manifest, plugins_txt, data, json_out, timeout=600):
+    """Run `patch check <patch> --manifest <m> --plugins <txt> --data <folder> --json <file>` (sf-mod-check 0.15.0;
+    exit 0 up to date, 1 rebuild or review, 2 couldn't check). merged.py reads the --json file."""
+    cmd = [prog.path, "patch", "check", patch, "--manifest", manifest, "--plugins", plugins_txt, "--data", data,
+           "--json", json_out]
+    return _run(cmd, timeout)
 
 
 CHECK_SUMMARY = re.compile(r", (\d+) records, (\d+) overrides \((\d+) ITM\)")

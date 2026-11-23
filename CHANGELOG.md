@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+This release adds the checks that used to need a private page builder: Vortex profiles by name with a check that the profile is the deployed one, a Vortex mod rules check, merged patches checked with `sf-mod-check patch check`, `settled_if_current` in the clashes file, per-kind counts of missing files, and `sf-load-order candidate <zip>` for a new mod build. No option or report.json key was renamed or removed; new keys were added. A normal report now has nine sections (the new one is "Vortex mod rules", after "Loose files").
+
+### Example
+
+This is a real run on a small made-up load order: ShipMod.esm 0.3.0 is a new build, built on the installed CoreTools, and ships a script and a mesh that CoreTools ships too, with other content. The older ShipMod is installed as a mod of its own and is left out of the comparison:
+
+    > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
+    sf-load-order 0.2.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
+
+The caution reads: "This build overrides 2 file(s) of CoreTools, which it is built on, with different content (loose): meshes\crate.nif, scripts\shared.pex." It is a caution, not a problem, because overriding the mod it is built on is usual. A script or a file shared with a mod the build isn't built on would be a problem.
+
+### What's new
+
+- `--vortex-profile NAME` reads the newest export set of a Vortex profile (modlist and load order) from the Modlist Backup extension's folder, with `--vortex-exports`, `--vortex-stamp` and `--vortex-modlist`. It checks that Data holds that profile; if not, one caution replaces the per-plugin "file wasn't found" problems, and the record and merged-patch checks are skipped. New report.json key `vortex_profile`.
+- A "Vortex mod rules" section (`rules` in report.json): for each pair of mods that ship different copies of a loose file, who won; with the rules in the export (Modlist Backup 0.6.2 or later), a caution for a real clash with no rule, and notes for rules that order nothing.
+- Merged patches: the Patches section runs `sf-mod-check patch check` (sf-mod-check 0.15.0 or newer, depth medium or heavy) on each `patch-sources.json` found in Data, beside the enabled plugins or in Vortex staging, or named with the new `--patch-sources`. New report.json key `patches`.
+- `--clashes` entries may carry `settled_if_current` (a plugin and its SHA-256): the clash is settled while that build is installed.
+- The "files its records use aren't installed" findings count scripts, models, materials, textures and sounds separately, from the `kind` in sf-mod-check's `missingFiles`.
+- `sf-load-order candidate <zip> [<zip> ...]` checks a new mod build against the enabled mods before it is installed: shared scripts and files with different content, the build's own parts, and at `--depth heavy` `sf-mod-check check` on the build's plugins. New report.json key `candidate`. Records shared with other mods aren't checked yet.
+
+### Docs
+
+- The README, AGENTS.md and `--help` list the new options, sections and report.json keys. `tests\run_agents.py` runs the new commands from AGENTS.md.
+
 ## 0.1.3 - 2026-11-22
 
 This release is a fix pass. It removes a false caution for `--conflicts` runs that include sfta01.esm to sfta06.esm, makes the recommender use the same "acts on" rule as the ratings, and corrects a wrong line in the 0.1.2 notes. No option or output file was added or removed, but some report text and counts changed, as the Fixes list below says.

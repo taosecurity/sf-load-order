@@ -104,6 +104,25 @@ def loose_done(r):
     return None if st.get("status") == "done" else f"section loose is {st}"
 
 
+def vortex_profile_read(r):
+    vp = report_json(r["out"]).get("vortex_profile")
+    if not vp or vp.get("name") != "Example-Profile":
+        return f"vortex_profile is {vp}"
+    return None if vp.get("deployed") is True else f"the profile wasn't found deployed: {vp}"
+
+
+def patches_not_checked(r):
+    p = report_json(r["out"]).get("patches")
+    return None if isinstance(p, dict) and p.get("not_checked") else f"patches is {p}"
+
+
+def candidate_ran(r):
+    d = report_json(r["out"]).get("candidate")
+    if not d or d.get("plugins") != ["ExampleNew.esm"]:
+        return f"candidate is {d}"
+    return None if d.get("shared") == 1 else f"expected 1 shared path, got {d.get('shared')}"
+
+
 def heavy_ran(r):
     st = report_json(r["out"])["sections"].get("records", {})
     return None if "sf-mod-check check on" in str(st.get("heavy")) else f"heavy checks didn't run: {st}"
@@ -223,6 +242,13 @@ COMMANDS = [
     dict(text=C + ' --vortex-loadorder "<exported file>"', checks=[source_is("vortex"), vortex_file, loose_done]),
     dict(text=C + ' --vortex-loadorder "<exported file>" --vortex-staging "<staging folder>"',
          checks=[source_is("vortex"), vortex_file, loose_done]),
+    dict(text=C + ' --vortex-profile "Example-Profile" --vortex-exports "<exports folder>"'
+                  ' --vortex-staging "<staging folder>"',
+         checks=[source_is("vortex"), vortex_profile_read, loose_done]),
+    dict(text=C + ' --sf-mod-check "<path to sf-mod-check.exe>" --patch-sources "<patch-sources.json>"',
+         checks=[patches_not_checked]),
+    dict(text=C + ' candidate "<build zip>" --mo2 "<MO2 instance folder>"', report=False, checks=[candidate_ran]),
+    dict(text=C + " candidate --help", expect=0, report=False, checks=[prints("--vortex-profile")]),
     dict(text=C + ' --sf-mod-check "<path to sf-mod-check.exe>"', checks=[section_done("records")]),
     dict(text=C + ' --sf-mod-check "<path to sf-mod-check.exe>" --max-memory 8',
          checks=[section_done("records"), max_memory_passed]),
@@ -326,6 +352,35 @@ def build(t):
         return folder
     fx["staging"] = staging(os.path.join(t, "vortex-staging"))
     fx["staging_default"] = staging(os.path.join(t, "env-template", "Roaming", "Vortex", "starfield", "mods"))
+
+    # --vortex-profile: an export set (modlist, load order, plugins) of the profile "Example-Profile" for the ok game
+    ex = os.path.join(t, "vortex-exports")
+    os.makedirs(ex)
+    stamp = "20261101-100000"
+    entries = [("Starfield.esm", True)] + [(n, True, MODS[n]) for n in OK_PLUGINS]
+    fixtures.vortex_loadorder(os.path.join(ex, f"vortex-starfield-Example-Profile-loadorder-backup-{stamp}.json"),
+                              entries)
+    with open(os.path.join(ex, f"vortex-starfield-Example-Profile-modlist-backup-{stamp}.json"), "w",
+              encoding="utf-8") as f:
+        json.dump([{"name": mod, "game": "starfield", "source": "nexus", "enabled": True, "vortexId": mod,
+                    "installedGame": "starfield", "archive": mod + ".7z", "plugins": [n]}
+                   for n, mod in MODS.items()], f)
+    fixtures.plugins_txt(os.path.join(ex, f"vortex-starfield-Example-Profile-plugins-{stamp}.txt"),
+                         [(n, True) for n in OK_PLUGINS])
+    fx["exports"] = ex
+
+    # --patch-sources: a manifest in the shape sf-mod-check patch writes
+    fx["patch_sources"] = write(os.path.join(t, "patch-sources.json"), json.dumps({
+        "schema": 1, "patch": {"name": "ExamplePatch.esm"}, "loadOrder": [{"name": "ExampleBase.esm"}]}))
+
+    # candidate: a build whose plugin is new and whose one loose file also comes from an installed MO2 mod
+    fx["build_zip"] = os.path.join(t, "ExampleNew-1.0.zip")
+    pl = os.path.join(t, "build-parts", "ExampleNew.esm")
+    fixtures.plugin(pl, masters=["Starfield.esm"])
+    import zipfile
+    with zipfile.ZipFile(fx["build_zip"], "w") as zf:
+        zf.write(pl, "ExampleNew.esm")
+        zf.writestr("textures/example/loose.dds", b"three")
 
     # sf-mod-check's conflicts.json for the ok game: the add-on loses a field to the retexture
     lo = [("Starfield.esm", True, [])] + [(n, False, s["masters"]) for n, s in OK_PLUGINS.items()]
@@ -446,7 +501,8 @@ def run_one(i, cmd, fx, t):
             "<path to sf-mod-check.exe>": fx["smc"], "<conflicts.json>": fx["conflicts"],
             "<masterlist.yaml>": fx["masterlist"], "<userlist.yaml>": fx["userlist"],
             "<LOOT-sorted Plugins.txt>": fx["loot_order"], "<folder>": os.path.join(t, "state-" + str(i)),
-            "<report folder>": os.path.join(t, "report-" + str(i))}
+            "<report folder>": os.path.join(t, "report-" + str(i)), "<exports folder>": fx["exports"],
+            "<patch-sources.json>": fx["patch_sources"], "<build zip>": fx["build_zip"]}
     head, args = argv_for(text, subs)
     notes = []
     if cmd.get("report", True):

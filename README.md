@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.1.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -57,6 +57,11 @@ Top 10
 - Known clashes from LOOT's masterlist and from your own notes.
 - Mods whose archives (.ba2 files) or loose files overwrite each other, and which copy the game actually uses.
 - Record conflicts, where one mod silently undoes another mod's changes (through sf-mod-check, if you have it).
+- Merged patches (built by `sf-mod-check patch`) that are out of date because a mod they merged has changed.
+- With Vortex: whether the Data folder really holds the profile you named, and loose files that two mods ship with
+  different content, with the winner Vortex deployed.
+- A new mod's `.zip`, before you install it (`sf-load-order candidate`, see
+  [Checking a new mod build](#checking-a-new-mod-build)).
 
 It then rates your order, suggests a better one when the data supports it, and writes the files to apply it, with
 step-by-step instructions. You decide whether to apply anything.
@@ -77,7 +82,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.1.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -175,6 +180,24 @@ Give one source. When you give none, the game's own Plugins.txt is read.
 | Mod Organizer 2 | `--mo2 <instance folder>` and, if you like, `--profile <name>` | The folder that holds `ModOrganizer.ini`, `profiles\` and `mods\`. The profile's `plugins.txt`, `loadorder.txt` and `modlist.txt` give the order, which plugins are on, and each mod's priority. Without `--profile`, MO2's selected profile is used. The game folder comes from MO2's `gamePath` setting. |
 | Vortex | `--vortex-loadorder <file>`, and `--vortex-staging <folder>` if your staging folder isn't the default | On Vortex's **Load Order** page, click **Export** and save the file. That file gives the order. Each mod's own folder comes from Vortex's staging folder (default `%APPDATA%\Vortex\starfield\mods`; Vortex shows yours under Settings, Mods, Mod Staging Folder). Vortex's deployment record in the Data folder (`vortex.deployment.*.json`) says which mod deployed each loose file, so mods with no plugin are found too. |
 
+With the Modlist Backup extension for Vortex (it writes a modlist and a load order file for each profile), you can
+name the profile instead of exporting by hand:
+
+    .\sf-load-order.cmd --vortex-profile "My Profile"
+
+The newest export set of that profile is read from the folder in the extension's own settings file
+(`%APPDATA%\Vortex\modlist-backup-auto-export.json`) and its `old` subfolder. `--vortex-exports <folder>` (may be
+given more than once) reads another folder, `--vortex-stamp YYYYMMDD-HHMMSS` picks an older set, and
+`--vortex-modlist <file>` next to `--vortex-loadorder <file>` pairs a modlist with a load order you exported
+yourself. The modlist gives each mod's version and archive name, and its rules when the export has them.
+
+With `--vortex-profile`, the tool also checks that the Data folder holds this profile: no mod plugin may be in Data
+that the profile doesn't list, and no profile mod may be missing. When it isn't (Vortex has another profile
+deployed, or hasn't deployed yet), one caution says so and replaces the "file wasn't found" problems, and the record
+and merged-patch checks are skipped, since they would describe another load order. The plugins that aren't in Data
+are read from the mod's staging folder, so the order and archive checks still describe the profile. The report notes
+when the export's plugin list differs from the game's own Plugins.txt (the export is older than the last change).
+
 Vortex writes mod plugin names in lower case in its export, so sf-load-order takes each name's real spelling from
 the files in Data (or staging). It never reads Vortex's own database.
 
@@ -231,6 +254,25 @@ now points at the wrong records, and neither the game nor the mod manager says a
    was itself updated gets one caution (check it was built for the new master). The first run has nothing to compare
    with and says so. `--no-state` turns the snapshot off.
 
+### Merged patches
+
+A merged patch built by `sf-mod-check patch` is only right for the mods it was built from. When one of them is
+updated, the patch holds old copies of its records. sf-mod-check writes a `patch-sources.json` beside each patch
+(what it was built from), and sf-load-order 0.2.0 asks `sf-mod-check patch check` whether each patch is still up to
+date. It needs sf-mod-check 0.15.0 or newer and runs at `--depth medium` and `heavy`.
+
+- Manifests are looked for as `patch-sources.json` in the Data folder, in the folder of each enabled plugin, and in
+  each enabled Vortex mod's staging folder. `--patch-sources <file or folder>` (may be given more than once) adds
+  more: a folder is searched for `patch-sources.json` and for any other `.json` that looks like a manifest.
+- A manifest is used only when its `patch.name` is one plain plugin file name. A bad one gives a caution.
+- The patch checked is the copy in your load order. A patch that isn't enabled is listed as "not enabled" and not
+  checked.
+- Result per patch: **up to date** (a note), **rebuild** (a problem when sf-mod-check says PROBLEM, else a caution;
+  the reasons are quoted), **not enabled**, or **cannot check** (a caution; sf-mod-check failed or timed out).
+- With no manifest found, sf-mod-check isn't started and `report.json` holds an empty list. With `--depth light`, no
+  Data folder, sf-mod-check missing or older than 0.15.0, or a Vortex profile that isn't deployed, `report.json`
+  says why the check didn't run.
+
 ### Known clashes
 
 From four sources:
@@ -261,6 +303,7 @@ still runs.
 | `min` | no | How many of the plugins must be enabled for the clash to show (default: all of them). |
 | `fixed_by` | no | A patch plugin. When it is enabled and loads after all of them, the clash is reported as settled. |
 | `link` | no | A web page about the clash, copied into the report. |
+| `settled_if_current` | no | `{"plugin": "<patch>.esm", "sha256": "<64 hex digits>"}` (`sha256` may be a list). The clash is settled while the enabled plugin has one of these hashes, so a patch you rebuilt shows up as settled and an old build of it doesn't. A bad value skips the entry with a caution. |
 
 **`--accept`** entries ([examples\accept.example.json](examples/accept.example.json)):
 
@@ -311,6 +354,23 @@ needs each mod's own folder, so it runs for MO2 and Vortex sources, not for a pl
 - Loose files that hide a file inside a loaded archive, and whether the content is the same.
 - Stray files: loose files in Data that no enabled mod ships, counted by folder.
 
+### Vortex mod rules
+
+Vortex lets a mod say it loads before or after another. For loose files, which mod wins in Data is decided by those
+rules, not by the plugin order, so this section looks at each pair of enabled mods that ship the same loose path
+with different content. It needs a Vortex source with a modlist export (`--vortex-profile`, or `--vortex-modlist`),
+and the loose-file check must have run.
+
+- Today's exports from the extension hold no mod rules. Then each differing pair is a note that says whose copy
+  Vortex deployed (from the deployment record, else from the copy Data holds), and one note says plainly what can't
+  be seen. Installing Modlist Backup 0.6.2 or later adds the rules to the export.
+- With rules in the export: a pair of mods with different copies and **no** ordering rule is a caution ("Real clash
+  with no rule"). Rules that only order identical copies, rules between mods that share no loose file, and rules that
+  name a mod that isn't enabled are listed as notes.
+- When the profile isn't the deployed one, no winner is named.
+- The section is skipped, with the reason, for MO2, a plain Plugins.txt, no modlist, or when the loose-file check
+  didn't run.
+
 ### Record conflicts (sf-mod-check)
 
 At depth medium and heavy, sf-load-order runs `sf-mod-check conflict` on your load order (or reads a
@@ -343,6 +403,12 @@ winner". The navmesh info map isn't counted in the pair's records, in what's "to
 the merged-patch note, and a mod's copy over an official one isn't counted as undoing an official change. The
 records summary counts its entries apart from the lost change entries, and a pair with only the navmesh info map
 doesn't change a plugin's rating. A pair that also has other records keeps its advice for those records.
+
+The records an enabled plugin uses can point at files that aren't installed (not loose and not in an archive the game
+loads). The finding counts them by kind, for example "1 script(s), 1 model(s) and 2 texture(s) its records use
+aren't installed" (kinds: script, model, material, texture, sound). It is a caution when a script is missing, else
+a note. The kinds come from a conflicts.json whose entries name them (newer sf-mod-check versions do); an entry with no kind
+counts as a model.
 
 sf-mod-check reads plugins from the Data folder. Under MO2 it only sees your mods when it is started from MO2 (see
 [Traps](#traps)).
@@ -388,6 +454,35 @@ Files written to the report folder:
 
 The files are written even when nothing moves; they then equal your current order, and HOW-TO-APPLY.txt says so.
 
+## Checking a new mod build
+
+`sf-load-order candidate <zip> [<zip> ...]` checks a new build before you install it: the zips are the parts of one
+build (one plugin each). It uses the same load order options as a normal run and writes `report.txt`,
+`report.html` and `report.json` to `--out`. It only reads the zips; the copies it needs go to `<out>\work\candidate`.
+A mod that already holds a plugin with the same name as one of the build's is taken to be the older copy of this
+build and is left out of the comparison.
+
+Example, with a new build of ShipMod, built on the installed CoreTools:
+
+```
+> .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
+sf-load-order 0.2.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
+```
+
+| Finding | Level |
+|---|---|
+| A script (`.pex`) the build ships that another enabled mod also ships | problem |
+| Another file the build ships with different content than an enabled mod's copy | problem; a caution when the other mod is a master of the build; a note when the content is identical |
+| Two parts of the build shipping the same path | problem for scripts, a caution for other files |
+| Files that can't be compared, or `--depth light` (names only) | caution |
+| Build archives no plugin of the build loads, a fomod installer, an installed archive that can't be read | caution |
+
+At `--depth heavy` it also runs `sf-mod-check check` on each plugin of the build: deleted references are a problem,
+ITMs and errors are cautions. A `.7z` or `.rar`, a missing file or a file that isn't a zip stops the run with exit 2.
+`--strict` exits 1 when there is a problem. Records the build shares with other mods aren't checked yet.
+`report.json` has a `candidate` key (see below) and shows only the inputs and candidate sections.
+
 ## Depth
 
 | Depth | What runs | Time |
@@ -402,7 +497,9 @@ stopped if `conflict` runs longer than 30 minutes; for a very large load order, 
 
 ## All options
 
-These are the options `.\sf-load-order.cmd --help` lists.
+These are the options `.\sf-load-order.cmd --help` lists. `.\sf-load-order.cmd candidate --help` lists the ones
+`candidate` takes: the zips, the load order and `--vortex-*` options, `--data`, `--depth`, `--sf-mod-check`,
+`--state`, `--no-state` and the output options, with the same meanings.
 
 | Option | Meaning |
 |---|---|
@@ -410,6 +507,10 @@ These are the options `.\sf-load-order.cmd --help` lists.
 | `--mo2 FOLDER` | A Mod Organizer 2 instance folder (it holds `profiles\` and `mods\`). |
 | `--profile NAME` | The MO2 profile (default: MO2's selected profile). |
 | `--vortex-loadorder FILE` | A load order file exported from Vortex's Load Order page (Export button). |
+| `--vortex-modlist FILE` | A modlist export from the Modlist Backup extension, read next to `--vortex-loadorder`. |
+| `--vortex-profile NAME` | A Vortex profile: its newest export set (modlist and load order) from the Modlist Backup extension, and a check that Data holds this profile. |
+| `--vortex-exports FOLDER` | Where the extension's export sets are (may be given more than once; default: the folder in `%APPDATA%\Vortex\modlist-backup-auto-export.json` and its `old` subfolder). |
+| `--vortex-stamp YYYYMMDD-HHMMSS` | With `--vortex-profile`: use the export set with this stamp instead of the newest. |
 | `--vortex-staging FOLDER` | Vortex's mod staging folder, for loose-file checks (default: `%APPDATA%\Vortex\starfield\mods`). |
 | `--data FOLDER` | The game's Data folder (default: Steam's, then Game Pass's XboxGames folder on each drive). |
 | `--depth {light,medium,heavy}` | How much to check (see [Depth](#depth)). |
@@ -422,6 +523,7 @@ These are the options `.\sf-load-order.cmd --help` lists.
 | `--accept FILE` | Clashes you have accepted, pinned to the files' hashes. |
 | `--picks FILE` | Your own order picks: plugin X loads right after plugin Y. |
 | `--loot-order FILE` | A Plugins.txt sorted by LOOT, to compare with. |
+| `--patch-sources FILE\|FOLDER` | A `patch-sources.json` (or a folder of them) from `sf-mod-check patch`, checked with `sf-mod-check patch check` besides those found next to the enabled plugins (may be given more than once). |
 | `--state FOLDER` | Where to keep the snapshot used for "changed since the last run", and the archive and loose-file cache (default: `%LOCALAPPDATA%\sf-load-order`; on Linux `~/.local/state/sf-load-order`). |
 | `--no-state` | Don't read or write the snapshot or the cache. |
 | `--out FOLDER` | Where the report and the files to apply go (default: `.\sf-load-order-report`). |
@@ -460,11 +562,23 @@ Schema 1. Top-level keys:
 | `counts` | `{"problem": n, "caution": n, "note": n}`. |
 | `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `masters`), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
 | `findings` | Worst first. Each: `level` (`problem`, `caution`, `note`), `section`, `text` (what is wrong), `fix` (what to do, or `null`), `plugins` (names it is about) and `data` (extra detail: counts, FormIDs, paths, a ready `accept_entry`). |
-| `sections` | Per section (`inputs`, `order`, `patches`, `clashes`, `archives`, `loose`, `records`, `recommend`): `status` (`done`, `skipped`, `failed` or `missing`), `why` when it didn't run, and a few counts (for example `patches.built_for_old`, the plugins still built for an older kind of a master). |
+| `sections` | Per section (`inputs`, `order`, `patches`, `clashes`, `archives`, `loose`, `rules`, `records`, `recommend`; a `candidate` run has `inputs` and `candidate`): `status` (`done`, `skipped`, `failed` or `missing`), `why` when it didn't run, and a few counts (for example `patches.built_for_old`, the plugins still built for an older kind of a master). |
 | `recommended` | The suggested order as plugin names, or `null` when none was worked out. |
 | `outputs` | Each file written, by role (`txt`, `html`, `json`, `plugins_txt`, `loadorder_txt` for MO2, `vortex_json` for Vortex, `how_to`). |
 | `results` | A summary per section, counts only (for example `records.ratings`, `archives.pairs_by_advice`, `recommend.score_current` and `score_recommended`, `recommend.estimate`, `recommend.moves`). |
 | `left_out` | What the summary leaves out and where to find it (for example the lost records with their field values, which stay in sf-mod-check's conflicts.json and report.html). |
+
+New in 0.2.0 (nothing was renamed):
+
+| Key | Meaning |
+|---|---|
+| `vortex_profile` | With `--vortex-profile`: `name`, `stamp`, `files` (modlist, loadorder, plugins) and the deployed check (`deployed`, `extra_plugins`, `extra_mods`, `missing_plugins`, `plugins_txt_matches`). `null` for other sources. |
+| `patches` | Merged patches: a list of `{patch, manifest, state, level, rebuild, reasons, checked, result, findings}` (`state` is `up to date`, `rebuild`, `not enabled` or `cannot check`; `smc_state` is sf-mod-check's own word), `[]` when no manifest was found, or `{"not_checked": why}`. |
+| `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, winner, deployed, rule}`), `no_shared`, `unmatched` and `findings` (counts). |
+| `candidate` | `candidate` runs: `zips`, `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`) and `heavy`. `null` in a normal run. |
+
+The "files its records use aren't installed" findings count the files by kind (script, model, material, texture,
+sound) in their text, and their `data` has a `kinds` count.
 
 Readers should ignore keys they don't know: new keys can appear in any version without a schema change.
 

@@ -39,12 +39,14 @@ LIST_MAX = 200  # items shown in one folded list in report.html
 TITLES = {
     "inputs": "What was read",
     "order": "Load order and masters",
-    "patches": "Patches built for an older master",
+    "patches": "Patches (built for an older master, merged patches)",
     "clashes": "Known clashes (LOOT and your own files)",
     "archives": "Archives (.ba2 files)",
     "loose": "Loose files",
+    "rules": "Vortex mod rules",
     "records": "Record conflicts (sf-mod-check)",
     "recommend": "Rating",
+    "candidate": "The new build against the installed mods",
 }
 LEVEL_WORD = {"problem": "Problem", "caution": "Caution", "note": "Note"}
 SOURCE_WORD = {"plugins.txt": "the game's Plugins.txt", "vortex": "a Vortex load order export",
@@ -89,6 +91,11 @@ def top_findings(report):
     before the ones without, then section order. The first TOP of them are the report's top 10."""
     return sorted(report.findings, key=lambda f: (LEVELS.index(f.level), 0 if f.fix else 1,
                                                   SECTIONS.index(f.section)))
+
+
+def _shown(ctx):
+    """The sections this run's report shows: every check, or inputs and candidate for `candidate`."""
+    return getattr(ctx, "sections", None) or tuple(s for s in SECTIONS if s != "candidate")
 
 
 def _section_findings(report, section):
@@ -179,8 +186,13 @@ def _summary_lines(ctx, section):
                    f"{_plural(n_pairs, 'pair')} of mods {'ships' if n_pairs == 1 else 'ship'} the same paths.")
         if st.get("stray") is not None:
             out.append(f"{_plural(st['stray'], 'loose file')} in Data come from no enabled mod.")
+    elif section == "rules" and st.get("status") == "done":
+        out.append(("The modlist export has mod rules; " if st.get("has_rules") else
+                    "The modlist export has no mod rules; ")
+                   + f"{_plural(st.get('pairs', 0), 'pair')} of mods ship the same loose paths, "
+                     f"{_n(st.get('differ', 0))} with different copies.")
     elif section == "records" and st.get("status") == "done":
-        src = "a conflicts.json you gave (--conflicts)" if st.get("source") == "file" else "an sf-mod-check run"
+        src ="a conflicts.json you gave (--conflicts)" if st.get("source") == "file" else "an sf-mod-check run"
         navi = (f" (and {_plural(st['navi'], 'navmesh info map entry', 'navmesh info map entries')}, which aren't "
                 "lost changes)") if st.get("navi") else ""
         out.append(f"Read from {src}: {_plural(st.get('lost', 0), 'lost change entry', 'lost change entries')}{navi}, "
@@ -194,6 +206,13 @@ def _summary_lines(ctx, section):
             out.append(f"Heavy checks: {_sentence(st['heavy'])}")
         if st.get("result_line"):
             out.append(f"sf-mod-check said: {st['result_line']}")
+    cand = getattr(ctx.report, "candidate", None)
+    if section == "candidate" and cand:
+        out.append(f"Checked {_plural(len(cand.get('zips') or []), 'zip')} ({', '.join(cand.get('plugins') or []) or 'no plugin'}) "
+                   f"at depth {cand.get('depth')}: {_plural(cand.get('build_paths', 0), 'path')}, "
+                   f"{_n(cand.get('shared', 0))} also shipped by the {_plural(cand.get('mods_checked', 0), 'enabled mod')} checked.")
+        if cand.get("replaced"):
+            out.append(f"Left out as the installed copy of this build: {', '.join(cand['replaced'])}.")
     if st.get("note"):
         out.append(_sentence(st["note"]))
     return out
@@ -309,7 +328,10 @@ def _detail_lists(ctx, section):
 # ---------------------------------------------------------------- the suggested order
 
 def _suggested(ctx):
-    """(paragraphs, moves, folds) for the "Suggested order" part. moves: [str]; folds: [(title, items)]."""
+    """(paragraphs, moves, folds) for the "Suggested order" part. moves: [str]; folds: [(title, items)].
+    paragraphs is None when the run has no such part (`candidate`)."""
+    if "recommend" not in _shown(ctx):
+        return None, [], []
     st = _status(ctx.report, "recommend")
     res = ctx.results.get("recommend")
     if not res:
@@ -417,7 +439,7 @@ def render_text(ctx, paths):
     for k, v in _header_facts(ctx, paths):
         L.append(_wrap(v, " " * 16, f"{k + ':':<16}"))
     L += ["", _wrap(_counts_line(rep))]
-    failed = [TITLES[s] for s in SECTIONS if _status(rep, s).get("status") == "failed"]
+    failed = [TITLES[s] for s in _shown(ctx) if _status(rep, s).get("status") == "failed"]
     if failed:
         L.append(_wrap(f"These checks failed (see their sections): {', '.join(failed)}."))
     L += ["", "Top 10", "-" * 6]
@@ -431,7 +453,7 @@ def render_text(ctx, paths):
         L.append(_wrap(f"(Section: {TITLES[f.section]}.)", "    "))
     if len(ordered) > TOP:
         L.append(_wrap(f"{_plural(len(ordered) - TOP, 'more finding')} are listed in the sections below."))
-    for i, s in enumerate(SECTIONS, 1):
+    for i, s in enumerate(_shown(ctx), 1):
         st = _status(rep, s)
         title = f"{i}. {TITLES[s]}"
         L += ["", title, "-" * len(title), _wrap(f"Status: {status_text(st)}")]
@@ -447,8 +469,9 @@ def render_text(ctx, paths):
         for title_, items in _detail_lists(ctx, s):
             L.append(_wrap(f"{title_}: {_n(len(items))} (the full list is in report.html).", "    ", "  * "))
     paras, moves, folds = _suggested(ctx)
-    L += ["", "Suggested order", "-" * 15]
-    for p in paras:
+    if paras is not None:
+        L += ["", "Suggested order", "-" * 15]
+    for p in paras or ():
         L.append(_wrap(p))
     if moves:
         L.append(f"Moves ({_n(len(moves))}):")
@@ -572,7 +595,7 @@ def render_html(ctx, paths):
     for k, v in _header_facts(ctx, paths):
         P.append(f"<dt>{_e(k)}</dt><dd>{_e(v)}</dd>")
     P.append(f"</dl><p>{_counts_pills(rep.findings) or _pill('done', 'nothing found')} {_e(_counts_line(rep))}</p>")
-    failed = [TITLES[s] for s in SECTIONS if _status(rep, s).get("status") == "failed"]
+    failed = [TITLES[s] for s in _shown(ctx) if _status(rep, s).get("status") == "failed"]
     if failed:
         P.append(f"<p>{_pill('failed', 'failed')} {_e('These checks failed (see their sections): ' + ', '.join(failed) + '.')}</p>")
     P.append("</section>")
@@ -587,7 +610,7 @@ def render_html(ctx, paths):
         P.append("<p>Nothing was found to fix or look at.</p>")
     P.append("</section>")
 
-    for i, s in enumerate(SECTIONS, 1):
+    for i, s in enumerate(_shown(ctx), 1):
         st = _status(rep, s)
         fs = _section_findings(rep, s)
         open_ = st.get("status") == "failed" or any(f.level != "note" for f in fs)
@@ -605,13 +628,15 @@ def render_html(ctx, paths):
         P.append("</details>")
 
     paras, moves, folds = _suggested(ctx)
-    P.append('<section id="suggested"><h2>Suggested order</h2>')
-    P += [f"<p>{_e(p)}</p>" for p in paras]
+    if paras is not None:
+        P.append('<section id="suggested"><h2>Suggested order</h2>')
+    P += [f"<p>{_e(p)}</p>" for p in paras or ()]
     if moves:
         P.append(f"<p>Moves ({_e(_n(len(moves)))}):</p><ol>" + "".join(f"<li>{_e(m)}</li>" for m in moves) + "</ol>")
     for title, items in folds:
         P.append(_fold(title, items))
-    P.append("</section>")
+    if paras is not None:
+        P.append("</section>")
 
     P.append('<section id="files"><h2>Files written</h2><dl class="facts">')
     for role, p in _outputs(ctx, paths).items():
@@ -710,7 +735,7 @@ def to_json(ctx, paths):
     for m in lo.get("mods") or []:
         files = m.pop("files", None)
         m["files_count"] = None if files is None else len(files)
-    for s in SECTIONS:
+    for s in _shown(ctx):
         d["sections"].setdefault(s, {"status": "missing", "why": "this check didn't run"})
     d["results"] = _results_summary(ctx)
     d["left_out"] = dict(LEFT_OUT)

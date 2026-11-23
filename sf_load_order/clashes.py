@@ -903,7 +903,38 @@ def _acceptance_for(accepted, names):
 # =====================================================================================================================
 # part 2: --clashes
 # =====================================================================================================================
-CLASH_FIELDS = ("plugins", "min", "level", "note", "fixed_by", "link")
+CLASH_FIELDS = ("plugins", "min", "level", "note", "fixed_by", "link", "settled_if_current")
+
+
+def _current_errors(sc):
+    """Shape errors of a settled_if_current value: {"plugin": "<plugin>", "sha256": "<64 hex>" or [...]}."""
+    if not isinstance(sc, dict) or set(sc) - {"plugin", "sha256"}:
+        return ["\"settled_if_current\" must be {\"plugin\": \"<plugin>\", \"sha256\": \"<64 hex digits>\"}"]
+    errs = []
+    if not _is_plugin_name(sc.get("plugin")):
+        errs.append("\"settled_if_current\" needs \"plugin\", a plugin file name")
+    shas = sc.get("sha256")
+    shas = shas if isinstance(shas, list) else [shas]
+    if not shas or not all(isinstance(s, str) and re.fullmatch(r"[0-9a-fA-F]{64}", s) for s in shas):
+        errs.append("\"settled_if_current\" needs \"sha256\": 64 hex digits (or a list of them)")
+    return errs
+
+
+def _current_state(lo, sc, real, cache):
+    """("current" | "not-current", sentence) for a settled_if_current value: current when its plugin is enabled and
+    the installed file's SHA-256 is one of the hashes given."""
+    name = sc["plugin"]
+    if name.lower() not in real:
+        return "not-current", f" {name} settles it when it's the build this entry names, but it isn't enabled."
+    name = real[name.lower()]
+    path = _plugin_path(lo, name)
+    sha = _sha256(path, cache)[0] if path else None
+    if sha is None:
+        return "not-current", f" {name} settles it when it's the build this entry names, but its file can't be read."
+    want = sc["sha256"] if isinstance(sc["sha256"], list) else [sc["sha256"]]
+    if sha.lower() in {s.lower() for s in want}:
+        return "current", f"{name} is the build this entry names"
+    return "not-current", f" {name} isn't the build this entry names: install the current one."
 
 
 def read_clashes(ctx, path, accepted, cache):
@@ -915,7 +946,8 @@ def read_clashes(ctx, path, accepted, cache):
     pos = {n.lower(): i for i, n in enumerate(order)}
     real = {n.lower(): n for n in order}
     fix = ("Each entry needs \"plugins\" (a list of plugin file names), \"level\" (problem, caution or pick-one) "
-           "and \"note\"; \"min\" and \"fixed_by\" are optional. See the README for the format.")
+           "and \"note\"; \"min\", \"fixed_by\", \"link\" and \"settled_if_current\" are optional. See the "
+           "README for the format.")
     out, bad = [], 0
     for i, e in enumerate(entries):
         errs = _entry_errors(e, CLASH_FIELDS, ("plugins", "level", "note"))
@@ -937,6 +969,8 @@ def read_clashes(ctx, path, accepted, cache):
                 errs.append("\"fixed_by\" must be a plugin file name")
             if "link" in e and not isinstance(e["link"], str):
                 errs.append("\"link\" must be text")
+            if "settled_if_current" in e:
+                errs += _current_errors(e["settled_if_current"])
         if errs:
             bad += 1
             _bad_entry(ctx, "clashes", path, i, errs, fix)
@@ -956,6 +990,13 @@ def read_clashes(ctx, path, accepted, cache):
                 extra = f" The patch {real[fb.lower()]} is enabled but must load after all of them."
             else:
                 extra = f" The patch {fb} would settle it, but it isn't enabled."
+        current = None
+        if "settled_if_current" in e:
+            current, why = _current_state(lo, e["settled_if_current"], real, cache)
+            if current == "current" and not settled:
+                settled = why
+            elif current == "not-current":
+                extra += why
         acc = _acceptance_for(accepted, present)
         if not settled and acc and acc["status"] == "valid":
             settled = f"you accepted it on {acc['date'] or 'an earlier date'} and the files are unchanged"
@@ -963,11 +1004,14 @@ def read_clashes(ctx, path, accepted, cache):
             extra += " Your acceptance no longer matches the files (one of them changed)."
         item = {"entry": i + 1, "plugins": present, "level": e["level"], "note": e["note"], "fixed_by": fb,
                 "link": e.get("link"), "settled": settled}
+        if current:
+            item["current"] = current
         out.append(item)
         names = " + ".join(present)
         if settled:
             ctx.report.add(Finding("note", SECTION, f"Known clash {names} is settled: {settled}. ({e['note']})",
-                                   plugins=present, data={"file": path, "entry": i + 1, "settled": True}))
+                                   plugins=present, data={"file": path, "entry": i + 1,
+                                                          "settled": "current" if current == "current" else True}))
             continue
         if fb:
             fixtext = f"Enable {fb} and load it after {names}."
@@ -978,6 +1022,8 @@ def read_clashes(ctx, path, accepted, cache):
             fixtext = ("Disable one of them, or find a patch. If you've checked it and can live with it, add it to "
                        "your --accept file (a ready entry is in this finding's data).")
         data = {"file": path, "entry": i + 1, "level": e["level"]}
+        if current:
+            data["settled"] = current
         if e.get("link"):
             data["link"] = e["link"]
         ae = accept_entry(lo, present, cache, e["note"])

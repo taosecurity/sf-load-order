@@ -16,7 +16,8 @@ What conflicts.json holds (sf-mod-check src\\ConflictReport.cs, 0.8.0) and what 
                             undocumented fields)
                Choice       the winner changed that field on purpose too
                Forwardable  the winner only carries an older value, so a patch can copy the lost value forward
-  itms, typeChanges, loadOrderProblems, Errors / UnreadableFields (records not compared), missingAssets,
+  itms, typeChanges, loadOrderProblems, Errors / UnreadableFields (records not compared), missingAssets and
+  missingFiles (0.14.0: material, texture and sound entries; both counted by their own kind),
   archiveLimitWarnings, loadOrder (plugins sf-mod-check loaded, with Official and Masters).
 load() refuses a file that isn't in that shape (shape_problem: a list that isn't a list, an item that isn't an
 object with its names as text), with one caution naming the file and the fix, so the rest of this module reads
@@ -130,11 +131,12 @@ def load(path):
 # The lists analyse() reads, with the keys each item must have as text with something in it (sf-mod-check always
 # writes them so). Optional lists may be missing or null.
 ITEM_NAMES = {"loadOrder": ("FileName",), "lost": ("Loser", "Winner"), "itms": ("Plugin",),
-              "typeChanges": ("Plugin",), "missingAssets": ("plugin",)}
+              "typeChanges": ("Plugin",), "missingAssets": ("plugin",), "missingFiles": ("plugin",)}
 TEXT_LISTS = ("loadOrderProblems", "Errors", "archiveLimitWarnings")
 # Keys analyse() reads as text when they are there (missing or null is fine).
 ITEM_TEXT = {"lost": ("formKey", "RecordType", "EditorID"), "itms": ("formKey", "RecordType", "EditorID"),
-             "typeChanges": ("First", "formKey", "EditorID"), "missingAssets": ("kind",)}
+             "typeChanges": ("First", "formKey", "EditorID"), "missingAssets": ("kind", "path"),
+             "missingFiles": ("kind", "path")}
 
 
 def _named(x, keys):
@@ -334,7 +336,7 @@ def analyse(cj, lo):
            "official_undone": official_undone, "itms": itms, "type_changes": tcs, "problems": problems,
            "not_compared": {"errors": list(cj.get("Errors") or []),
                             "unreadable_fields": dict(cj.get("UnreadableFields") or {})},
-           "assets": {"checked": cj.get("assetsChecked"), "missing": list(cj.get("missingAssets") or []),
+           "assets": {"checked": cj.get("assetsChecked"), "missing": list(cj.get("missingAssets") or []) + list(cj.get("missingFiles") or []),
                       "archive_counts": cj.get("archiveCounts"),
                       "archive_limit_warnings": list(cj.get("archiveLimitWarnings") or [])},
            "heavy": None}
@@ -478,6 +480,27 @@ def navi_note(p, lost):
                    data={"advice": "navi", "records": [lost[i]["fk"] for i in p["navi"]][:50]})
 
 
+KIND_ORDER = ("script", "model", "material", "texture", "sound")
+
+
+def missing_kinds(ms):
+    """{kind: count} for missing-file entries, by sf-mod-check's own kind (0.2.0). A kind starting "script" is a
+    script; an entry with no kind is a model (0.13.0's missingAssets held only scripts and models); a kind this
+    tool doesn't know yet is counted under its own name. Ordered: the known kinds first, then the rest by name."""
+    n = {}
+    for m in ms:
+        k = (m.get("kind") or "").strip().lower()
+        k = "script" if k.startswith("script") else (k or "model")
+        n[k] = n.get(k, 0) + 1
+    known = [k for k in KIND_ORDER if k in n]
+    return {k: n[k] for k in known + sorted(k for k in n if k not in KIND_ORDER)}
+
+
+def _kinds_text(kinds):
+    bits = [f"{c} {k}(s)" for k, c in kinds.items()]
+    return bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + " and " + bits[-1]
+
+
 def add_findings(ctx, res, source):
     add = ctx.report.add
     lost = res["lost"]
@@ -571,13 +594,12 @@ def add_findings(ctx, res, source):
     for m in res["assets"]["missing"]:
         miss.setdefault((m.get("plugin") or ""), []).append(m)
     for plugin, ms in miss.items():
-        scripts = [m for m in ms if (m.get("kind") or "").lower().startswith("script")]
-        models = len(ms) - len(scripts)
-        add(Finding("caution" if scripts else "note", SECTION,
-                    f"{plugin}: {len(scripts)} script(s) and {models} model(s) its records use aren't installed "
+        kinds = missing_kinds(ms)
+        add(Finding("caution" if kinds.get("script") else "note", SECTION,
+                    f"{plugin}: {_kinds_text(kinds)} its records use aren't installed "
                     "(not loose and not in an archive the game loads).",
                     fix="Reinstall the mod, or install the mod those files come from.", plugins=[plugin],
-                    data={"paths": [m.get("path") for m in ms][:50]}))
+                    data={"paths": [m.get("path") for m in ms][:50], "kinds": kinds}))
     for w in res["assets"]["archive_limit_warnings"]:
         add(Finding("caution", SECTION, f"sf-mod-check: {w}",
                     fix="Remove or merge mods that bring archives, or use a BA2 limit fix."))

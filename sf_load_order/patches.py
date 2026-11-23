@@ -292,6 +292,21 @@ def _add(ctx, level, text, fix=None, plugins=(), **data):
 
 
 def run(ctx):
+    """The older-master checks below, then the merged patches (merged.py: sf-mod-check patch check), whose result
+    is report.json `patches`. A failure in the merged part is reported there and leaves the rest of the section."""
+    status = _older_master(ctx)
+    from . import merged
+    try:
+        ctx.report.patches, status["merged"] = merged.run(ctx)
+    except Exception as e:  # a bug in the merged part must not hide the older-master findings
+        import traceback
+        log.info(SECTION, "merged patches failed:\n" + traceback.format_exc())
+        ctx.report.patches = {"not_checked": f"the check failed ({type(e).__name__}: {e})"}
+        status["merged"] = {"status": "failed", "why": f"{type(e).__name__}: {e}"}
+    return status
+
+
+def _older_master(ctx):
     lo = ctx.load_order
     if any(p.path and p.kind is None for p in lo.plugins):
         plugin_header.fill(lo)

@@ -142,9 +142,9 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(self.json["sections"]["records"]["status"], "failed")
 
     def test_txt_layout(self):
-        for s in report.SECTIONS:
+        for s in cli.MAIN_SECTIONS:
             self.assertIn(report.TITLES[s], self.txt)
-        self.assertLess(self.txt.index("8. Rating"), self.txt.index("Suggested order"))
+        self.assertLess(self.txt.index(f"{len(cli.MAIN_SECTIONS)}. Rating"), self.txt.index("Suggested order"))
         self.assertLess(self.txt.index("Suggested order"), self.txt.index("Files written"))
         self.assertIn("lower is better", self.txt)
         self.assertIn("The recommended score is an estimate", self.txt)
@@ -164,7 +164,7 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(j["results"]["archives"]["pairs_by_advice"], {"same": 1})
         self.assertEqual(j["results"]["order"]["loading"], 3)
         self.assertIn("records", j["left_out"])
-        self.assertEqual(set(j["sections"]), set(model.SECTIONS))
+        self.assertEqual(set(j["sections"]), set(cli.MAIN_SECTIONS))
 
     def test_same_as_current(self):
         self.ctx.results["recommend"].update(same_as_current=True, moves=[], score_recommended=30, estimate=False)

@@ -452,6 +452,70 @@ class ClashFileTests(Base):
         self.assertIn("--clashes", ctx.report.findings[0].fix)
 
 
+class SettledIfCurrentTests(Base):
+    """0.2.0 (relay step 4): settled_if_current settles a clash when the named plugin is enabled and its installed
+    file's SHA-256 is one of the hashes given (lov.py writes our current builds' hashes)."""
+
+    def setup_pair(self):
+        ps = [self.p("Starfield.esm", official=True), self.p("ExampleA.esm"), self.p("ExampleB.esm"),
+              self.p("ExampleFix.esm")]
+        sha = clashes._sha256(ps[3].path, {})[0]
+        return ps, sha
+
+    def run_one(self, ps, sc, **extra):
+        e = {"plugins": ["ExampleA.esm", "ExampleB.esm"], "level": "problem", "note": "They fight.",
+             "settled_if_current": sc}
+        e.update(extra)
+        ctx = make_ctx(self.tmp, ps, clashes=self.write("clashes.json", [e]))
+        st = clashes.run(ctx, env={})
+        return ctx, st, [f for f in ctx.report.findings if "They fight." in f.text]
+
+    def test_current_build_settles(self):
+        ps, sha = self.setup_pair()
+        ctx, st, fs = self.run_one(ps, {"plugin": "examplefix.esm", "sha256": sha.upper()})
+        self.assertEqual([f.level for f in fs], ["note"])
+        self.assertIn("settled: ExampleFix.esm is the build this entry names", fs[0].text)
+        self.assertEqual(fs[0].data["settled"], "current")
+        self.assertEqual(ctx.results["clashes"]["known"][0]["current"], "current")
+
+    def test_a_list_with_the_hash_settles(self):
+        ps, sha = self.setup_pair()
+        _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": ["0" * 64, sha]})
+        self.assertEqual([f.level for f in fs], ["note"])
+
+    def test_other_build_stays_open(self):
+        ps, sha = self.setup_pair()
+        fixtures.plugin(ps[3].path, author="newer build")
+        _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": sha})
+        self.assertEqual([f.level for f in fs], ["problem"])
+        self.assertIn("ExampleFix.esm isn't the build this entry names: install the current one.", fs[0].text)
+        self.assertEqual(fs[0].data["settled"], "not-current")
+
+    def test_not_enabled_stays_open(self):
+        ps, sha = self.setup_pair()
+        ps[3] = Plugin("ExampleFix.esm", False, path=ps[3].path)
+        _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": sha})
+        self.assertEqual(fs[0].level, "problem")
+        self.assertIn("isn't enabled", fs[0].text)
+        self.assertEqual(fs[0].data["settled"], "not-current")
+
+    def test_fixed_by_still_settles_when_the_build_is_old(self):
+        ps, _ = self.setup_pair()
+        _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": "0" * 64}, fixed_by="ExampleFix.esm")
+        self.assertEqual(fs[0].level, "note")
+        self.assertIs(fs[0].data["settled"], True)
+
+    def test_bad_shapes_are_refused(self):
+        ps, sha = self.setup_pair()
+        for sc in ("ExampleFix.esm", {"plugin": "ExampleFix.esm"}, {"plugin": "ExampleFix.esm", "sha256": "abc"},
+                   {"plugin": "ExampleFix.txt", "sha256": sha}, {"plugin": "ExampleFix.esm", "sha256": []},
+                   {"plugin": "ExampleFix.esm", "sha256": sha, "size": 3}):
+            ctx, st, fs = self.run_one(ps, sc)
+            self.assertEqual(st["parts"]["clashes"]["bad_entries"], 1, sc)
+            self.assertEqual(fs, [], sc)
+            self.assertTrue(any("settled_if_current" in t for t in self.texts(ctx, "caution")), sc)
+
+
 class AcceptTests(Base):
     def setup_pair(self):
         ps = [self.p("Starfield.esm", official=True), self.p("ExampleA.esm"), self.p("ExampleB.esm")]

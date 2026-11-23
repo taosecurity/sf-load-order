@@ -706,6 +706,57 @@ class Shape(unittest.TestCase):
         self.assertEqual(r["plugins"]["b.esm"]["rating"], "neutral")
 
 
+class MissingFileKinds(unittest.TestCase):
+    """0.2.0 (relay step 4, next step 2): sf-mod-check 0.14.0 writes material, texture and sound entries to
+    missingFiles; each plugin's missing files are counted by their own kind, not "scripts and the rest models"."""
+
+    def findings(self, cj):
+        cj = dict({"loadOrder": [{"FileName": n} for n in ("A.esm", "B.esm", "C.esm")], "lost": []}, **cj)
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "conflicts.json")
+            dump_json(cj, p)
+            loaded, err = records.load(p)
+            self.assertIsNone(err)
+            lo = make_lo(["A.esm", "B.esm", "C.esm"])
+            ctx = ctx_for(t, lo)
+            records.add_findings(ctx, records.analyse(loaded, lo), "file")
+        return {f.plugins[0]: f for f in ctx.report.findings if "aren't installed" in f.text}
+
+    def m(self, plugin, kind, path):
+        return {"plugin": plugin, "severity": "WARNING", "kind": kind, "path": path, "script": None, "users": [],
+                "finding": "x"}
+
+    def test_kinds_counted_from_both_lists(self):
+        fs = self.findings({
+            "missingAssets": [self.m("A.esm", "script", "Scripts/a.pex"), self.m("A.esm", "model", "Meshes/a.nif"),
+                              self.m("B.esm", "model", "Meshes/b.nif")],
+            "missingFiles": [self.m("A.esm", "texture", "Textures/a.dds"), self.m("A.esm", "texture", "Textures/b.dds"),
+                             self.m("A.esm", "material", "Materials/a.mat"), self.m("B.esm", "sound", "Sound/b.wem"),
+                             self.m("C.esm", "flipbook", "Textures/c.dds")]})
+        a, b, c = fs["A.esm"], fs["B.esm"], fs["C.esm"]
+        self.assertEqual(a.level, "caution")
+        self.assertIn("A.esm: 1 script(s), 1 model(s), 1 material(s) and 2 texture(s) its records use", a.text)
+        self.assertEqual(a.data["kinds"], {"script": 1, "model": 1, "material": 1, "texture": 2})
+        self.assertEqual(len(a.data["paths"]), 5)
+        self.assertEqual(b.level, "note")
+        self.assertIn("B.esm: 1 model(s) and 1 sound(s) its records", b.text)
+        self.assertNotIn("script", b.text)
+        self.assertIn("C.esm: 1 flipbook(s) its records", c.text)  # a kind this tool doesn't know yet
+
+    def test_old_file_without_missing_files_and_no_kind(self):
+        fs = self.findings({"missingAssets": [{"plugin": "A.esm", "path": "Meshes/a.nif"},
+                                              self.m("A.esm", "Script", "Scripts/a.pex")]})
+        self.assertEqual(fs["A.esm"].data["kinds"], {"script": 1, "model": 1})
+
+    def test_bad_missing_files_shape_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "conflicts.json")
+            dump_json({"loadOrder": [], "lost": [], "missingFiles": [{"plugin": "A.esm", "kind": 3}]}, p)
+            cj, err = records.load(p)
+        self.assertIsNone(cj)
+        self.assertIn("missingFiles", err)
+
+
 class Program(unittest.TestCase):
     def setUp(self):
         self.t = tempfile.mkdtemp()

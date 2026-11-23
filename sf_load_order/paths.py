@@ -11,6 +11,7 @@ Data folder search order (find_data):
   4. Game Pass: <drive>:\\XboxGames\\Starfield\\Content\\Data on every drive, plus the folders named in each drive's
      .GamingRoot file (the Xbox app's list of game folders on that drive)
 """
+import json
 import os
 import string
 
@@ -37,6 +38,43 @@ def default_vortex_staging(env=None):
     isn't set (Linux, macOS)."""
     base = _env(env).get("APPDATA")
     return os.path.join(base, "Vortex", "starfield", "mods") if base else None
+
+
+VORTEX_EXPORT_SETTINGS = "modlist-backup-auto-export.json"
+
+
+def vortex_export_settings(env=None):
+    """%APPDATA%\\Vortex\\modlist-backup-auto-export.json, the settings file of the Vortex extension "Modlist Backup"
+    (its Automatic Export), or None when APPDATA isn't set."""
+    base = _env(env).get("APPDATA")
+    return os.path.join(base, "Vortex", VORTEX_EXPORT_SETTINGS) if base else None
+
+
+def default_vortex_exports(env=None):
+    """(folders, why): the export folder named in the extension's settings file ("folder"), then its "old"
+    subfolder, each only when it is a folder. folders is [] when there is no settings file, it names no folder, or
+    the folder is gone; why says which, for the error message."""
+    path = vortex_export_settings(env)
+    if not path:
+        return [], "APPDATA isn't set, so the Vortex extension's settings file can't be found"
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            d = json.load(f)
+    except OSError:
+        return [], f"there is no {path} (the Vortex extension's Automatic Export settings)"
+    except (ValueError, UnicodeDecodeError):
+        return [], f"{path} isn't valid JSON"
+    folder = d.get("folder") if isinstance(d, dict) else None
+    if not isinstance(folder, str) or not folder.strip():
+        return [], f"{path} names no export folder"
+    folder = folder.strip()
+    if not os.path.isdir(folder):
+        return [], f"the export folder {folder} named in {path} doesn't exist"
+    out = [folder]
+    old = os.path.join(folder, "old")
+    if os.path.isdir(old):
+        out.append(old)
+    return out, f"from {path}"
 
 
 def safe_component(name):

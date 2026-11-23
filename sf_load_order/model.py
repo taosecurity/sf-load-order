@@ -11,7 +11,7 @@ SCHEMA_VERSION = 1
 LEVELS = ("problem", "caution", "note")
 
 # Sections, in the order the report shows them.
-SECTIONS = ("inputs", "order", "patches", "clashes", "archives", "loose", "records", "recommend")
+SECTIONS = ("inputs", "order", "patches", "clashes", "archives", "loose", "rules", "records", "recommend", "candidate")
 
 
 @dataclass
@@ -76,6 +76,14 @@ class Report:
     sections: dict = field(default_factory=dict)  # section -> {"status": "done"|"skipped"|"failed", "why": str, ...}
     recommended: list = None                      # recommended order (plugin names), None when not worked out
     outputs: dict = field(default_factory=dict)   # {role: path} of every file written
+    vortex_profile: dict = None                   # --vortex-profile only: name, stamp, files, deployed, extra_plugins,
+                                                  # extra_mods, missing_plugins[, plugins_txt_matches]
+    candidate: dict = None                        # `candidate <zip>` only: zips, plugins, depth, shared, findings
+    rules: dict = None                            # the Vortex rules check (a modlist export): has_rules, pairs,
+                                                  # no_shared, unmatched, findings
+    patches: object = None                        # merged patches (merged.py): [{patch, manifest, state, level,
+                                                  # rebuild, reasons, checked, result, findings}], [] (no manifest)
+                                                  # or {"not_checked": why}; None when the section didn't run
 
     def add(self, finding):
         self.findings.append(finding)
