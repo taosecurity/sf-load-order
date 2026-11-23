@@ -294,7 +294,13 @@ def _add(ctx, level, text, fix=None, plugins=(), **data):
 def run(ctx):
     """The older-master checks below, then the merged patches (merged.py: sf-mod-check patch check), whose result
     is report.json `patches`. A failure in the merged part is reported there and leaves the rest of the section."""
-    status = _older_master(ctx)
+    status = _older_master(ctx)  # reads the plugin headers, from staging when Data holds another profile
+    vp = getattr(ctx.report, "vortex_profile", None) or {}
+    if vp.get("deployed") is False:  # sf-mod-check would read another profile's plugins in Data
+        why = f"Data holds another profile, not {vp.get('name')} (deploy {vp.get('name')} in Vortex and run again)"
+        ctx.report.patches = {"not_checked": why}
+        status["merged"] = {"status": "skipped", "why": why}
+        return status
     from . import merged
     try:
         ctx.report.patches, status["merged"] = merged.run(ctx)

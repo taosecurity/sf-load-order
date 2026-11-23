@@ -299,9 +299,12 @@ class Run(Base):
         report, d = self.run_tool("--depth", "medium")  # the last --depth wins
         self.assertEqual(d["vortex_profile"]["name"], PROFILE)
         self.assertIs(d["vortex_profile"]["deployed"], False)
-        for section in ("patches", "records"):
-            self.assertEqual(d["sections"][section]["status"], "skipped")
-            self.assertIn("another profile", d["sections"][section]["why"])
+        self.assertEqual(d["sections"]["records"]["status"], "skipped")
+        self.assertIn("another profile", d["sections"]["records"]["why"])
+        # code review round 6: the older-master checks still run (they read staging); only the merged part is skipped
+        self.assertEqual(d["sections"]["patches"]["status"], "done")
+        self.assertEqual(d["sections"]["patches"]["merged"]["status"], "skipped")
+        self.assertIn("another profile", d["patches"]["not_checked"])
 
     def test_other_profile_loose_pairs_ignore_data(self):
         """Bug hunt 2026-11-23: when Data holds another profile, its loose copies don't say which of this profile's

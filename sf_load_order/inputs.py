@@ -504,7 +504,7 @@ def from_vortex_profile(args, env, drives, registry):
             f"Data holds another profile: {len(vp['extra_plugins'])} mod plugin(s) in Data aren't in the Vortex profile "
             f"{profile}" + (f", and Vortex's deployment record names {len(vp['extra_mods'])} mod(s) it doesn't enable"
                            if vp["extra_mods"] else "") + ". Plugins missing from Data aren't listed as problems, "
-            "and the record and patch checks were skipped, since both read Data.",
+            "and the record and merged-patch checks were skipped, since both read Data.",
             fix=f"Deploy the profile {profile} in Vortex and run again.",
             data={"extra_plugins": vp["extra_plugins"][:50], "extra_mods": vp["extra_mods"][:50], "count": n,
                   "missing_plugins": len(vp["missing_plugins"])}))

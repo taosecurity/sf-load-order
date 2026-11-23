@@ -507,6 +507,15 @@ class SettledIfCurrentTests(Base):
         self.assertEqual(fs[0].level, "note")
         self.assertIs(fs[0].data["settled"], True)
 
+    def test_current_build_loading_too_early_stays_open(self):
+        """Code review round 6: the current build of the fixed_by patch, loading before a plugin it must override,
+        doesn't settle the clash (the order still decides)."""
+        ps, sha = self.setup_pair()
+        ps = [ps[0], ps[1], ps[3], ps[2]]  # ExampleFix.esm before ExampleB.esm
+        _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": sha}, fixed_by="ExampleFix.esm")
+        self.assertEqual([f.level for f in fs], ["problem"])
+        self.assertIn("must load after all of them", fs[0].text)
+
     def test_bad_shapes_are_refused(self):
         ps, sha = self.setup_pair()
         for sc in ("ExampleFix.esm", {"plugin": "ExampleFix.esm"}, {"plugin": "ExampleFix.esm", "sha256": "abc"},

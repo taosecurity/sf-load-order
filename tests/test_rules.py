@@ -140,6 +140,9 @@ class WithRules(unittest.TestCase):
         self.assertEqual([f for f in found if f.level == "caution"], [])
         p = next(p for p in ctx.report.rules["pairs"] if p["mods"] == ["S1", "S2"])
         self.assertEqual(p["rule"], [{"mod": "S2", "type": "after", "other": "S1", "wins": "S2"}])
+        # code review round 6: report.json's pairs hold every key the README lists
+        self.assertEqual(set(p), {"mods", "paths", "same", "differ", "unknown", "winner", "deployed",
+                                  "deployed_from", "rule", "overrides", "sample"})
 
     def test_a_before_rule_counts_either_way_and_by_file_expression(self):
         with tempfile.TemporaryDirectory() as d:

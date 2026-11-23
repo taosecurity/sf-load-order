@@ -279,6 +279,25 @@ class PluginsTxt(unittest.TestCase):
                                 for f in j["findings"]))
             self.assertTrue(any("plain Plugins.txt" in f["text"] for f in j["findings"]))
 
+    def test_upgrade_over_its_older_copy(self):
+        """Code review round 6: with a plain Plugins.txt and the build's older copy installed, the older copy's loose
+        script and changed files in Data are a caution, not script or differ problems."""
+        with tempfile.TemporaryDirectory() as t:
+            data, ptxt = fixtures.game(os.path.join(t, "game"), {"New.esm": {}})
+            os.makedirs(os.path.join(data, "scripts"))
+            with open(os.path.join(data, "scripts", "new_quest.pex"), "wb") as f:
+                f.write(b"old pex")
+            z = make_zip(os.path.join(t, "New-1.1.zip"), {"New.esm": ("plugin", ()),
+                                                          "Scripts/new_quest.pex": b"new pex"})
+            out = os.path.join(t, "out")
+            code, text, _e = run_cli("candidate", z, "--plugins-txt", ptxt, "--data", data, "--no-state",
+                                     "--out", out)
+            self.assertEqual(code, 0, text)
+            with open(os.path.join(out, "report.json"), encoding="utf-8") as f:
+                j = json.load(f)
+            mine = [f for f in j["findings"] if f["data"].get("mod") == "the Data folder (loose)"]
+            self.assertEqual([(f["level"], f["data"]["kind"]) for f in mine], [("caution", "data-old")])
+
 
 class Heavy(Setup):
     def test_cleaning_findings(self):

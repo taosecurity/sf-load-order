@@ -196,8 +196,8 @@ that the profile doesn't list, and Vortex's deployment record may name no mod th
 it isn't (Vortex has another profile deployed), one caution says so and replaces the "file wasn't found" problems,
 and the record and merged-patch checks are skipped, since they would describe another load order.
 
-The other checks still describe the profile: its mods are the ones its modlist enables, the plugins that aren't in
-Data are read from their mods' staging folders, and the loose-file check doesn't use Data's copies to say which mod
+The other checks still describe the profile: its mods are the ones its modlist enables, every mod plugin with a copy
+in its mod's staging folder is read from that copy (even when Data holds one too), and the loose-file check doesn't use Data's copies to say which mod
 wins. When the profile is the deployed one, the report notes when the export's plugin list differs from the game's
 own Plugins.txt (the export is older than the last change).
 
@@ -306,7 +306,7 @@ still runs.
 | `min` | no | How many of the plugins must be enabled for the clash to show (default: all of them). |
 | `fixed_by` | no | A patch plugin. When it is enabled and loads after all of them, the clash is reported as settled. |
 | `link` | no | A web page about the clash, copied into the report. |
-| `settled_if_current` | no | `{"plugin": "<patch>.esm", "sha256": "<64 hex digits>"}` (`sha256` may be a list). The clash is settled while the enabled plugin has one of these hashes, so a patch you rebuilt shows up as settled and an old build of it doesn't. A bad value skips the entry with a caution. |
+| `settled_if_current` | no | `{"plugin": "<patch>.esm", "sha256": "<64 hex digits>"}` (`sha256` may be a list). The clash is settled while the enabled plugin has one of these hashes, so a patch you rebuilt shows up as settled and an old build of it doesn't. When the entry's `fixed_by` patch is enabled but loads before one of the plugins, the clash stays open whatever the hash. A bad value skips the entry with a caution. |
 
 **`--accept`** entries ([examples\accept.example.json](examples/accept.example.json)):
 
@@ -477,7 +477,8 @@ RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
 
 | Finding | Level |
 |---|---|
-| A script (`.pex`) the build ships that another enabled mod also ships | problem |
+| A script (`.pex`) the build ships that another enabled mod also ships | problem (when that mod is a master of the build, it is treated like the row below: a caution, or a note when identical) |
+| With a plain Plugins.txt and the build's older copy installed, a loose file in Data the build also ships (a script, or different content) | caution (kind `data-old`), since the older copy's files can't be told apart from another mod's |
 | Another file the build ships with different content than an enabled mod's copy | problem; a caution when the other mod is a master of the build; a note when the content is identical. When one copy is loose and the other archived, the text says the loose copy always wins (kind `wins` when it is the build's, `hidden` when it is the other mod's) |
 | Two parts of the build shipping the same path | problem for scripts, a caution for other files |
 | Two zips of the build shipping an archive with the same name | problem |

@@ -31,7 +31,7 @@ PIPELINE = [
 ]
 DEPTHS = ("light", "medium", "heavy")
 SKIPPED_AT_LIGHT = {"records"}
-NEEDS_DEPLOYED = {"records", "patches"}  # both read the plugin files in Data
+NEEDS_DEPLOYED = {"records"}  # sf-mod-check reads Data; the patches section skips only its merged part (patches.run)
 CANDIDATE_SECTIONS = ("inputs", "candidate")  # the sections a `candidate` run reports
 
 
@@ -218,8 +218,6 @@ def run(args):
         if vp and vp.get("deployed") is False and section in NEEDS_DEPLOYED:
             report.sections[section] = {"status": "skipped", "why": f"Data holds another profile, not {vp['name']} "
                                         f"(deploy {vp['name']} in Vortex and run again)"}
-            if section == "patches":
-                report.patches = {"not_checked": report.sections[section]["why"]}
             continue
         try:  # the import too: a check that can't load is marked failed, and the others still run
             status = _module(modname).run(ctx) or {"status": "done"}

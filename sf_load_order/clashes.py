@@ -993,7 +993,8 @@ def read_clashes(ctx, path, accepted, cache):
         current = None
         if "settled_if_current" in e:
             current, why = _current_state(lo, e["settled_if_current"], real, cache)
-            if current == "current" and not settled:
+            too_early = bool(fb) and fb.lower() in pos and not settled  # the order still decides
+            if current == "current" and not settled and not too_early:
                 settled = why
             elif current == "not-current":
                 extra += why

@@ -36,6 +36,8 @@ SECTION = "rules"
 SOURCE_WORDS = {"record": "Vortex's deployment record", "data": "the copies in Data"}
 ORDER_TYPES = ("before", "after")
 LIST = 10  # names shown in one grouped note
+PAIR_KEYS = ("mods", "paths", "same", "differ", "unknown", "winner", "deployed", "deployed_from", "rule",
+             "overrides", "sample")  # report.json rules.pairs (README, report.json table)
 
 NO_RULES = ("This export has no mod rules (Vortex Modlist Backup 0.6.2 or later exports them), so rules that only "
             "order identical copies and clashes with no rule can't be told apart.")
@@ -277,8 +279,7 @@ def run(ctx):
     counts = {lv: sum(1 for f in found if f.level == lv) for lv in ("problem", "caution", "note")}
     ctx.results[SECTION] = r
     ctx.report.rules = {"has_rules": r["has_rules"],
-                        "pairs": [{k: p[k] for k in ("mods", "paths", "same", "winner", "deployed", "rule")}
-                                  for p in r["pairs"]],
+                        "pairs": [{k: p[k] for k in PAIR_KEYS} for p in r["pairs"]],
                         "no_shared": r["no_shared"], "unmatched": r["unmatched"], "findings": counts}
     return {"status": "done", "has_rules": r["has_rules"], "pairs": len(r["pairs"]),
             "differ": sum(1 for p in r["pairs"] if not p["same"])}
