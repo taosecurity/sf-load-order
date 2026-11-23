@@ -319,6 +319,24 @@ class Run(Base):
         self.assertEqual(len(pair), 1, [f["text"] for f in d["findings"]])
         self.assertNotIn("Data holds", pair[0]["text"])
         self.assertEqual(pair[0]["data"]["in_data"], {})
+        # code review round 2: Data's files are another profile's, so the stray-file check doesn't read them
+        self.assertIs(d["results"]["loose"]["data_checked"], False)
+
+    def test_other_profile_with_the_same_plugins_ignores_data(self):
+        """Code review round 2: a profile that isn't deployed but has the same plugins in Data (it differs only by a
+        mod with no plugin) still doesn't read Data's loose files as its own."""
+        self.deployed_set()
+        with open(os.path.join(self.data, "vortex.deployment.starfield-data-folder.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"stagingPath": self.staging, "files": [
+                {"relPath": "ModA.esm", "source": "moda-1"}, {"relPath": "ModB.esp", "source": "modb-2"},
+                {"relPath": "textures\\c.dds", "source": "modc-3"}]}, f)
+        os.makedirs(os.path.join(self.data, "textures"), exist_ok=True)
+        with open(os.path.join(self.data, "textures", "c.dds"), "wb") as f:
+            f.write(b"C")
+        report, d = self.run_tool()
+        self.assertIs(d["vortex_profile"]["deployed"], False)
+        self.assertIs(d["results"]["loose"]["data_checked"], False)
 
     def test_deployed_runs_patches(self):
         self.deployed_set()

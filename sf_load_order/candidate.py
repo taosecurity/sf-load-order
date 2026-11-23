@@ -300,9 +300,8 @@ def compare(build_paths, inst, masters, cache, depth):
                             theirs = None
                 else:
                     theirs = cache.digest(full, p)
-                mine = {d for d in ours if d}
-                if theirs and mine and len(mine) == len(ours):
-                    how = "same" if mine == {theirs} else "differ"
+                if theirs and ours and all(ours):  # every copy the build ships was read (copies may repeat)
+                    how = "same" if set(ours) == {theirs} else "differ"
             built_on = any(x.lower() in masters for x in plugs)
             if built_on:
                 key = ("caution", "master-differ") if how == "differ" else ("note", "master")
@@ -388,14 +387,24 @@ def _heavy(ctx, build, report):
                     fix=err.split(" Fix: ")[1] if " Fix: " in err else None))
         return {"why": err}
     out = {}
+    build_names = {b["name"].lower(): b["name"] for b in build["plugins"]}
     for p in build["plugins"]:
         name = p["name"]
         if not p["copy"]:
             add(Finding("caution", SECTION, f"The cleaning check skipped {name}: its name isn't a plain file name.",
                         plugins=[name]))
             continue
+        own = sorted(build_names[m.lower()] for m in p["masters"] if m.lower() in build_names)
+        if own:  # the check reads masters from Data, which holds an older copy of that part or none
+            add(Finding("caution", SECTION, f"The cleaning check skipped {name}: its master "
+                        f"{', '.join(own)} is a part of this build, and the check reads masters from the Data folder.",
+                        fix=f"Install the build, then run sf-mod-check check \"{name}\" yourself.", plugins=[name]))
+            out[name] = {"why": "a master is a part of this build"}
+            continue
         r = sfmodcheck.run_check(prog, p["copy"], lo.data)
         out[name] = r
+        if not r["why"] and r.get("records") is None:
+            r["why"] = "its output couldn't be read (no summary line)"
         if r["why"]:
             add(Finding("caution", SECTION, f"The cleaning check couldn't check {name}: {r['why']}.",
                         fix="It reads the build's masters from the Data folder: install them there (or pass --data), "
@@ -451,6 +460,18 @@ def run(ctx, zips):
     cache = archives.Cache(archives.cache_path(args, "archives.json"))
     loose_cache = archives.Cache(archives.cache_path(args, "loose.json"))
     arch_files, idle = build_archive_files(build, cache, deep)
+    zips_of = defaultdict(set)
+    for a in build["archives"]:
+        zips_of[a["name"].lower()].add(a["zip"])
+    dupes = {n: sorted(z) for n, z in zips_of.items() if len(z) > 1}
+    if dupes:  # only one copy of a name can be in Data, so the other part's copy is lost
+        names = sorted({a["name"] for a in build["archives"] if a["name"].lower() in dupes})
+        add(Finding("problem", SECTION, f"{len(dupes)} archive name(s) are in more than one zip of this build, and "
+                    f"only one copy of a name can be installed: {_ex(names)} (in "
+                    f"{'; '.join(', '.join(z) for z in dupes.values())}).",
+                    fix="Ship each archive in one zip only, and pass only the current version of each part.",
+                    data={"archives": dupes}))
+        idle = [n for n in idle if n.lower() not in dupes]
     if idle:
         add(Finding("caution", SECTION, f"{len(idle)} archive(s) in the build don't load with any of its plugins "
                     f"(the game's exact-name rule): {_ex(idle)}.",
@@ -463,6 +484,11 @@ def run(ctx, zips):
     masters = {m.lower() for p in build["plugins"] for m in p["masters"]} - build_names
     inst, replaced, checked, no_folder = installed_files(
         lo, build_names, {mod_stem(z["path"]) for z in build["zips"]})
+    if replaced:
+        add(Finding("note", SECTION, f"{len(replaced)} installed mod(s) or plugin(s) were left out as this build's own "
+                    f"older copy (they ship one of its plugins, or have a build zip's name): {_ex(replaced)}.",
+                    fix="If one of them isn't a copy of this build, give the build's zips a more specific name.",
+                    data={"replaced": replaced}))
     unreadable = _expand_archives(inst, cache)
     build_paths = defaultdict(list)
     for p, entries in build["loose"].items():

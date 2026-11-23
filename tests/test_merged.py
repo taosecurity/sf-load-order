@@ -125,12 +125,23 @@ class FindManifests(Base):
                            model.Mod("offmod", False, path=os.path.dirname(off_mod))])
         got = merged.find_manifests(lo, [extra, lone, self.man])
         names = [(os.path.normcase(p), explicit) for p, explicit in got]
-        self.assertIn((os.path.normcase(self.man), False), names)  # the option naming it again doesn't repeat it
+        self.assertIn((os.path.normcase(self.man), True), names)  # the option naming it again doesn't repeat it
         self.assertIn((os.path.normcase(in_mod), False), names)
         self.assertIn((os.path.normcase(named), True), names)
         self.assertIn((os.path.normcase(lone), True), names)
         self.assertNotIn(os.path.normcase(off_mod), [n for n, _ in names])  # a disabled mod's folder isn't read
         self.assertEqual(len(names), 4)
+
+    def test_deployed_copy_counts_once(self):
+        """Code review round 2: Vortex deploys a patch mod's manifest into Data, so the staging copy and Data's copy
+        are one patch, named by the mod's copy."""
+        staged = os.path.join(self.t, "Staging", "patchmod", merged.MANIFEST)
+        os.makedirs(os.path.dirname(staged))
+        with open(self.man, "rb") as src, open(staged, "wb") as dst:
+            dst.write(src.read())
+        lo = self.lo(mods=[model.Mod("patchmod", True, path=os.path.dirname(staged))])
+        got = merged.find_manifests(lo)
+        self.assertEqual([(os.path.normcase(p), e) for p, e in got], [(os.path.normcase(staged), False)])
 
 
 class Runs(Base):

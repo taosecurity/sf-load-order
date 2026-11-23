@@ -67,23 +67,27 @@ def _looks_like_manifest(path):
 
 def find_manifests(lo, given=None):
     """[(path, given_by_option)], each manifest once. given: the --patch-sources values (files or folders)."""
-    seen, out = set(), []
+    seen, out = {}, []
 
     def take(path, explicit):
-        key = os.path.normcase(os.path.abspath(path))
+        # the same manifest twice (Vortex deploys a staging copy into Data) is one patch: key by its bytes
+        try:
+            with open(path, "rb") as f:
+                key = ("bytes", f.read())
+        except OSError:
+            key = ("path", os.path.normcase(os.path.abspath(path)))
         if key not in seen:
-            seen.add(key)
+            seen[key] = len(out)
             out.append((os.path.abspath(path), explicit))
+        elif explicit and not out[seen[key]][1]:
+            out[seen[key]] = (os.path.abspath(path), True)
 
-    folders = []
-    if lo.data:
-        folders.append(lo.data)
+    folders = [m.path for m in lo.mods or [] if m.enabled and m.path]  # first, so a mod's own copy is the one named
     for p in lo.plugins:
         if p.enabled and not p.dropped and p.path:
             folders.append(os.path.dirname(p.path))
-    for m in lo.mods or []:
-        if m.enabled and m.path:
-            folders.append(m.path)
+    if lo.data:
+        folders.append(lo.data)
     done = set()
     for folder in folders:
         key = os.path.normcase(os.path.abspath(folder))

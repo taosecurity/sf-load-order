@@ -251,9 +251,12 @@ def analyse(lo, cache, arc_cache, arc_result):
     dep = None if mo2 else getattr(lo, "_vortex_deployment", None)
     rank = {m.name: i for i, m in enumerate(mods)}
     data = lo.data if lo.data and os.path.isdir(lo.data) else None
-    trusted = data is not None and (mo2 or archives.data_matches(lo))
+    # a Vortex profile that isn't the deployed one (inputs.from_vortex_profile): Data's copies are another profile's,
+    # so they say nothing about which of this profile's copies wins, and Data's files aren't this profile's
+    other = (getattr(lo, "_vortex_profile", None) or {}).get("deployed") is False
+    trusted = data is not None and not other and (mo2 or archives.data_matches(lo))
     # stray files need to know every mod's files: MO2's folders, or Vortex's deployment record
-    stray_ok = data is not None and (mo2 or dep is not None)
+    stray_ok = data is not None and not other and (mo2 or dep is not None)
 
     ships = defaultdict(list)  # path -> [(mod name, full path)], lowest priority first
     owned, folder_mods = set(), defaultdict(set)
@@ -279,9 +282,6 @@ def analyse(lo, cache, arc_cache, arc_result):
             return None
 
     dsub, dtop = data_files(data) if data else ({}, {})
-    # a Vortex profile that isn't the deployed one (inputs.from_vortex_profile): Data's copies are another profile's,
-    # so they say nothing about which of this profile's copies wins
-    other = (getattr(lo, "_vortex_profile", None) or {}).get("deployed") is False
     mine = {} if other else dsub
     out_paths, pairs = [], {}
     for p, who in sorted(ships.items()):

@@ -475,7 +475,8 @@ class SettledIfCurrentTests(Base):
         ctx, st, fs = self.run_one(ps, {"plugin": "examplefix.esm", "sha256": sha.upper()})
         self.assertEqual([f.level for f in fs], ["note"])
         self.assertIn("settled: ExampleFix.esm is the build this entry names", fs[0].text)
-        self.assertEqual(fs[0].data["settled"], "current")
+        self.assertIs(fs[0].data["settled"], True)
+        self.assertEqual(fs[0].data["current"], "current")
         self.assertEqual(ctx.results["clashes"]["known"][0]["current"], "current")
 
     def test_a_list_with_the_hash_settles(self):
@@ -489,7 +490,8 @@ class SettledIfCurrentTests(Base):
         _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": sha})
         self.assertEqual([f.level for f in fs], ["problem"])
         self.assertIn("ExampleFix.esm isn't the build this entry names: install the current one.", fs[0].text)
-        self.assertEqual(fs[0].data["settled"], "not-current")
+        self.assertEqual(fs[0].data["current"], "not-current")
+        self.assertNotIn("settled", fs[0].data)
 
     def test_not_enabled_stays_open(self):
         ps, sha = self.setup_pair()
@@ -497,7 +499,7 @@ class SettledIfCurrentTests(Base):
         _, _, fs = self.run_one(ps, {"plugin": "ExampleFix.esm", "sha256": sha})
         self.assertEqual(fs[0].level, "problem")
         self.assertIn("isn't enabled", fs[0].text)
-        self.assertEqual(fs[0].data["settled"], "not-current")
+        self.assertEqual(fs[0].data["current"], "not-current")
 
     def test_fixed_by_still_settles_when_the_build_is_old(self):
         ps, _ = self.setup_pair()

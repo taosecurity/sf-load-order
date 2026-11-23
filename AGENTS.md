@@ -120,7 +120,9 @@ there changes what "changed since the last run" reports.
   `.\sf-load-order.cmd candidate "<build zip>" --mo2 "<MO2 instance folder>"`
   The report has the inputs and one section, "The new build against the installed mods". A shared script (`.pex`)
   or a file with different content is a problem; a build part clashing with another part of the same build is a
-  problem for scripts and a caution for other files. `--depth heavy` adds `sf-mod-check check` on the build's plugins.
+  problem for scripts and a caution for other files; one archive name in two zips is a problem. `--depth heavy` adds
+  `sf-mod-check check` on the build's plugins (a plugin whose master is another part of the build is skipped with a
+  caution). A note names the installed mods left out as the build's older copy.
   Exit 2 for a missing file, a `.7z` or `.rar` (ask for the zip), or a file that isn't a zip. In report.json the key
   `candidate` has the counts; the findings are in `findings` with section `candidate`.
 - The options `candidate` takes: `.\sf-load-order.cmd candidate --help`

@@ -111,7 +111,10 @@ class Medium(Setup):
     def test_installed_copy_left_out(self):
         _code, _out, j = self.run_candidate()
         self.assertEqual(j["candidate"]["replaced"], ["OldBuild"])
-        self.assertFalse(any("OldBuild" in f["text"] for f in j["findings"]))
+        named = [f for f in j["findings"] if "OldBuild" in f["text"]]
+        self.assertEqual(len(named), 1)  # only the note saying it was left out
+        self.assertEqual(named[0]["level"], "note")
+        self.assertIn("left out as this build's own older copy", named[0]["text"])
 
     def test_own_parts(self):
         _code, _out, j = self.run_candidate()
@@ -230,6 +233,16 @@ class BadZips(Setup):
         self.assertFalse(os.path.exists(os.path.join(self.out, "escaped - Main.ba2")))
         self.assertFalse(os.path.exists(os.path.join(self.out, "work", "escaped.esm")))
 
+    def test_same_archive_name_in_two_zips(self):
+        """Code review round 2: two zips shipping one archive name is a problem, not an idle archive."""
+        z1 = make_zip(os.path.join(self.t, "Dup-1.0.zip"), {"Dup.esm": ("plugin", ()),
+                                                            "Dup - Main.ba2": ("ba2", {"meshes\\a.nif": b"1"})})
+        z2 = make_zip(os.path.join(self.t, "Dup-Old-0.9.zip"), {"Dup - Main.ba2": ("ba2", {"meshes\\a.nif": b"2"})})
+        _code, _out, j = self.run_candidate(zips=[z1, z2])
+        texts = {(f["level"], f["text"]) for f in j["findings"]}
+        self.assertTrue(any(lv == "problem" and "1 archive name(s) are in more than one zip" in t for lv, t in texts))
+        self.assertFalse(any("don't load with any of its plugins" in t for _lv, t in texts))
+
     def test_fomod_caution(self):
         z = make_zip(os.path.join(self.t, "Fomod-1.0.zip"), {"fomod/ModuleConfig.xml": b"<config/>",
                                                               "Fomod.esm": ("plugin", ())})
@@ -271,13 +284,30 @@ class Heavy(Setup):
                 mock.patch.object(sfmodcheck, "too_old", return_value=None), \
                 mock.patch.object(sfmodcheck, "run_check", side_effect=fake_check):
             _code, _out, j = self.run_candidate("--depth", "heavy")
-        self.assertEqual(sorted(n for n, _d in seen), ["Build.esm", "BuildPart.esm"])
+        # BuildPart.esm's master Build.esm is a part of this build, and Data would give the check the wrong one
+        self.assertEqual(sorted(n for n, _d in seen), ["Build.esm"])
         self.assertTrue(all(d == self.data for _n, d in seen))
         texts = {(f["level"], f["text"]) for f in j["findings"]}
         self.assertTrue(any(lv == "problem" and "Build.esm deletes records (3 REFR)" in t for lv, t in texts))
         self.assertTrue(any(lv == "caution" and "Build.esm has 2 record(s) identical" in t for lv, t in texts))
-        self.assertTrue(any(lv == "note" and "nothing to clean in BuildPart.esm" in t for lv, t in texts))
+        self.assertTrue(any(lv == "caution" and "skipped BuildPart.esm: its master Build.esm is a part of this build"
+                            in t for lv, t in texts))
         self.assertIn("Build.esm", j["candidate"]["heavy"])
+
+    def test_unread_output_is_not_clean(self):
+        prog = sfmodcheck.Program("C:\\fake\\sf-mod-check.exe", "--sf-mod-check")
+
+        def fake_check(_prog, _path, _data):
+            return {"exit": 0, "result": "", "records": None, "overrides": None, "itms": None, "deleted": {},
+                    "errors": None, "warnings": None, "why": None}
+        with mock.patch.object(sfmodcheck, "find", return_value=(prog, None)), \
+                mock.patch.object(sfmodcheck, "version", return_value=None), \
+                mock.patch.object(sfmodcheck, "too_old", return_value=None), \
+                mock.patch.object(sfmodcheck, "run_check", side_effect=fake_check):
+            _code, _out, j = self.run_candidate("--depth", "heavy")
+        texts = [f["text"] for f in j["findings"]]
+        self.assertFalse(any("nothing to clean" in t for t in texts))
+        self.assertTrue(any("couldn't check Build.esm: its output couldn't be read" in t for t in texts))
 
     def test_no_program(self):
         with mock.patch.object(sfmodcheck, "find", return_value=(None, None)):
@@ -307,6 +337,22 @@ class Parsers(unittest.TestCase):
         self.assertIsNone(candidate.wrapper_folder(["Data/a.esm", "Data/b.esm"]))
         self.assertIsNone(candidate.wrapper_folder(["MyMod/a.esm", "b.esm"]))
         self.assertIsNone(candidate.wrapper_folder(["A/a.esm", "B/b.esm"]))
+
+    def test_compare_repeated_copies(self):
+        """Code review round 2: a path the build ships twice with the same content is still compared."""
+        class C:
+            def file(self, _full):
+                return {"digest": "T"}
+
+            def digest(self, _full, _name):
+                return "T"
+        inst = {"meshes\\a.nif": [("OtherMod", [], "loose", "x")]}
+        g = candidate.compare({"meshes\\a.nif": ["M", "M"]}, inst, set(), C(), "medium")
+        self.assertEqual(list(g), [("problem", "differ", "OtherMod", "loose")])
+        g = candidate.compare({"meshes\\a.nif": ["T", "T"]}, inst, set(), C(), "medium")
+        self.assertEqual(list(g), [("note", "same", "OtherMod", "loose")])
+        g = candidate.compare({"meshes\\a.nif": ["T", None]}, inst, set(), C(), "medium")
+        self.assertEqual(list(g), [("caution", "unknown", "OtherMod", "loose")])
 
     def test_mod_stem(self):
         self.assertEqual(candidate.mod_stem("C:\\x\\ShipMod-Loose-8.8.40.zip"), "shipmod-loose")

@@ -1011,7 +1011,7 @@ def read_clashes(ctx, path, accepted, cache):
         if settled:
             ctx.report.add(Finding("note", SECTION, f"Known clash {names} is settled: {settled}. ({e['note']})",
                                    plugins=present, data={"file": path, "entry": i + 1,
-                                                          "settled": "current" if current == "current" else True}))
+                                                          "settled": True, **({"current": current} if current else {})}))
             continue
         if fb:
             fixtext = f"Enable {fb} and load it after {names}."
@@ -1023,7 +1023,7 @@ def read_clashes(ctx, path, accepted, cache):
                        "your --accept file (a ready entry is in this finding's data).")
         data = {"file": path, "entry": i + 1, "level": e["level"]}
         if current:
-            data["settled"] = current
+            data["current"] = current
         if e.get("link"):
             data["link"] = e["link"]
         ae = accept_entry(lo, present, cache, e["note"])

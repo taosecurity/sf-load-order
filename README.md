@@ -480,11 +480,15 @@ RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
 | A script (`.pex`) the build ships that another enabled mod also ships | problem |
 | Another file the build ships with different content than an enabled mod's copy | problem; a caution when the other mod is a master of the build; a note when the content is identical |
 | Two parts of the build shipping the same path | problem for scripts, a caution for other files |
+| Two zips of the build shipping an archive with the same name | problem |
+| The installed mods left out as the build's older copy | note |
 | Files that can't be compared, or `--depth light` (names only) | caution |
 | Build archives no plugin of the build loads, a fomod installer, an installed archive that can't be read | caution |
 
 At `--depth heavy` it also runs `sf-mod-check check` on each plugin of the build: deleted references are a problem,
-ITMs and errors are cautions. A `.7z` or `.rar`, a missing file or a file that isn't a zip stops the run with exit 2.
+ITMs and errors are cautions. It reads each plugin's masters from the Data folder, so a plugin whose master is
+another part of the same build is skipped with a caution (install the build and run `sf-mod-check check` on it).
+Output it can't read is a caution, never "nothing to clean". A `.7z` or `.rar`, a missing file or a file that isn't a zip stops the run with exit 2.
 `--strict` exits 1 when there is a problem. Records the build shares with other mods aren't checked yet.
 `report.json` has a `candidate` key (see below) and shows only the inputs and candidate sections.
 
