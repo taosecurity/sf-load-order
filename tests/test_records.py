@@ -381,6 +381,12 @@ class StalenessOfficialNames(unittest.TestCase):
         for n in ("sfbgs0zz.esm", "BlueprintShips-Constellation.esm", "BlueprintShips-ShatteredSpace.esm"):
             self.assertFalse(inputs.modcheck_official(n), n)
 
+    def test_entry_with_no_file_name_is_ignored(self):
+        """code review 0.1.3 round 2: a loadOrder entry with an empty or missing FileName must not show up as an
+        "extra" plugin named "" (a false made-for-another-load-order caution)."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"Official": False}, {"FileName": None}, {"FileName": ""}]}
+        self.assertIsNone(records._differs(make_lo(["A.esm"]), cj))
+
     def test_verbose_log_names_what_is_left_out(self):
         buf = io.StringIO()
         log._sinks[:] = [buf]

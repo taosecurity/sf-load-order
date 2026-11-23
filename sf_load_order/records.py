@@ -363,8 +363,10 @@ def _differs(lo, cj):
             ours.append(n)
     theirs = []
     for e, n in entries:
+        if not n:  # no usable FileName: nothing to compare
+            continue
         if e.get("Official") or inputs.modcheck_official(n):
-            if n and n not in seen:
+            if n not in seen:
                 seen.add(n)
                 left.append(n)
         else:

@@ -68,7 +68,9 @@ def dropped_name(name):
 
 
 def is_official(name):
-    """An official master the game loads by itself. BlueprintShips-X.esm counts only when X is official."""
+    """An official master the game loads by itself. BlueprintShips-X.esm counts only when X is official. This is
+    this tool's own rule (its SFBGS pattern is wider than sf-mod-check's); modcheck_official() is the narrower rule
+    that only the --conflicts comparison uses."""
     n = name.lower()
     if OFFICIAL_RE.match(n):
         return True
