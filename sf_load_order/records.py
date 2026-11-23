@@ -148,6 +148,11 @@ def _outcome(rtype, fields):
     return "conflict"
 
 
+def _text(v):
+    """A plugin name from conflicts.json, trimmed the same way as the loadOrder FileName (non-text gives "")."""
+    return v.strip() if isinstance(v, str) else ""
+
+
 def _load_entries(cj):
     """conflicts.json's loadOrder entries that are objects with a usable file name (a string with text in it), each
     with FileName trimmed. Anything else (not an object, no or empty or blank or non-text FileName) names no plugin
@@ -161,8 +166,11 @@ def _load_entries(cj):
 
 
 def _closure(load_order):
-    direct = {(e.get("FileName") or "").lower(): {str(m or "").lower() for m in (e.get("Masters") or [])}
-              for e in load_order}
+    direct = {}
+    for e in load_order:
+        ms = e.get("Masters")
+        ms = ms if isinstance(ms, list) else []  # a text or number Masters value names no masters
+        direct[(e.get("FileName") or "").lower()] = {str(m or "").strip().lower() for m in ms}
     out = {}
 
     def walk(n, seen):
@@ -212,7 +220,7 @@ def analyse(cj, lo):
                            "winner_changed_too": bool(f.get("WinnerChangedToo")),
                            "loser_value": f.get("LoserValue"), "winner_value": f.get("WinnerValue"),
                            "differences": [(x.get("Text") or "") for x in (f.get("Differences") or [])]})
-        loser, winner = (e.get("Loser") or ""), (e.get("Winner") or "")
+        loser, winner = _text(e.get("Loser")), _text(e.get("Winner"))
         lost.append({"fk": (e.get("formKey") or ""), "type": (e.get("RecordType") or ""), "edid": e.get("EditorID"),
                      "loser": loser, "winner": winner,
                      "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
@@ -222,7 +230,7 @@ def analyse(cj, lo):
     # sf-mod-check's WinnerOfficial on a lost entry (like the Official flag in loadOrder) makes the pair a BlueprintShips
     # pair, per winner name so any entry counts. That changes its wording and keeps it out of "order matters" and the
     # move candidates. winner_official, the ratings and official_undone keep the load order's own flags.
-    marked = {(e.get("Winner") or "").lower() for e in (cj.get("lost") or []) if e.get("WinnerOfficial")}
+    marked = {_text(e.get("Winner")).lower() for e in (cj.get("lost") or []) if e.get("WinnerOfficial")}
     pairs, by_pair = [], {}
     for i, x in enumerate(lost):
         if x["loser_official"]:

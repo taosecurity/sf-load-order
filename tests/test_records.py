@@ -402,6 +402,29 @@ class StalenessOfficialNames(unittest.TestCase):
         self.assertEqual(res["load_order"], ["A.esm", "B.esm"])
         self.assertNotIn("", res["plugins"])
 
+    def test_trimmed_name_reaches_the_masters_closure(self):
+        """code review 0.1.3 round 4: " B.esm " (trimmed) has master A.esm, so B.esm over A.esm is a "built" pair."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": " B.esm ", "Masters": ["A.esm"]}],
+              "lost": [lost("000100:A.esm", "A.esm", "B.esm", [field("Keywords")])]}
+        res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
+        self.assertEqual(res["pairs"][0]["advice"], "built")
+
+    def test_lost_names_are_trimmed_like_the_load_order(self):
+        """code review 0.1.3 round 4: a padded Loser or Winner still matches the load order's Official flag."""
+        cj = {"loadOrder": [{"FileName": " B.esm ", "Official": True}, {"FileName": "C.esm"}],
+              "lost": [lost("000100:B.esm", "C.esm", " B.esm ", [field("Keywords")])]}
+        res = records.analyse(cj, make_lo(["B.esm", "C.esm"]))
+        self.assertTrue(res["lost"][0]["winner_official"])
+        self.assertEqual(res["lost"][0]["winner"], "B.esm")
+
+    def test_masters_that_is_not_a_list_names_no_masters(self):
+        """code review 0.1.3 round 4: "Masters": "A.esm" isn't read letter by letter, and a number doesn't crash."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "B.esm", "Masters": "A.esm"},
+                            {"FileName": "C.esm", "Masters": 5}], "lost": []}
+        need = records._closure(records._load_entries(cj))
+        self.assertEqual(need["b.esm"], set())
+        self.assertEqual(need["c.esm"], set())
+
     def test_verbose_log_names_what_is_left_out(self):
         buf = io.StringIO()
         log._sinks[:] = [buf]
