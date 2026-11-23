@@ -113,7 +113,7 @@ def load(path):
     except ValueError as e:
         return None, f"{path} isn't valid JSON ({e}). {fix}"
     if not isinstance(d, dict) or any(not isinstance(d.get(k), list) for k in REQUIRED_KEYS):
-        return None, f"{path} doesn't look like sf-mod-check's conflicts.json (no loadOrder and lost lists). {fix}"
+        return None, f"{path} doesn't look like sf-mod-check's conflicts.json (it needs a loadOrder list and a lost list). {fix}"
     return d, None
 
 

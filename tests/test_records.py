@@ -195,6 +195,10 @@ class Mapping(unittest.TestCase):
         self.assertIn("isn't valid JSON", records.load(bad)[1])
         open(bad, "w").write('{"x": 1}')
         self.assertIn("doesn't look like", records.load(bad)[1])
+        # a key that is present but isn't a list gets the same plain message (bug hunt 0.1.3: the old wording
+        # "no loadOrder and lost lists" read as if the keys were missing)
+        open(bad, "w").write('{"loadOrder": 5, "lost": "x"}')
+        self.assertIn("needs a loadOrder list and a lost list", records.load(bad)[1])
         self.assertIn("can't read", records.load(os.path.join(self.t, "none.json"))[1])
 
 
