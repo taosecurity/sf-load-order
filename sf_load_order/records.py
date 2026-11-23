@@ -120,9 +120,10 @@ def load(path):
         return None, f"{path} doesn't look like sf-mod-check's conflicts.json (it needs a loadOrder list and a lost list). {fix}"
     bad = shape_problem(d)
     if bad:
-        return None, (f"{path} isn't in the shape sf-mod-check writes ({bad}), so it was made by hand or is damaged. "
-                      "Fix: rerun sf-mod-check conflict and give --conflicts the conflicts.json it writes in its "
-                      "--out folder.")
+        return None, (f"{path} isn't in the shape sf-mod-check writes ({bad}): it is damaged, made by hand, or "
+                      "written by a newer sf-mod-check than this sf-load-order knows. Fix: rerun sf-mod-check "
+                      "conflict and give --conflicts the conflicts.json it writes in its --out folder, or update "
+                      "sf-load-order if your sf-mod-check is newer.")
     return d, None
 
 
@@ -131,10 +132,17 @@ def load(path):
 ITEM_NAMES = {"loadOrder": ("FileName",), "lost": ("Loser", "Winner"), "itms": ("Plugin",),
               "typeChanges": ("Plugin",), "missingAssets": ("plugin",)}
 TEXT_LISTS = ("loadOrderProblems", "Errors", "archiveLimitWarnings")
+# Keys analyse() reads as text when they are there (missing or null is fine).
+ITEM_TEXT = {"lost": ("formKey", "RecordType", "EditorID"), "itms": ("formKey", "RecordType", "EditorID"),
+             "typeChanges": ("First", "formKey", "EditorID"), "missingAssets": ("kind",)}
 
 
 def _named(x, keys):
     return isinstance(x, dict) and all(isinstance(x.get(k), str) and x[k].strip() for k in keys)
+
+
+def _texts(x, keys):
+    return all(x.get(k) is None or isinstance(x[k], str) for k in keys)
 
 
 def shape_problem(d):
@@ -150,6 +158,8 @@ def shape_problem(d):
         for i, x in enumerate(items):
             if not _named(x, names):
                 return f"{key} item {i + 1} isn't an object with {' and '.join(names)} names"
+            if not _texts(x, ITEM_TEXT.get(key, ())):
+                return f"{key} item {i + 1} has a {' or '.join(ITEM_TEXT[key])} that isn't text"
     for i, e in enumerate(d["loadOrder"]):
         ms = e.get("Masters")
         if ms is not None and not (isinstance(ms, list) and all(isinstance(m, str) for m in ms)):
@@ -157,9 +167,10 @@ def shape_problem(d):
     for i, e in enumerate(d["lost"]):
         fs = e.get("Fields")
         if fs is not None and not (isinstance(fs, list) and all(
-                isinstance(f, dict) and all(isinstance(f.get(k) or [], list) and
-                                            all(isinstance(y, dict) for y in f.get(k) or [])
-                                            for k in ("Differences", "LoserChanges")) for f in fs)):
+                isinstance(f, dict) and _texts(f, ("Field",)) and
+                all(isinstance(f.get(k) or [], list) and
+                    all(isinstance(y, dict) and _texts(y, ("Text",)) for y in f.get(k) or [])
+                    for k in ("Differences", "LoserChanges")) for f in fs)):
             return f"lost item {i + 1} has Fields that aren't a list of field objects"
     for key in TEXT_LISTS:
         if d.get(key) is not None and not isinstance(d[key], list):
@@ -402,7 +413,8 @@ def _ratings(lo, res, loaded):
 
 def _differs(lo, cj):
     """Does the --conflicts file's load order differ from ours? Plugins conflicts.json lists as Official, and names
-    sf-mod-check counts official (sfta01 to sfta06 and the like), aren't mods, so they aren't compared."""
+    sf-mod-check counts official (sfta01 to sfta06 and the like) or this tool counts official, aren't mods, so they
+    aren't compared."""
     entries = [(e, (e.get("FileName") or "").lower()) for e in cj.get("loadOrder") or []]
     flagged = {n for e, n in entries if n and e.get("Official")}
     left, seen, ours = [], set(), []
@@ -416,7 +428,8 @@ def _differs(lo, cj):
             ours.append(n)
     theirs = []
     for e, n in entries:
-        if e.get("Official") or inputs.modcheck_official(n):
+        # is_official: this tool's own rule, which already keeps such names out of ours (BlueprintShips-<DLC>.esm)
+        if e.get("Official") or inputs.modcheck_official(n) or inputs.is_official(n):
             if n and n not in seen:
                 seen.add(n)
                 left.append(n)

@@ -381,6 +381,19 @@ class StalenessOfficialNames(unittest.TestCase):
         for n in ("sfbgs0zz.esm", "BlueprintShips-Constellation.esm", "BlueprintShips-ShatteredSpace.esm"):
             self.assertFalse(inputs.modcheck_official(n), n)
 
+    def test_names_only_this_tool_counts_official_are_not_extra(self):
+        """code review 0.1.3 simplified round 1: BlueprintShips-ShatteredSpace.esm is official here (so not one of
+        our mods) but sf-mod-check 0.12.0 lists it as a mod; it must not show as "extra"."""
+        self.assertTrue(inputs.is_official("BlueprintShips-ShatteredSpace.esm"))
+        t = tempfile.mkdtemp()
+        p = fixtures.conflicts_json(os.path.join(t, "conflicts.json"),
+                                    [("Starfield.esm", True, []), ("A.esm", False, ["Starfield.esm"]),
+                                     ("BlueprintShips-ShatteredSpace.esm", False, ["Starfield.esm"])], lost=[])
+        cj, err = records.load(p)
+        self.assertIsNone(err)
+        lo = make_lo(["A.esm"], official=("Starfield.esm", "BlueprintShips-ShatteredSpace.esm"))
+        self.assertIsNone(records._differs(lo, cj))
+
     def test_verbose_log_names_what_is_left_out(self):
         buf = io.StringIO()
         log._sinks[:] = [buf]
@@ -634,13 +647,28 @@ class Shape(unittest.TestCase):
         cases = [(("lost", 0), "text"), (("lost", 0, "Winner"), None), (("loadOrder", 0, "FileName"), " "),
                  (("itms",), {"Plugin": "A.esm"}), (("loadOrder", 0, "Masters"), "Starfield.esm"),
                  (("lost", 0, "Fields", 0), "Keywords"), (("lost", 0, "Fields", 0, "Differences"), ["x"]),
-                 (("UnreadableFields", "Climate.PhaseLength"), "3"), (("Errors",), "oops")]
+                 (("UnreadableFields", "Climate.PhaseLength"), "3"), (("Errors",), "oops"),
+                 # simplified round 1: fields analyse() reads as text must be text (or missing)
+                 (("typeChanges",), [{"Plugin": "A.esm", "First": 5}]), (("lost", 0, "RecordType"), 7),
+                 (("lost", 0, "formKey"), {"x": 1}), (("lost", 0, "Fields", 0, "Field"), ["Keywords"]),
+                 (("lost", 0, "Fields", 0, "Differences", 0, "Text"), 3),
+                 (("missingAssets",), [{"plugin": "A.esm", "kind": 1}])]
         for path, value in cases:
             cj, err, p = self.load(bad(path, value))
             self.assertIsNone(cj, path)
             self.assertIn(p, err)
             self.assertIn("isn't in the shape sf-mod-check writes", err)
             self.assertIn("Fix: rerun sf-mod-check conflict", err)
+            # simplified round 1: the file may also be one sf-load-order ran sf-mod-check for, so the message
+            # doesn't blame the user alone
+            self.assertIn("newer sf-mod-check", err)
+            self.assertNotIn("so it was made by hand or is damaged", err)
+
+    def test_typechange_crash_input_is_refused_not_raised(self):
+        """simplified round 1: a type change whose First isn't text used to pass load() and crash analyse()."""
+        cj, err, _ = self.load({"loadOrder": [{"FileName": "A.esm"}], "lost": [],
+                                "typeChanges": [{"Plugin": "A.esm", "First": 5}]})
+        self.assertIsNone(cj)
 
     def test_the_real_shape_of_the_sample_loads(self):
         with tempfile.TemporaryDirectory() as t:
