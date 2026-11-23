@@ -417,7 +417,8 @@ def _ratings(lo, res, loaded):
         won_r = sum(len(res["pairs"][i]["records"]) for i in mine if res["pairs"][i]["winner"].lower() == n)
         undo = sum(1 for i in res["official_undone"] if res["lost"][i]["winner"].lower() == n)
         itms = sum(1 for x in res["itms"] if x["plugin"].lower() == n)
-        tcs = sum(1 for x in res["type_changes"] if x["plugin"].lower() == n)
+        # a type change counts for both plugins it names (the finding names both)
+        tcs = sum(1 for x in res["type_changes"] if n in (x["plugin"].lower(), x["first"].lower()))
         movable = [i for i in mine if acts_on(res["pairs"][i]) and not res["pairs"][i]["winner_official"]]
         if n in skipped or n not in loaded:
             rating = "unchecked"
@@ -574,10 +575,11 @@ def add_findings(ctx, res, source):
                     plugins=[w] + offs, data={"records": recs[:50]}))
 
     for t in res["type_changes"]:
+        fk = t["fk"] or "a record"  # formKey missing or not text
         if t["plugin"] and t["first"]:
-            said = f"{t['plugin']} gives {t['fk']} a different record type than {t['first']}."
+            said = f"{t['plugin']} gives {fk} a different record type than {t['first']}."
         else:  # analyse keeps a type change that names at least one of the two
-            said = f"{t['plugin'] or t['first']} and another plugin give {t['fk']} different record types."
+            said = f"{t['plugin'] or t['first']} and another plugin give {fk} different record types."
         add(Finding("problem", SECTION, t["text"] or said,
                     fix=("The game keeps whichever record loads first and drops the other. Tell the mod's author: "
                          "the record needs its own FormID (xEdit: right-click > Change FormID)."),

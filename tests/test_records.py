@@ -544,6 +544,9 @@ class StalenessOfficialNames(unittest.TestCase):
             self.assertIn(line, buf.getvalue())
         self.assertEqual(res["plugins"]["b.esm"]["itms"], 1)
         self.assertEqual(res["plugins"]["a.esm"]["type_changes"], 2)
+        # Opus round 4: a type change counts for its First plugin too, so a plugin the findings name isn't "neutral"
+        self.assertEqual(res["plugins"]["b.esm"]["type_changes"], 2)
+        self.assertEqual(res["plugins"]["b.esm"]["rating"], "neutral-here")
         for odd in ({"a": 1}, "abc", 5, True):
             r = records.analyse({"loadOrder": base, "lost": [], "itms": odd, "typeChanges": odd}, lo)
             self.assertEqual((r["itms"], r["type_changes"]), ([], []))
@@ -554,7 +557,9 @@ class StalenessOfficialNames(unittest.TestCase):
         self.assertFalse([f.text for f in ctx.report.findings if "" in (f.plugins or [])])
         self.assertFalse([t for t in texts if t.startswith((" ", ":")) or "than ." in t])
         self.assertTrue(any(t.startswith("B.esm has 1 record(s) identical") for t in texts))
-        self.assertTrue(any("A.esm gives" in t and "than B.esm" in t for t in texts))
+        # Opus round 4: no formKey reads "a record", not a blank
+        self.assertIn("A.esm gives a record a different record type than B.esm.", texts)
+        self.assertFalse([t for t in texts if "  " in t])
         self.assertIn("B.esm and another plugin give 1 different record types.", texts)
         self.assertIn("A.esm and another plugin give 2 different record types.", texts)
         tc = [f for f in ctx.report.findings if "and another plugin give 2" in f.text][0]
