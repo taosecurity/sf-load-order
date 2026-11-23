@@ -467,13 +467,17 @@ with another version (such as `ShipMod-Loose-0.2.0` for `ShipMod-Loose-0.3.0.zip
 of this build and is left out of the comparison. A zip whose files all sit in one folder of their own (such as
 `ShipMod\ShipMod.esm`, with or without a readme beside it) is read as if that folder were Data.
 
-Example, with a new build of ShipMod, built on the installed CoreTools:
+Example, with a new build of ShipMod, built on the installed CoreTools. The older ShipMod is installed as a mod of
+its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
 sf-load-order 0.2.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
+
+The note names OldShipMod as the older copy left out. The caution says the build overrides two files of CoreTools
+with different content; it is a caution, not a problem, because overriding the mod a build is built on is usual.
 
 | Finding | Level |
 |---|---|

@@ -28,7 +28,7 @@ This release adds the checks that used to need a private page builder: Vortex pr
 
 ### Example
 
-This is a real run on a small made-up load order: ShipMod.esm 0.3.0 is a new build, built on the installed CoreTools, and ships a script and a mesh that CoreTools ships too, with other content. The older ShipMod is installed as a mod of its own and is left out of the comparison:
+This is a real run on a small made-up load order: ShipMod.esm 0.3.0 is a new build, built on the installed CoreTools, and ships a script and a mesh that CoreTools ships too, with other content. The older ShipMod is installed as a mod of its own and is left out of the comparison. (Corrected in 0.2.1: this RESULT line first said "0 note(s)".)
 
     > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
     sf-load-order 0.2.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
