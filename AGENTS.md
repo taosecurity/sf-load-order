@@ -116,7 +116,8 @@ there changes what "changed since the last run" reports.
   the mod plugins' `kind` and `masters` are `null`.
 - Merged patches built by `sf-mod-check patch`: a `patch-sources.json` beside the patch is found by itself; one
   somewhere else is given with `--patch-sources`. This needs sf-mod-check 0.15.0 or newer (the section says why when it
-  can't run):
+  can't run). An old `patch_sources.py` manifest isn't checked: a note names it and says to rebuild the patch with
+  sf-mod-check 0.15.0 or later:
   `.\sf-load-order.cmd --sf-mod-check "<path to sf-mod-check.exe>" --patch-sources "<patch-sources.json>"`
 - Check a new mod's zip before it is installed (the zips are the parts of one build, one plugin each; the load order
   options are the same as above, and nothing is installed or unpacked into the game):
@@ -125,7 +126,8 @@ there changes what "changed since the last run" reports.
   or a file with different content is a problem; a build part clashing with another part of the same build is a
   problem for scripts and a caution for other files; one archive name in two zips is a problem. `--depth heavy` adds
   `sf-mod-check check` on the build's plugins (a plugin whose master is another part of the build is skipped with a
-  caution). A note names the installed mods left out as the build's older copy.
+  caution). A note names the installed mods left out as the build's older copy. With a plain Plugins.txt and that
+  older copy installed, Data's loose files aren't compared, and one caution (kind `data-unsorted`) says so.
   Exit 2 for a missing file, a `.7z` or `.rar` (ask for the zip), or a file that isn't a zip. In report.json the key
   `candidate` has the counts; the findings are in `findings` with section `candidate`.
 - The options `candidate` takes: `.\sf-load-order.cmd candidate --help`

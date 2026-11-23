@@ -291,13 +291,11 @@ def _ex(paths_):
     return ", ".join(paths_[:SAMPLES]) + (f" and {len(paths_) - SAMPLES} more" if len(paths_) > SAMPLES else "")
 
 
-def compare(build_paths, inst, masters, cache, depth, build_loose=None, data_may_be_ours=False):
+def compare(build_paths, inst, masters, cache, depth, build_loose=None):
     """{(level, kind, owner, where): [paths]} for every build path an installed mod also ships. build_loose: the
     paths the build ships loose (None: the same kind as the installed copy). A differing pair is "differ" when
     both copies are loose or both archived, "wins" when only the build's copy is loose (it always replaces the
-    other) and "hidden" when only the installed copy is loose (the build's copy never shows). data_may_be_ours: a
-    plain Plugins.txt with the build's older copy installed, so a Data loose file may be that copy's ("data-old",
-    a caution, in place of a problem)."""
+    other) and "hidden" when only the installed copy is loose (the build's copy never shows)."""
     deep = depth != "light"
     groups = defaultdict(set)
     master_archived = {p for p, entries in inst.items()  # a plain Plugins.txt: a master's paths in its archives
@@ -333,8 +331,6 @@ def compare(build_paths, inst, masters, cache, depth, build_loose=None, data_may
                 key = ("note", "same")
             else:
                 key = ("caution", "light" if depth == "light" else "unknown")
-            if data_may_be_ours and owner == DATA_OWNER and key[0] == "problem":
-                key = ("caution", "data-old")
             groups[key + (owner, where)].add(p)
     return groups
 
@@ -346,12 +342,6 @@ def _text(kind, owner, where, n, ex):
                 f"replaces the script for both mods: {ex}.",
                 "Give this build's scripts their own names (a prefix of its own), or leave out the copies the other "
                 "mod already ships.")
-    if kind == "data-old":
-        return (f"The Data folder holds a loose copy of {n} path(s) this build ships, with different content or a "
-                f"script name. This build's older copy is installed, and with a plain Plugins.txt its loose files "
-                f"can't be told apart from another mod's: {ex}.",
-                "Remove the older copy's loose files and run again, or use --mo2 or --vortex-profile to compare "
-                "mod by mod.")
     if kind == "differ":
         return (f"{owner} ships {a} copy of {n} path(s) this build ships, with different content: "
                 + ("the mod manager's rules decide which loose copy is deployed" if where == "loose"
@@ -538,6 +528,15 @@ def run(ctx, zips):
                     f"older copy (they ship one of its plugins, or have a build zip's name): {_ex(replaced)}.",
                     fix="If one of them isn't a copy of this build, give the build's zips a more specific name.",
                     data={"replaced": replaced}))
+    unsorted = lo.mods is None and bool(replaced)
+    if unsorted:  # a plain Plugins.txt: the older copy's loose files in Data look like any other mod's
+        for p in [k for k in inst if not isinstance(k, tuple)]:
+            del inst[p]
+        add(Finding("caution", SECTION, f"This build's older copy ({_ex(replaced)}) is installed, and with a plain "
+                    "Plugins.txt its loose files in Data can't be told apart from other mods', so Data's loose files "
+                    "weren't compared with the build.",
+                    fix="Use --mo2 or --vortex-profile to compare mod by mod, or remove the older copy and run again.",
+                    data={"kind": "data-unsorted", "replaced": replaced}))
     unreadable = _expand_archives(inst, cache)
     build_paths = defaultdict(list)
     for p, entries in build["loose"].items():
@@ -552,8 +551,7 @@ def run(ctx, zips):
 
         def digest(self, full, name):
             return cache.digest(full, name)
-    groups = compare(build_paths, inst, masters, _Both(), depth, set(build["loose"]),
-                     data_may_be_ours=lo.mods is None and bool(replaced))
+    groups = compare(build_paths, inst, masters, _Both(), depth, set(build["loose"]))
     for (lvl, kind, owner, where), ps in sorted(groups.items(), key=lambda kv: (
             ("problem", "caution", "note").index(kv[0][0]), kv[0][2].lower(), kv[0][1])):
         text, fix = _text(kind, owner, where, len(ps), _ex(ps))
@@ -566,10 +564,10 @@ def run(ctx, zips):
     if unreadable:
         add(Finding("caution", SECTION, f"{len(unreadable)} installed archive(s) couldn't be read: "
                     f"{_ex([os.path.basename(u) for u in unreadable])}.", fix="Reinstall the mod they belong to."))
-    if lo.mods is None:
+    if lo.mods is None and not unsorted:
         add(Finding("note", SECTION, "With a plain Plugins.txt the Data folder's loose files can't be told apart by "
-                    "mod, so a loose file of an installed copy of this build counts as shared with the Data folder, "
-                    "and so does a master's loose file unless one of the master's archives ships the same path.",
+                    "mod, so a master's loose file counts as shared with the Data folder unless one of the master's "
+                    "archives ships the same path.",
                     fix="Use --mo2 or --vortex-profile to compare mod by mod."))
     heavy = None
     if depth == "heavy":

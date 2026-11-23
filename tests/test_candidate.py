@@ -280,8 +280,8 @@ class PluginsTxt(unittest.TestCase):
             self.assertTrue(any("plain Plugins.txt" in f["text"] for f in j["findings"]))
 
     def test_upgrade_over_its_older_copy(self):
-        """Code review round 6: with a plain Plugins.txt and the build's older copy installed, the older copy's loose
-        script and changed files in Data are a caution, not script or differ problems."""
+        """0.2.2: with a plain Plugins.txt and the build's older copy installed, Data's loose files aren't compared
+        (no script or differ problem for the older copy's files) and one data-unsorted caution says so."""
         with tempfile.TemporaryDirectory() as t:
             data, ptxt = fixtures.game(os.path.join(t, "game"), {"New.esm": {}})
             os.makedirs(os.path.join(data, "scripts"))
@@ -296,7 +296,12 @@ class PluginsTxt(unittest.TestCase):
             with open(os.path.join(out, "report.json"), encoding="utf-8") as f:
                 j = json.load(f)
             mine = [f for f in j["findings"] if f["data"].get("mod") == "the Data folder (loose)"]
-            self.assertEqual([(f["level"], f["data"]["kind"]) for f in mine], [("caution", "data-old")])
+            self.assertEqual(mine, [])
+            uns = [f for f in j["findings"] if f["data"].get("kind") == "data-unsorted"]
+            self.assertEqual([(f["level"], f["data"]["replaced"]) for f in uns], [("caution", ["New.esm"])])
+            self.assertIn("weren't compared", uns[0]["text"])
+            self.assertIn("--vortex-profile", uns[0]["fix"])
+            self.assertFalse(any("installed copy of this build" in f["text"] for f in j["findings"]))
 
 
 class Heavy(Setup):

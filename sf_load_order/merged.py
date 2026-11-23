@@ -56,17 +56,26 @@ def _read_manifest(path):
     return name, None
 
 
-def _looks_like_manifest(path):
+def _load(path):
     try:
         with open(path, encoding="utf-8-sig") as f:
-            d = json.load(f)
+            return json.load(f)
     except (OSError, ValueError):
-        return False
+        return None
+
+
+def _looks_like_manifest(d):
     return isinstance(d, dict) and "schema" in d and isinstance(d.get("patch"), dict) and "loadOrder" in d
 
 
+def _old_manifest(d):
+    """A manifest from the old patch_sources.py (an int schema and the patch's name as a string)."""
+    return isinstance(d, dict) and isinstance(d.get("schema"), int) and isinstance(d.get("patch"), str)
+
+
 def find_manifests(lo, given=None):
-    """[(path, given_by_option)], each manifest once. given: the --patch-sources values (files or folders)."""
+    """[(path, given_by_option)], each manifest once (old patch_sources.py ones too). given: the --patch-sources
+    values (files or folders)."""
     seen, out = {}, []
 
     def take(path, explicit):
@@ -103,7 +112,7 @@ def find_manifests(lo, given=None):
                 full = os.path.join(g, name)
                 if not os.path.isfile(full) or not name.lower().endswith(".json"):
                     continue
-                if name.lower() == MANIFEST or _looks_like_manifest(full):
+                if name.lower() == MANIFEST or _looks_like_manifest(d := _load(full)) or _old_manifest(d):
                     take(full, True)
         else:
             take(g, True)  # a missing or unreadable file is reported by run()
@@ -192,7 +201,14 @@ def run(ctx):
     if (getattr(args, "depth", None) or "medium") == "light":
         return _not_checked("--depth light (merged patches are checked with sf-mod-check at medium and heavy)")
     manifests = find_manifests(lo, getattr(args, "patch_sources", None))
-    log.info(SECTION, f"merged patches: {len(manifests)} manifest(s) found")
+    old = [m for m, _ in manifests if _old_manifest(_load(m))]
+    if old:
+        manifests = [x for x in manifests if x[0] not in old]
+        _add(ctx, "note", f"{len(old)} file(s) passed with --patch-sources are manifests from the old "
+                          f"patch_sources.py, which sf-load-order can't check: {', '.join(old)}.",
+             "Rebuild the patch with sf-mod-check 0.15.0 or later (its patch command writes patch-sources.json), "
+             "and pass that file.", old_manifests=old)
+    log.info(SECTION, f"merged patches: {len(manifests)} manifest(s) found, {len(old)} old")
     if not manifests:
         return [], {"status": "done", "manifests": 0}
     if not lo.data:

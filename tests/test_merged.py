@@ -290,6 +290,40 @@ class Runs(Base):
         self.assertFalse([a for a in self.calls() if a[:1] == ["patch"]])
         self.assertEqual([f.level for f in self.mine(c)], ["caution"])
 
+    def old_manifest(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"schema": 1, "patch": "ConflictPatch - Old.esm", "profile": "P"}, f)
+        return path
+
+    def test_old_manifest_in_a_folder_gets_a_note(self):
+        """0.2.2 (B2): an old patch_sources.py file in a --patch-sources folder was skipped with no finding."""
+        os.remove(self.man)
+        old = self.old_manifest(os.path.join(self.t, "extra", "ConflictPatch-Old.json"))
+        exe = self.fake()
+        c = self.ctx(self.lo(), sf_mod_check=exe, patch_sources=[os.path.dirname(old)])
+        value, st = merged.run(c)
+        self.assertEqual((value, st["manifests"]), ([], 0))
+        f = self.mine(c)
+        self.assertEqual([x.level for x in f], ["note"])
+        self.assertEqual(f[0].data["old_manifests"], [os.path.abspath(old)])
+        self.assertIn("old patch_sources.py", f[0].text)
+        self.assertIn("sf-mod-check 0.15.0 or later", f[0].fix)
+        self.assertEqual(self.calls(), [])
+
+    def test_old_manifest_named_directly_gets_the_note(self):
+        """0.2.2: an old file named directly gets the same NOTE, not the "isn't a patch-sources.json" caution, and
+        the real manifest beside it is still checked."""
+        old = self.old_manifest(os.path.join(self.t, "extra", "ConflictPatch-Old.json"))
+        exe = self.fake()
+        c = self.ctx(self.lo(), sf_mod_check=exe, patch_sources=[old])
+        entries, _ = merged.run(c)
+        self.assertEqual([(e["patch"], e["state"]) for e in entries], [("Patch.esm", "up to date")])
+        f = self.mine(c)
+        self.assertEqual([x.data.get("old_manifests") for x in f if x.level != "note" or "old_manifests" in x.data],
+                         [[os.path.abspath(old)]])
+        self.assertFalse(any(x.level == "caution" for x in f))
+
     def test_patch_not_installed(self):
         extra = manifest(os.path.join(self.t, "extra", "gone.json"), "Gone.esm")
         os.remove(self.man)

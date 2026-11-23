@@ -272,6 +272,9 @@ date. It needs sf-mod-check 0.15.0 or newer and runs at `--depth medium` and `he
 - Manifests are looked for as `patch-sources.json` in the Data folder, in the folder of each enabled plugin, and in
   each enabled Vortex mod's staging folder. `--patch-sources <file or folder>` (may be given more than once) adds
   more: a folder is searched for `patch-sources.json` and for any other `.json` that looks like a manifest.
+- A file from the old `patch_sources.py` (an older patch manifest, with the patch's name as plain text) can't be
+  checked. Passed with `--patch-sources` (in a folder or by name), it gives one note naming each such file, with the
+  fix: rebuild the patch with sf-mod-check 0.15.0 or later and pass the `patch-sources.json` it writes.
 - A manifest is used only when its `patch.name` is one plain plugin file name. A bad one gives a caution.
 - The patch checked is the copy in your load order. A patch that isn't enabled is listed as "not enabled" and not
   checked.
@@ -487,7 +490,7 @@ with different content; it is a caution, not a problem, because overriding the m
 | Finding | Level |
 |---|---|
 | A script (`.pex`) the build ships that another enabled mod also ships | problem (when that mod is a master of the build, it is treated like the "Another file the build ships with different content" row: a caution, or a note when identical) |
-| With a plain Plugins.txt and the build's older copy installed, a loose file in Data the build also ships (a script, or different content) | caution (kind `data-old`), since the older copy's files can't be told apart from another mod's |
+| With a plain Plugins.txt and the build's older copy installed: Data's loose files aren't compared, since the older copy's loose files can't be told apart from another mod's (archives are still compared plugin by plugin) | one caution (kind `data-unsorted`, with `replaced`) |
 | Another file the build ships with different content than an enabled mod's copy | problem; a caution when the other mod is a master of the build; a note when the content is identical. When one copy is loose and the other archived, the text says the loose copy always wins (kind `wins` when it is the build's, `hidden` when it is the other mod's) |
 | Two parts of the build shipping the same path | problem for scripts, a caution for other files |
 | Two zips of the build shipping an archive with the same name | problem |
@@ -543,7 +546,7 @@ These are the options `.\sf-load-order.cmd --help` lists. `.\sf-load-order.cmd c
 | `--accept FILE` | Clashes you have accepted, pinned to the files' hashes. |
 | `--picks FILE` | Your own order picks: plugin X loads right after plugin Y. |
 | `--loot-order FILE` | A Plugins.txt sorted by LOOT, to compare with. |
-| `--patch-sources FILE\|FOLDER` | A `patch-sources.json` (or a folder of them) from `sf-mod-check patch`, checked with `sf-mod-check patch check` besides those found next to the enabled plugins (may be given more than once). |
+| `--patch-sources FILE\|FOLDER` | A `patch-sources.json` (or a folder of them) from `sf-mod-check patch`, checked with `sf-mod-check patch check` besides those found next to the enabled plugins (may be given more than once). A manifest from the old `patch_sources.py` gives a note asking for a rebuild with sf-mod-check 0.15.0 or later. |
 | `--state FOLDER` | Where to keep the snapshot used for "changed since the last run", and the archive and loose-file cache (default: `%LOCALAPPDATA%\sf-load-order`; on Linux `~/.local/state/sf-load-order`). |
 | `--no-state` | Don't read or write the snapshot or the cache. |
 | `--out FOLDER` | Where the report and the files to apply go (default: `.\sf-load-order-report`). |
