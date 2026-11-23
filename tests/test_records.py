@@ -502,7 +502,7 @@ class StalenessOfficialNames(unittest.TestCase):
         for odd, want in ((["x"], None), (5, None), ({"a": 1}, None), ("  ", None), (" Rec ", "Rec")):
             e = lost("000100:A.esm", "A.esm", "B.esm", [field("Keywords")], edid=odd)
             cj = {"loadOrder": base, "lost": [e], "itms": [{"Plugin": "B.esm", "formKey": "1", "EditorID": odd}],
-                  "typeChanges": [{"Plugin": "B.esm", "formKey": "1", "EditorID": odd}]}
+                  "typeChanges": [{"Plugin": "B.esm", "First": "A.esm", "formKey": "1", "EditorID": odd}]}
             res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
             self.assertEqual([res["lost"][0]["edid"], res["itms"][0]["edid"], res["type_changes"][0]["edid"]],
                              [want] * 3)
@@ -514,13 +514,17 @@ class StalenessOfficialNames(unittest.TestCase):
         base = [{"FileName": "A.esm"}, {"FileName": "B.esm"}]
         cj = {"loadOrder": base, "lost": [],
               "itms": ["x", 5, None, {"Plugin": " B.esm ", "formKey": " 000100:A.esm ", "RecordType": "Keyword"},
-                       {"Plugin": 7, "formKey": 8}],
+                       {"Plugin": 7, "formKey": 8}, {"Plugin": "  ", "formKey": "000200:A.esm"}],
               "typeChanges": [5, "y", {"Plugin": " A.esm ", "formKey": 9, "First": " B.esm ", "finding": 3,
-                                       "PluginType": 4, "FirstType": " Npc "}]}
+                                       "PluginType": 4, "FirstType": " Npc "},
+                              {"Plugin": 7, "First": "B.esm", "formKey": "1"},
+                              {"Plugin": "A.esm", "First": None, "formKey": "2"}],
+              "missingAssets": [{"plugin": 7, "kind": "Script", "path": "x.pex"}, {"plugin": " ", "path": "y.nif"}]}
         lo = make_lo(["A.esm", "B.esm"])
         res = records.analyse(cj, lo)
-        self.assertEqual(res["itms"], [{"plugin": "B.esm", "fk": "000100:A.esm", "type": "Keyword", "edid": None},
-                                       {"plugin": "", "fk": "", "type": "", "edid": None}])
+        # code review 0.1.3 Opus round 2: items naming no plugin are skipped, not reported under a blank name
+        self.assertEqual(res["itms"], [{"plugin": "B.esm", "fk": "000100:A.esm", "type": "Keyword", "edid": None}])
+        self.assertEqual(res["assets"]["missing"], [])
         self.assertEqual(res["type_changes"], [{"fk": "", "edid": None, "plugin": "A.esm", "plugin_type": None,
                                                 "first": "B.esm", "first_type": "Npc", "text": ""}])
         self.assertEqual(res["plugins"]["b.esm"]["itms"], 1)
@@ -532,6 +536,8 @@ class StalenessOfficialNames(unittest.TestCase):
             ctx = ctx_for(t, lo)
             records.add_findings(ctx, res, "file")
         texts = [f.text for f in ctx.report.findings]
+        self.assertFalse([f.text for f in ctx.report.findings if "" in (f.plugins or [])])
+        self.assertFalse([t for t in texts if t.startswith((" ", ":")) or "than ." in t])
         self.assertTrue(any(t.startswith("B.esm has 1 record(s) identical") for t in texts))
         self.assertTrue(any("A.esm gives" in t and "than B.esm" in t for t in texts))
 
@@ -553,7 +559,7 @@ class StalenessOfficialNames(unittest.TestCase):
         cj = {"loadOrder": base, "lost": [],
               "loadOrderProblems": [5, None, "  ", " B.esm: cannot be read (IOException) "],
               "Errors": [5, "", "B.esm: 2 records were not compared"],
-              "UnreadableFields": {"Keywords": 2, "Bad": "x", "Flag": True, "Odd": [1]},
+              "UnreadableFields": {"Keywords": 2, "Bad": "x", "Flag": True, "Odd": [1], "Zero": 0, "Neg": -3},
               "missingAssets": [5, "p", {"plugin": " B.esm ", "kind": 3, "path": "x.nif"},
                                 {"plugin": "B.esm", "kind": " Script ", "path": "y.pex"}],
               "archiveLimitWarnings": [5, None, "too many archives"]}
@@ -573,6 +579,23 @@ class StalenessOfficialNames(unittest.TestCase):
         self.assertIn("B.esm: 1 script(s) and 1 model(s) its records use aren't installed (not loose and not in an "
                       "archive the game loads).", texts)
         self.assertTrue(any("1 error line(s) and 2 unreadable field(s)" in t for t in texts))
+
+    def test_zero_counts_and_odd_asset_values_say_nothing(self):
+        """code review 0.1.3 Opus round 2: UnreadableFields counts of 0 or below gave a false "couldn't compare
+        everything" note; assetsChecked and archiveCounts of the wrong type are None."""
+        base = [{"FileName": "A.esm"}, {"FileName": "B.esm"}]
+        lo = make_lo(["A.esm", "B.esm"])
+        cj = {"loadOrder": base, "lost": [], "Errors": [], "UnreadableFields": {"Keywords": 0, "Name": -1},
+              "assetsChecked": "yes", "archiveCounts": [1, 2]}
+        res = records.analyse(cj, lo)
+        self.assertEqual(res["not_compared"]["unreadable_fields"], {})
+        self.assertEqual((res["assets"]["checked"], res["assets"]["archive_counts"]), (None, None))
+        with tempfile.TemporaryDirectory() as t:
+            ctx = ctx_for(t, lo)
+            records.add_findings(ctx, res, "file")
+        self.assertFalse([f.text for f in ctx.report.findings if "couldn't compare everything" in f.text])
+        good = records.analyse(dict(cj, assetsChecked=False, archiveCounts={"gnrl": 1}), lo)
+        self.assertEqual((good["assets"]["checked"], good["assets"]["archive_counts"]), (False, {"gnrl": 1}))
 
     def test_duplicate_load_order_entries_are_one_plugin(self):
         """code review 0.1.3 round 6, Opus rerun round 1: B.esm and " b.esm " are one plugin: one place in the
@@ -597,6 +620,17 @@ class StalenessOfficialNames(unittest.TestCase):
         finally:
             log._sinks.remove(buf)
         self.assertIn("more than once with different Official flags", buf.getvalue())
+        # code review 0.1.3 Opus round 2: one line per plugin per run, even with three copies (True, False, True)
+        # and with analyse reading the entries twice (once for itself, once for _differs)
+        three = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "B.esm", "Official": True},
+                               {"FileName": "b.esm"}, {"FileName": "B.ESM", "Official": True}], "lost": []}
+        buf = io.StringIO()
+        log._sinks.append(buf)
+        try:
+            records.analyse(three, make_lo(["A.esm", "B.esm"]))
+        finally:
+            log._sinks.remove(buf)
+        self.assertEqual(buf.getvalue().count("more than once with different Official flags"), 1)
 
     def test_lost_names_are_trimmed_like_the_load_order(self):
         """code review 0.1.3 round 4: a padded Loser or Winner still matches the load order's Official flag."""
