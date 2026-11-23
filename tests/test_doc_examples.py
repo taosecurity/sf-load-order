@@ -25,8 +25,9 @@ def doc_results(name):
     found = []
     for m in re.finditer(r"candidate ShipMod-0\.3\.0\.zip.*\n.*\n(.*)\n", text):
         r = RESULT_RE.match(m.group(1))
-        if r:
-            found.append(r.group(1))
+        if not r:
+            raise AssertionError(f"a candidate Example in {name} has no RESULT line two lines below the command")
+        found.append(r.group(1))
     return found
 
 
@@ -37,7 +38,7 @@ class DocExamples(unittest.TestCase):
             fixtures.plugin(os.path.join(data, "Starfield.esm"))
             mo2 = os.path.join(t, "mo2")
             fixtures.mo2(mo2, "Default", [
-                ("CoreTools", True, {"CoreTools.esm": {}, "scripts\shared.pex": b"x", "meshes\crate.nif": b"theirs"}),
+                ("CoreTools", True, {"CoreTools.esm": {}, "scripts\\shared.pex": b"x", "meshes\\crate.nif": b"theirs"}),
                 ("OldShipMod", True, {"ShipMod.esm": {"masters": ("CoreTools.esm",)}}),
             ])
             z = make_zip(os.path.join(t, "ShipMod-0.3.0.zip"), {
