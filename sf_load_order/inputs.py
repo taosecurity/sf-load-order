@@ -487,6 +487,11 @@ def from_vortex_profile(args, env, drives, registry):
                       f"plugin(s), {len(vp['extra_mods'])} extra mod(s), {len(vp['missing_plugins'])} missing")
     if vp["deployed"] is False:
         _profile_mods(lo, modlist)
+        # the deployment record is the deployed profile's, so its "mods added from the record" note would name that
+        # profile's mods as this one's; the caution below counts them as mods this profile doesn't enable
+        rec = lo.files.get("vortex_deployment")
+        extra = [f for f in extra if not (f.section == SECTION and "mods" in f.data and rec
+                                          and f.data.get("record") == rec)]
         # point this profile's plugins at their staging folders (Data's copy, when there is one, is the deployed
         # profile's). That is a location only (the clashes check hashes it); no check reads these files, since
         # cli.NEEDS_DEPLOYED skips every check that would, and read() doesn't read their headers.

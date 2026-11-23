@@ -265,6 +265,30 @@ class Runs(Base):
             os.environ["PATH"] = old
         self.assertIn("wasn't found", value["not_checked"])
 
+    def test_missing_patch_sources_file_is_not_counted_as_found(self):
+        """0.2.2 bug hunt: with no sf-mod-check, a --patch-sources file that doesn't exist was counted in the note
+        "2 merged patch manifest(s) ... were found"; now it gets its own caution and isn't counted."""
+        gone = os.path.join(self.t, "no such folder", "patch-sources.json")
+        old = os.environ.get("PATH", "")
+        os.environ["PATH"] = self.bin  # empty: no sf-mod-check
+        try:
+            c = self.ctx(self.lo(), patch_sources=[gone])
+            merged.run(c)
+        finally:
+            os.environ["PATH"] = old
+        f = self.mine(c)
+        self.assertEqual([(x.level, x.data.get("manifest")) for x in f if x.level == "caution"],
+                         [("caution", os.path.abspath(gone))])
+        note = next(x for x in f if x.level == "note")
+        self.assertIn("1 merged patch manifest(s)", note.text)
+        self.assertNotIn(os.path.abspath(gone), note.data["manifests"])
+        # with sf-mod-check, the same file gets the same caution and the real manifest is still checked
+        exe = self.fake()
+        c = self.ctx(self.lo(), sf_mod_check=exe, patch_sources=[gone])
+        entries, _ = merged.run(c)
+        self.assertEqual([(e["patch"], e["state"]) for e in entries], [("Patch.esm", "up to date")])
+        self.assertEqual([x.level for x in self.mine(c) if x.level != "note"], ["caution"])
+
     def test_light_runs_nothing(self):
         exe = self.fake()
         value, _ = merged.run(self.ctx(self.lo(), sf_mod_check=exe, depth="light"))

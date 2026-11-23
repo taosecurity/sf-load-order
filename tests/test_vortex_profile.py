@@ -255,7 +255,24 @@ class Deployed(Base):
         self.assertEqual(on["modf-6"], os.path.join(self.staging, "modf-6"))
         # the game's Plugins.txt is the deployed profile's, so its difference isn't reported
         self.assertIs(lo._vortex_profile["plugins_txt_matches"], False)
-        self.assertFalse(any("differs from the game's Plugins.txt" in f.text for f in inputs.findings(lo)))
+        fs = inputs.findings(lo)
+        self.assertFalse(any("differs from the game's Plugins.txt" in f.text for f in fs))
+        # 0.2.2 bug hunt: the record's mode-5 is the deployed profile's mod, so no note says it was added to this one
+        self.assertFalse(any("added from Vortex's deployment record" in f.text for f in fs), [f.text for f in fs])
+
+    def test_deployed_profile_keeps_the_added_from_the_record_note(self):
+        """A deployed profile's mods with no plugin are still added from the record, with the note."""
+        self.deployed_set()
+        with open(os.path.join(self.data, "vortex.deployment.starfield-data-folder.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"stagingPath": self.staging, "files": [
+                {"relPath": "ModA.esm", "source": "moda-1"}, {"relPath": "ModB.esp", "source": "modb-2"},
+                {"relPath": "textures\\g.dds", "source": "modg-7"}]}, f)
+        modlist(os.path.join(self.exports, f"vortex-starfield-{PROFILE}-modlist-backup-20261101-100000.json"),
+                [("moda-1", True, ["ModA.esm"]), ("modb-2", True, ["ModB.esp"]), ("modg-7", True, [])])
+        lo = self.ok("--vortex-profile", PROFILE, *self.common())
+        self.assertIs(lo._vortex_profile["deployed"], True)
+        self.assertTrue(any("added from Vortex's deployment record" in f.text for f in inputs.findings(lo)))
 
     def test_deployment_record_naming_a_mod_not_enabled(self):
         self.deployed_set()

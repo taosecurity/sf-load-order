@@ -205,7 +205,7 @@ credits and writes nothing. Screen output keeps the console's character set and 
 
 ## 8. Exit codes
 
-- 0: the report was written, whatever it found.
+- 0: the report was written, whatever it found, or `--help` or `--version` printed what it shows (writing nothing).
 - 1: the report was written, `--strict` was given, and it lists at least one problem.
 - 2: it couldn't run (for `candidate`: a zip that is missing, a `.7z` or `.rar`, or not a zip; otherwise a bad or shortened option, no Python found by the launcher, no load order found, an output or
   log folder it can't write, or none of the three report files could be written). The `RESULT: CANNOT CHECK:` line

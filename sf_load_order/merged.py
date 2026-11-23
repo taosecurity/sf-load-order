@@ -208,6 +208,11 @@ def run(ctx):
                           f"patch_sources.py, which sf-load-order can't check: {', '.join(old)}.",
              "Rebuild the patch with sf-mod-check 0.15.0 or later (its patch command writes patch-sources.json), "
              "and pass that file.", old_manifests=old)
+    # a --patch-sources file that doesn't exist isn't a manifest found (the sf-mod-check note below counts them)
+    for man in [m for m, explicit in manifests if explicit and not os.path.isfile(m)]:
+        _add(ctx, "caution", f"The merged patch manifest {man} wasn't used: the file wasn't found.",
+             "Check the path given to --patch-sources.", manifest=man)
+        manifests = [x for x in manifests if x[0] != man]
     log.info(SECTION, f"merged patches: {len(manifests)} manifest(s) found, {len(old)} old")
     if not manifests:
         return [], {"status": "done", "manifests": 0}

@@ -14,6 +14,9 @@ This release makes the check of a Vortex profile that isn't deployed, and `candi
 ### Fixes
 
 - A manifest from the old `patch_sources.py` passed with `--patch-sources` was skipped with no finding. Now one note in the Patches section names each such file, with the fix "rebuild the patch with sf-mod-check 0.15.0 or later", and report.json's finding has `data.old_manifests`. An old file named directly gets this note in place of the caution "it isn't a patch-sources.json".
+- For a Vortex profile that isn't deployed, the note "N mod(s) Vortex deployed aren't in the load order export ..., so they were added from Vortex's deployment record" named the deployed profile's mods as if they were this profile's. That note is no longer given for such a profile; the caution already counts those mods as ones the profile doesn't enable.
+- A `--patch-sources` file that doesn't exist was counted as a manifest found in the note that sf-mod-check wasn't found. Now it gets its own caution, "the file wasn't found", whether or not sf-mod-check is installed, and it is no longer listed in report.json's `patches`.
+- The exit-code tables in the README and AGENTS.md now say that `--help` and `--version` exit 0.
 
 ### Example
 
