@@ -435,6 +435,38 @@ class StalenessOfficialNames(unittest.TestCase):
         self.assertEqual(len(res["lost"]), 1)
         self.assertEqual(len(res["lost"][0]["fields"]), 1)
 
+    def test_odd_scalars_and_shapes_in_lost_are_harmless(self):
+        """code review 0.1.3 round 6: non-text names, form keys and Differences items, and lost or Fields that are a
+        dict or text, don't crash analyse."""
+        base = [{"FileName": "A.esm"}, {"FileName": "B.esm"}]
+        e = lost("000100:A.esm", "A.esm", "B.esm", [field("Keywords")])
+        e["Fields"][0]["Differences"] = [None, "z", {"Text": 5}, {"Text": "ok"}]
+        e["Fields"][0]["Field"] = 7
+        e["formKey"], e["RecordType"] = 9, ["x"]
+        res = records.analyse({"loadOrder": base, "lost": [e]}, make_lo(["A.esm", "B.esm"]))
+        self.assertEqual(res["lost"][0]["fields"][0]["differences"], ["", "ok"])
+        self.assertEqual(res["lost"][0]["fields"][0]["field"], "?")
+        self.assertEqual((res["lost"][0]["fk"], res["lost"][0]["type"]), ("", ""))
+        for odd in ({"a": 1}, "abc", 5):
+            self.assertEqual(records.analyse({"loadOrder": base, "lost": odd}, make_lo(["A.esm"]))["lost"], [])
+        e2 = lost("000100:A.esm", "A.esm", "B.esm", [])
+        for odd in ({"a": 1}, "abc"):
+            e2["Fields"] = odd
+            res = records.analyse({"loadOrder": base, "lost": [e2]}, make_lo(["A.esm"]))
+            self.assertEqual(res["lost"][0]["fields"], [])
+
+    def test_duplicate_load_order_entries_are_one_plugin(self):
+        """code review 0.1.3 round 6: B.esm and " b.esm " are one plugin: one place in the order, masters and the
+        Official flag merged."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "B.esm", "Masters": ["A.esm"]},
+                            {"FileName": " b.esm ", "Masters": ["C.esm"], "Official": True}], "lost": []}
+        res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
+        self.assertEqual(res["load_order"], ["A.esm", "B.esm"])
+        entries = records._load_entries(cj)
+        self.assertEqual(len(entries), 2)
+        self.assertTrue(entries[1]["Official"])
+        self.assertEqual(records._closure(entries)["b.esm"], {"a.esm", "c.esm"})
+
     def test_lost_names_are_trimmed_like_the_load_order(self):
         """code review 0.1.3 round 4: a padded Loser or Winner still matches the load order's Official flag."""
         cj = {"loadOrder": [{"FileName": " B.esm ", "Official": True}, {"FileName": "C.esm"}],

@@ -119,8 +119,8 @@ def load(path):
 
 def label(f):
     """sf-mod-check's label for one lost field (ConflictImpact.IsMinor, then WinnerChangedToo)."""
-    lc = f.get("LoserChanges") or []
-    df = f.get("Differences") or []
+    lc = [x for x in (f.get("LoserChanges") or []) if isinstance(x, dict)]  # an item that isn't an object says nothing
+    df = [x for x in (f.get("Differences") or []) if isinstance(x, dict)]
     if (lc and all(x.get("Minor") for x in lc)) or (df and all(x.get("Minor") for x in df)):
         return NO_EFFECT
     return CHOICE if f.get("WinnerChangedToo") else FORWARDABLE
@@ -157,11 +157,21 @@ def _load_entries(cj):
     """conflicts.json's loadOrder entries that are objects with a usable file name (a string with text in it), each
     with FileName trimmed. Anything else (not an object, no or empty or blank or non-text FileName) names no plugin
     and is skipped, so it can't skew the load order shown, the ratings or the --conflicts comparison."""
-    out = []
+    out, seen = [], {}
     for e in (cj.get("loadOrder") or []):
         if not isinstance(e, dict) or not isinstance(e.get("FileName"), str) or not e["FileName"].strip():
             continue
-        out.append(dict(e, FileName=e["FileName"].strip()))
+        e = dict(e, FileName=e["FileName"].strip())
+        first = seen.get(e["FileName"].lower())
+        if first is None:
+            seen[e["FileName"].lower()] = e
+            out.append(e)
+            continue
+        # a plugin listed twice (any case) is one plugin: it keeps its first place, and the entries' masters and
+        # Official flag are merged into it
+        ms = [m for x in (first, e) for m in (x.get("Masters") if isinstance(x.get("Masters"), list) else [])]
+        first["Masters"] = ms
+        first["Official"] = bool(first.get("Official") or e.get("Official"))
     return out
 
 
@@ -212,22 +222,25 @@ def analyse(cj, lo):
             modof[p.lower()] = m.name
 
     lost = []
-    lost_in = [e for e in (cj.get("lost") or []) if isinstance(e, dict)]  # a non-object item names no record
+    raw = cj.get("lost")
+    # a non-object item names no record; a lost value that isn't a list holds none (load() already refuses it)
+    lost_in = [e for e in (raw if isinstance(raw, list) else []) if isinstance(e, dict)]
     for e in lost_in:
         fields = []
         for f in [f for f in (e.get("Fields") or []) if isinstance(f, dict)]:
             lab = label(f)
-            name = f.get("Field") or "?"
+            name = _text(f.get("Field")) or "?"
             fields.append({"field": name, "label": lab, "weight": weight(name, lab),
                            "winner_changed_too": bool(f.get("WinnerChangedToo")),
                            "loser_value": f.get("LoserValue"), "winner_value": f.get("WinnerValue"),
-                           "differences": [(x.get("Text") or "") for x in (f.get("Differences") or [])]})
+                           "differences": [_text(x.get("Text")) for x in (f.get("Differences") or [])
+                                           if isinstance(x, dict)]})  # non-object items are skipped, as in label()
         loser, winner = _text(e.get("Loser")), _text(e.get("Winner"))
-        lost.append({"fk": (e.get("formKey") or ""), "type": (e.get("RecordType") or ""), "edid": e.get("EditorID"),
+        lost.append({"fk": _text(e.get("formKey")), "type": _text(e.get("RecordType")), "edid": e.get("EditorID"),
                      "loser": loser, "winner": winner,
                      "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
                      "winner_official": winner.lower() in official,
-                     "outcome": _outcome((e.get("RecordType") or ""), fields), "fields": fields})
+                     "outcome": _outcome(_text(e.get("RecordType")), fields), "fields": fields})
 
     # sf-mod-check's WinnerOfficial on a lost entry (like the Official flag in loadOrder) makes the pair a BlueprintShips
     # pair, per winner name so any entry counts. That changes its wording and keeps it out of "order matters" and the
