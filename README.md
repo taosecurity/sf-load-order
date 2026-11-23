@@ -273,8 +273,9 @@ date. It needs sf-mod-check 0.15.0 or newer and runs at `--depth medium` and `he
   each enabled Vortex mod's staging folder. `--patch-sources <file or folder>` (may be given more than once) adds
   more: a folder is searched for `patch-sources.json` and for any other `.json` that looks like a manifest.
 - A file from the old `patch_sources.py` (an older patch manifest, with the patch's name as plain text) can't be
-  checked. Passed with `--patch-sources` (in a folder or by name), it gives one note naming each such file, with the
-  fix: rebuild the patch with sf-mod-check 0.15.0 or later and pass the `patch-sources.json` it writes.
+  checked. Found beside a patch or passed with `--patch-sources` (in a folder or by name), it gives one note naming
+  each such file, with the fix: rebuild the patch with sf-mod-check 0.15.0 or later. The `patch-sources.json` it
+  writes beside the patch is found by itself.
 - A manifest is used only when its `patch.name` is one plain plugin file name. A bad one gives a caution.
 - The patch checked is the copy in your load order. A patch that isn't enabled is listed as "not enabled" and not
   checked.

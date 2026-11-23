@@ -346,6 +346,9 @@ class Runs(Base):
         self.assertEqual([x.data["old_manifests"] for x in f], [[os.path.abspath(old)]])
         self.assertNotIn("--patch-sources", f[0].text)
         self.assertIn("merged patch manifest(s) are from the old patch_sources.py", f[0].text)
+        # code review round 2, 2026-11-23: the fix said "and pass that file", though a rebuilt one is found by itself
+        self.assertNotIn("pass that file", f[0].fix)
+        self.assertIn("found by itself", f[0].fix)
 
     def test_old_manifest_named_directly_gets_the_note(self):
         """0.2.2: an old file named directly gets the same NOTE, not the "isn't a patch-sources.json" caution, and
