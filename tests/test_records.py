@@ -17,6 +17,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sf_load_order import inputs, log, model, records, sfmodcheck  # noqa: E402
 from tests import fixtures  # noqa: E402
 
+
+def read_json(path):
+    """Read a JSON file and close it (bare open() calls left ResourceWarnings in CI)."""
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_text(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def dump_json(obj, path):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f)
+
+
 FAKE = textwrap.dedent(r'''
     import json, os, sys, time
     here = os.path.dirname(os.path.abspath(__file__))
@@ -166,7 +183,7 @@ class Mapping(unittest.TestCase):
     def test_same_mod_and_built(self):
         lo = make_lo(["A.esm", "B.esm", "C.esm", "D.esm", "E.esm"],
                      mods=[model.Mod("Pack", True, plugins=["A.esm", "B.esm"])])
-        cj = json.load(open(os.path.join(self.t, "conflicts.json"), encoding="utf-8"))
+        cj = read_json(os.path.join(self.t, "conflicts.json"))
         cj["lost"].append(lost("000600:Starfield.esm", "C.esm", "D.esm", [field("Keywords")]))  # D has C as master
         res = records.analyse(cj, lo)
         adv = {(p["loser"], p["winner"]): p["advice"] for p in res["pairs"]}
@@ -191,13 +208,13 @@ class Mapping(unittest.TestCase):
 
     def test_bad_files(self):
         bad = os.path.join(self.t, "bad.json")
-        open(bad, "w").write("{not json")
+        write_text(bad, "{not json")
         self.assertIn("isn't valid JSON", records.load(bad)[1])
-        open(bad, "w").write('{"x": 1}')
+        write_text(bad, '{"x": 1}')
         self.assertIn("doesn't look like", records.load(bad)[1])
         # a key that is present but isn't a list gets the same plain message (bug hunt 0.1.3: the old wording
         # "no loadOrder and lost lists" read as if the keys were missing)
-        open(bad, "w").write('{"loadOrder": 5, "lost": "x"}')
+        write_text(bad, '{"loadOrder": 5, "lost": "x"}')
         self.assertIn("needs a loadOrder list and a lost list", records.load(bad)[1])
         self.assertIn("can't read", records.load(os.path.join(self.t, "none.json"))[1])
 
@@ -699,7 +716,7 @@ class Program(unittest.TestCase):
             fixtures.plugin(os.path.join(self.data, n))
         self.lo = make_lo(["A.esm", "B.esm", "C.esm", "D.esm", "E.esm", "-Off.esm"], data=self.data)
         sample(os.path.join(self.t, "c.json"))
-        self.cj = json.load(open(os.path.join(self.t, "c.json"), encoding="utf-8"))
+        self.cj = read_json(os.path.join(self.t, "c.json"))
         self.cj["loadOrderProblems"] = []
 
     def fake(self, name="sf-mod-check", wrapper=None, **cfg):
@@ -725,7 +742,10 @@ class Program(unittest.TestCase):
 
     def calls(self):
         p = os.path.join(self.bin, "calls.jsonl")
-        return [json.loads(l) for l in open(p, encoding="utf-8")] if os.path.exists(p) else []
+        if not os.path.exists(p):
+            return []
+        with open(p, encoding="utf-8") as f:
+            return [json.loads(l) for l in f]
 
     def test_missing_program(self):
         old = os.environ.get("PATH", "")
@@ -770,7 +790,8 @@ class Program(unittest.TestCase):
         self.assertEqual(conflict[conflict.index("--data") + 1], self.data)
         self.assertEqual(conflict[conflict.index("--out") + 1], os.path.join(ctx.work, "conflict"))
         self.assertEqual(conflict[conflict.index("--max-memory") + 1], "8")
-        seen = open(os.path.join(self.bin, "plugins-seen.txt"), encoding="utf-8").read().splitlines()
+        with open(os.path.join(self.bin, "plugins-seen.txt"), encoding="utf-8") as f:
+            seen = f.read().splitlines()
         self.assertEqual([l for l in seen if not l.startswith("#")],
                          ["*A.esm", "*B.esm", "*C.esm", "*D.esm", "*E.esm"])  # no officials, no disabled
         res = ctx.results["records"]
@@ -806,7 +827,7 @@ class Program(unittest.TestCase):
         exe = self.fake(exit=2, conflicts=None)
         ctx = ctx_for(self.t, self.lo, sf_mod_check=exe)
         os.makedirs(os.path.join(ctx.work, "conflict"))
-        json.dump(self.cj, open(os.path.join(ctx.work, "conflict", "conflicts.json"), "w"))
+        dump_json(self.cj, os.path.join(ctx.work, "conflict", "conflicts.json"))
         self.assertEqual(records.run(ctx)["status"], "skipped")
         self.assertFalse(os.path.exists(os.path.join(ctx.work, "conflict", "conflicts.json")))
 
@@ -822,7 +843,7 @@ class Program(unittest.TestCase):
 
     def test_conflicts_file_skips_program(self):
         p = os.path.join(self.t, "given.json")
-        json.dump(self.cj, open(p, "w"))
+        dump_json(self.cj, p)
         ctx = ctx_for(self.t, self.lo, conflicts=p, sf_mod_check=os.path.join(self.t, "nope.exe"))
         st = records.run(ctx)
         self.assertEqual(st["status"], "done")
@@ -831,7 +852,7 @@ class Program(unittest.TestCase):
 
     def test_bad_conflicts_file(self):
         p = os.path.join(self.t, "given.json")
-        open(p, "w").write("[]")
+        write_text(p, "[]")
         ctx = ctx_for(self.t, self.lo, conflicts=p)
         st = records.run(ctx)
         self.assertEqual(st["status"], "skipped")
