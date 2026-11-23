@@ -335,6 +335,18 @@ class Runs(Base):
         self.assertIn("sf-mod-check 0.15.0 or later", f[0].fix)
         self.assertEqual(self.calls(), [])
 
+    def test_old_manifest_found_in_data_says_found_not_passed(self):
+        """Code review round 1, 2026-11-23: an old patch-sources.json found in Data on its own got a note saying it
+        was passed with --patch-sources."""
+        os.remove(self.man)
+        old = self.old_manifest(os.path.join(self.data, merged.MANIFEST))
+        c = self.ctx(self.lo(), sf_mod_check=self.fake())
+        merged.run(c)
+        f = [x for x in self.mine(c) if "old_manifests" in x.data]
+        self.assertEqual([x.data["old_manifests"] for x in f], [[os.path.abspath(old)]])
+        self.assertNotIn("--patch-sources", f[0].text)
+        self.assertIn("merged patch manifest(s) are from the old patch_sources.py", f[0].text)
+
     def test_old_manifest_named_directly_gets_the_note(self):
         """0.2.2: an old file named directly gets the same NOTE, not the "isn't a patch-sources.json" caution, and
         the real manifest beside it is still checked."""

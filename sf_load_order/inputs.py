@@ -505,14 +505,18 @@ def from_vortex_profile(args, env, drives, registry):
                     moved += 1
         log.info(SECTION, f"vortex profile: {moved} plugin(s) found in staging folders (not read)")
         n = len(vp["extra_plugins"]) + len(vp["extra_mods"])
+        if getattr(args, "zips", None) is not None:  # candidate: it compares the build with the staging folders
+            what = (". So the build is compared with this profile's mods in their staging folders, not with Data, "
+                    "and the cleaning check (--depth heavy) doesn't run.")
+        else:
+            what = (". So only the plugin names and the known clashes were checked: the order, patch, archive, "
+                    "loose-file, mod-rule, record and recommended-order checks were skipped, since they read the "
+                    "profile's files and Data holds another profile's.")
         extra.insert(0, Finding(
             "caution", SECTION,
             f"Data holds another profile: {len(vp['extra_plugins'])} mod plugin(s) in Data aren't in the Vortex profile "
             f"{profile}" + (f", and Vortex's deployment record names {len(vp['extra_mods'])} mod(s) it doesn't enable"
-                           if vp["extra_mods"] else "") + ". So only the plugin names and the known clashes were "
-            "checked: the order, patch, archive, loose-file, mod-rule, record and recommended-order checks were "
-            "skipped, since they read the profile's files and Data holds another profile's. Plugins missing from "
-            "Data aren't listed as problems.",
+                           if vp["extra_mods"] else "") + what + " Plugins missing from Data aren't listed as problems.",
             fix=f"Deploy the profile {profile} in Vortex and run again, or pass --data with a folder that holds this "
                 "profile's files.",
             data={"extra_plugins": vp["extra_plugins"][:50], "extra_mods": vp["extra_mods"][:50], "count": n,

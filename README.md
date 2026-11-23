@@ -201,7 +201,7 @@ since Data holds another profile's files. One caution says so, names the fix (de
 again, or pass `--data` with a folder that holds this profile's files) and replaces the "file wasn't found" problems.
 
 In `report.json` those sections say `skipped` with the reason, the mod plugins' `kind` and `masters` are `null` (their
-headers aren't read), and `recommended` is empty.
+headers aren't read), and `recommended` is `null`.
 
 When the profile is the deployed one, the report notes when the export's plugin list differs from the game's own
 Plugins.txt (the export is older than the last change).

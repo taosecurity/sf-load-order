@@ -8,7 +8,7 @@ This release makes the check of a Vortex profile that isn't deployed, and `candi
 
 - When `--vortex-profile` names a profile that Data doesn't hold (Vortex has another profile deployed), every check that reads the profile's plugin, archive or loose files is skipped: load order and masters, patches, archives, loose files, Vortex mod rules, record conflicts and the suggested order. Before, some of these read the profile's staging copies and others gave weaker findings; now only the dropped-name and known-clash checks run.
 - One caution says so and names the fix: deploy the profile in Vortex and run again, or pass `--data` with a folder that holds this profile's files.
-- In report.json the skipped sections are `{"status": "skipped", "why": ...}`, so their `results` entries, the top-level `rules` and `outputs.vortex_json` are absent and `recommended` is empty. The mod plugins' `kind` and `masters` are `null`, since their headers aren't read. `patches` stays `{"not_checked": why}`.
+- In report.json the skipped sections are `{"status": "skipped", "why": ...}`, so their `results` entries, the top-level `rules` and `outputs.vortex_json` are absent and `recommended` is `null`. The mod plugins' `kind` and `masters` are `null`, since their headers aren't read. `patches` stays `{"not_checked": why}`.
 - `candidate` with a plain Plugins.txt and the build's older copy installed no longer compares Data's loose files, which can't be told apart from that copy's. One caution (kind `data-unsorted`, with `replaced`) says so and names the fix: use `--mo2` or `--vortex-profile`, or remove the older copy. Before, each such file was a caution of kind `data-old`; that kind is gone. Archives are still compared plugin by plugin.
 
 ### Fixes

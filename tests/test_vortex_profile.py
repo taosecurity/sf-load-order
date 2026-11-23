@@ -218,6 +218,19 @@ class Deployed(Base):
         sf = next(p for p in lo.plugins if p.name == "Starfield.esm")
         self.assertEqual(sf.kind, "F")  # official plugins are still read
 
+    def test_other_profile_caution_for_candidate(self):
+        """Code review round 1, 2026-11-23: a candidate run got the check command's caution, which says the archive
+        and loose-file checks were skipped, though candidate compares the build with the staging folders."""
+        self.other_set()
+        a = cli.candidate_parser().parse_args(["Build.zip", "--vortex-profile", PROFILE, *self.common()])
+        lo, err = inputs.read(a, env=self.env, drives=[], registry=lambda: None)
+        self.assertIsNone(err)
+        c = next(f for f in inputs.findings(lo) if "another profile" in f.text)
+        self.assertEqual(c.level, "caution")
+        self.assertIn("the build is compared with this profile's mods in their staging folders", c.text)
+        self.assertNotIn("checks were skipped", c.text)
+        self.assertIn(f"Deploy the profile {PROFILE} in Vortex", c.fix)
+
     def test_other_profile_shared_plugin_points_at_staging(self):
         """Code review 2026-11-23: a plugin both profiles have points at this profile's staging copy, not at
         Data (the deployed profile's copy, maybe another version). 0.2.2: its header isn't read."""
@@ -337,7 +350,8 @@ class Run(Base):
         for k in ("order", "archives", "loose", "recommend"):
             self.assertNotIn(k, d.get("results") or {})
         self.assertFalse(d.get("rules"))
-        self.assertFalse(d.get("recommended"))
+        self.assertIn("recommended", d)  # code review round 1: the docs say null, and so does report.json
+        self.assertIsNone(d["recommended"])
         self.assertNotIn("vortex_json", d.get("outputs") or {})
         mods = [p for p in d["load_order"]["plugins"] if not p.get("official")]
         self.assertTrue(mods)

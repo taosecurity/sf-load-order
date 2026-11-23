@@ -204,8 +204,9 @@ def run(ctx):
     old = [m for m, _ in manifests if _old_manifest(_load(m))]
     if old:
         manifests = [x for x in manifests if x[0] not in old]
-        _add(ctx, "note", f"{len(old)} file(s) passed with --patch-sources are manifests from the old "
-                          f"patch_sources.py, which sf-load-order can't check: {', '.join(old)}.",
+        # (worded for any file found: find_manifests also finds patch-sources.json files on its own)
+        _add(ctx, "note", f"{len(old)} merged patch manifest(s) are from the old patch_sources.py, which "
+                          f"sf-load-order can't check: {', '.join(old)}.",
              "Rebuild the patch with sf-mod-check 0.15.0 or later (its patch command writes patch-sources.json), "
              "and pass that file.", old_manifests=old)
     # a --patch-sources file that doesn't exist isn't a manifest found (the sf-mod-check note below counts them)
