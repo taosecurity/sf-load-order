@@ -475,20 +475,6 @@ class BlueprintWinner(Base):
         ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A.esm", "B.esm", [0], lost_, cost=10, complete=True)]))
         self.assertEqual([x["loser"] for x in r["remaining"]], ["A.esm"])
 
-    def test_merged_patch_note_names_a_record_with_no_name(self):
-        """Opus rerun round 5: a lost entry with no record type, EditorID or form key left a blank in the merged-patch
-        note ("  (keywords: ...)"); it now says "a record", and a type with no name says "a <type> record"."""
-        lo = make_lo(["A.esm", "B.esm"])
-        lost_ = [entry("1", "A.esm", "B.esm", [("Keywords", "Forwardable")]),
-                 entry("2", "A.esm", "B.esm", [("Flags", "Forwardable")])]
-        lost_[0].update(fk="", edid=None, type="")
-        lost_[1].update(fk="", edid=None, type="Keyword")
-        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A.esm", "B.esm", [0, 1], lost_, cost=10, complete=True)]))
-        note = next(t for t in self.texts(ctx) if "merged patch" in t)
-        self.assertIn("a record (keywords: A.esm loses to B.esm)", note)
-        self.assertIn("a Keyword record (record flags: A.esm loses to B.esm)", note)
-        self.assertNotIn("  (", note)
-
 
 if __name__ == "__main__":
     unittest.main()

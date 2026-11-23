@@ -18,14 +18,9 @@ What conflicts.json holds (sf-mod-check src\\ConflictReport.cs, 0.8.0) and what 
                Forwardable  the winner only carries an older value, so a patch can copy the lost value forward
   itms, typeChanges, loadOrderProblems, Errors / UnreadableFields (records not compared), missingAssets,
   archiveLimitWarnings, loadOrder (plugins sf-mod-check loaded, with Official and Masters).
-
-Odd shapes (a hand-made or damaged file) never crash the run: a list that isn't a list holds nothing, an item that
-should be an object and isn't is skipped, a name or text that isn't text reads as "" (EditorID as None), names are
-trimmed, a flag counts only when it is JSON true, a count that isn't a whole number above 0 is left out, and an ITM
-or missing asset that names no plugin, or a type change that names neither its Plugin nor its First (or names the
-same plugin as both), is skipped and counted under --verbose (_list, _objs, _text, _flag below). assetsChecked is
-kept only when it is true or false and archiveCounts only when it is an object (else None). LoserValue and
-WinnerValue are kept as they are: nothing here reads them.
+load() refuses a file that isn't in that shape (shape_problem: a list that isn't a list, an item that isn't an
+object with its names as text), with one caution naming the file and the fix, so the rest of this module reads
+the file as sf-mod-check writes it.
 
 What it can't tell: the file lists only losses. A plugin's own edits that nobody undoes, and edits two mods make
 the same way, aren't listed, so a plugin with no entry is "neutral" in the sense "nothing of it is lost and it
@@ -52,7 +47,7 @@ NAVI entries gets the advice "navi", and NAVI under an official loser isn't coun
 
 ctx.results["records"] (for recommend.py and the report):
   {"source": "run"|"file", "file": conflicts.json path, "program": Program.to_dict() or None,
-   "exit": int|None, "result_line": str|None, "generated": str|None (None when missing, blank or not text),
+   "exit": int|None, "result_line": str|None, "generated": str,
    "load_order": [names sf-mod-check loaded, official included, in its order],
    "plugins": {lower name: {"name", "rating", "label", "why", "pairs": [pair index], "lost_records": int,
                "won_records": int, "undoes_official": int, "itms": int, "type_changes": int}},
@@ -71,7 +66,7 @@ ctx.results["records"] (for recommend.py and the report):
    "problems": [{"text", "plugin", "kind", "seen_by"}],  kind: missing-file / master / master-order / unreadable /
                                                          other; seen_by: "inputs" / "order" / "records"
    "not_compared": {"errors": [str], "unreadable_fields": {str: n}},
-   "assets": {"checked": bool|None, "missing": [...], "archive_counts": dict|None, "archive_limit_warnings": [str]},
+   "assets": {"checked", "missing": [...], "archive_counts", "archive_limit_warnings"},
    "differs": None or {"missing": [...], "extra": [...], "order": bool}   vs the load order being checked
    "heavy": None or {lower name: sfmodcheck.run_check() dict}}
 Field weights are recommend.py's: 0 bookkeeping or No effect, 1 cosmetic (lighting, music, weather, names...),
@@ -123,16 +118,65 @@ def load(path):
         return None, f"{path} isn't valid JSON ({e}). {fix}"
     if not isinstance(d, dict) or any(not isinstance(d.get(k), list) for k in REQUIRED_KEYS):
         return None, f"{path} doesn't look like sf-mod-check's conflicts.json (it needs a loadOrder list and a lost list). {fix}"
+    bad = shape_problem(d)
+    if bad:
+        return None, (f"{path} isn't in the shape sf-mod-check writes ({bad}), so it was made by hand or is damaged. "
+                      "Fix: rerun sf-mod-check conflict and give --conflicts the conflicts.json it writes in its "
+                      "--out folder.")
     return d, None
+
+
+# The lists analyse() reads, with the keys each item must have as text with something in it (sf-mod-check always
+# writes them so). Optional lists may be missing or null.
+ITEM_NAMES = {"loadOrder": ("FileName",), "lost": ("Loser", "Winner"), "itms": ("Plugin",),
+              "typeChanges": ("Plugin",), "missingAssets": ("plugin",)}
+TEXT_LISTS = ("loadOrderProblems", "Errors", "archiveLimitWarnings")
+
+
+def _named(x, keys):
+    return isinstance(x, dict) and all(isinstance(x.get(k), str) and x[k].strip() for k in keys)
+
+
+def shape_problem(d):
+    """None when conflicts.json has sf-mod-check's shape, else a short note of the first thing that doesn't. One
+    check up front, so analyse() can trust the file instead of guarding every field (a hand-made or damaged file is
+    refused with one clear message, not half read)."""
+    for key, names in ITEM_NAMES.items():
+        items = d.get(key)
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            return f"{key} isn't a list"
+        for i, x in enumerate(items):
+            if not _named(x, names):
+                return f"{key} item {i + 1} isn't an object with {' and '.join(names)} names"
+    for i, e in enumerate(d["loadOrder"]):
+        ms = e.get("Masters")
+        if ms is not None and not (isinstance(ms, list) and all(isinstance(m, str) for m in ms)):
+            return f"loadOrder item {i + 1} has Masters that aren't a list of names"
+    for i, e in enumerate(d["lost"]):
+        fs = e.get("Fields")
+        if fs is not None and not (isinstance(fs, list) and all(
+                isinstance(f, dict) and all(isinstance(f.get(k) or [], list) and
+                                            all(isinstance(y, dict) for y in f.get(k) or [])
+                                            for k in ("Differences", "LoserChanges")) for f in fs)):
+            return f"lost item {i + 1} has Fields that aren't a list of field objects"
+    for key in TEXT_LISTS:
+        if d.get(key) is not None and not isinstance(d[key], list):
+            return f"{key} isn't a list"
+    uf = d.get("UnreadableFields")
+    if uf is not None and not (isinstance(uf, dict) and all(isinstance(v, int) for v in uf.values())):
+        return "UnreadableFields isn't an object of counts"
+    return None
 
 
 def label(f):
     """sf-mod-check's label for one lost field (ConflictImpact.IsMinor, then WinnerChangedToo)."""
-    lc = _objs(f.get("LoserChanges"))  # an item that isn't an object says nothing
-    df = _objs(f.get("Differences"))
-    if (lc and all(_flag(x.get("Minor")) for x in lc)) or (df and all(_flag(x.get("Minor")) for x in df)):
+    lc = f.get("LoserChanges") or []
+    df = f.get("Differences") or []
+    if (lc and all(x.get("Minor") for x in lc)) or (df and all(x.get("Minor") for x in df)):
         return NO_EFFECT
-    return CHOICE if _flag(f.get("WinnerChangedToo")) else FORWARDABLE
+    return CHOICE if f.get("WinnerChangedToo") else FORWARDABLE
 
 
 def weight(field, lab=None):
@@ -157,80 +201,9 @@ def _outcome(rtype, fields):
     return "conflict"
 
 
-def _text(v):
-    """A name or text from conflicts.json, trimmed the same way as the loadOrder FileName (non-text gives "")."""
-    return v.strip() if isinstance(v, str) else ""
-
-
-def _list(v):
-    """A conflicts.json value that should be a list: anything else (an object, text, a number, true) holds nothing."""
-    return v if isinstance(v, list) else []
-
-
-def _objs(v):
-    """The object items of a conflicts.json list; a value that isn't a list, and items that aren't objects, are left
-    out."""
-    return [x for x in _list(v) if isinstance(x, dict)]
-
-
-def _flag(v):
-    """A conflicts.json flag: only JSON true counts (sf-mod-check writes true or false)."""
-    return v is True
-
-
-def _edid(v):
-    """An EditorID: trimmed text, or None when there is none or it isn't text."""
-    return _text(v) or None
-
-
-def _masters(e):
-    """An entry's master names, trimmed, blanks and non-text dropped, each once (any case), in their order."""
-    out, seen = [], set()
-    for m in _list(e.get("Masters")):
-        t = _text(m)
-        if t and t.lower() not in seen:
-            seen.add(t.lower())
-            out.append(t)
-    return out
-
-
-def _load_entries(cj, quiet=False):
-    """conflicts.json's loadOrder entries that are objects with a usable file name (a string with text in it), one per
-    plugin, with FileName trimmed, Masters cleaned (_masters) and Official a real flag (_flag). Anything else (not an
-    object, no or empty or blank or non-text FileName) names no plugin and is skipped, so it can't skew the load order
-    shown, the ratings or the --conflicts comparison. A plugin listed twice (any case or padding) is one entry in its
-    first place, with the masters of every copy, and counts as Official only when every copy says so (a stray flag
-    on one copy can't hide a mod). So the result can be shorter than the loadOrder list: don't index the two
-    together. The --verbose line about differing Official flags is written once per plugin, and not at all with
-    quiet (analyse logs it; _differs reads the same entries again quietly)."""
-    out, seen, mixed = [], {}, {}
-    for e in _list(cj.get("loadOrder")):
-        if not isinstance(e, dict) or not _text(e.get("FileName")):
-            continue
-        e = dict(e, FileName=_text(e["FileName"]), Masters=_masters(e), Official=_flag(e.get("Official")))
-        key = e["FileName"].lower()
-        first = seen.get(key)
-        if first is None:
-            seen[key] = e
-            out.append(e)
-            continue
-        first["Masters"] = _masters({"Masters": first["Masters"] + e["Masters"]})
-        if first["Official"] != e["Official"]:
-            mixed.setdefault(key, first)
-        first["Official"] = first["Official"] and e["Official"]
-    if not quiet:
-        for first in mixed.values():
-            log.info(SECTION, f"conflicts.json lists {first['FileName']} more than once with different Official "
-                              "flags; it is counted as a mod (official only when every copy says so)")
-    return out
-
-
 def _closure(load_order):
-    direct = {}
-    for e in load_order:
-        # _masters: a Masters value that isn't a list names none; names trimmed, blanks dropped. Entries naming the
-        # same plugin (any case) share one set (_load_entries already merges them; this keeps a raw list safe too).
-        direct.setdefault(e["FileName"].lower(), set()).update(m.lower() for m in _masters(e))
+    direct = {(e.get("FileName") or "").lower(): {str(m or "").lower() for m in (e.get("Masters") or [])}
+              for e in load_order}
     out = {}
 
     def walk(n, seen):
@@ -261,38 +234,35 @@ def _problem(text):
 
 def analyse(cj, lo):
     """Turn conflicts.json (dict) into ctx.results["records"] (see the module text). lo: the LoadOrder checked."""
-    entries = _load_entries(cj)
-    order = [e["FileName"] for e in entries]
-    official = {e["FileName"].lower() for e in entries if e.get("Official")}
-    need = _closure(entries)
+    order = [(e.get("FileName") or "") for e in (cj.get("loadOrder") or [])]
+    official = {(e.get("FileName") or "").lower() for e in (cj.get("loadOrder") or []) if e.get("Official")}
+    need = _closure((cj.get("loadOrder") or []))
     modof = {}
     for m in (getattr(lo, "mods", None) or []):
         for p in (m.plugins or []):
             modof[p.lower()] = m.name
 
     lost = []
-    # a non-object item names no record; a lost value that isn't a list holds none (load() already refuses it)
-    lost_in = _objs(cj.get("lost"))
-    for e in lost_in:
+    for e in (cj.get("lost") or []):
         fields = []
-        for f in _objs(e.get("Fields")):
+        for f in e.get("Fields") or []:
             lab = label(f)
-            name = _text(f.get("Field")) or "?"
+            name = f.get("Field") or "?"
             fields.append({"field": name, "label": lab, "weight": weight(name, lab),
-                           "winner_changed_too": _flag(f.get("WinnerChangedToo")),
+                           "winner_changed_too": bool(f.get("WinnerChangedToo")),
                            "loser_value": f.get("LoserValue"), "winner_value": f.get("WinnerValue"),
-                           "differences": [_text(x.get("Text")) for x in _objs(f.get("Differences"))]})
-        loser, winner = _text(e.get("Loser")), _text(e.get("Winner"))
-        lost.append({"fk": _text(e.get("formKey")), "type": _text(e.get("RecordType")), "edid": _edid(e.get("EditorID")),
+                           "differences": [(x.get("Text") or "") for x in (f.get("Differences") or [])]})
+        loser, winner = (e.get("Loser") or ""), (e.get("Winner") or "")
+        lost.append({"fk": (e.get("formKey") or ""), "type": (e.get("RecordType") or ""), "edid": e.get("EditorID"),
                      "loser": loser, "winner": winner,
-                     "loser_official": _flag(e.get("LoserOfficial")) or loser.lower() in official,
+                     "loser_official": bool(e.get("LoserOfficial")) or loser.lower() in official,
                      "winner_official": winner.lower() in official,
-                     "outcome": _outcome(_text(e.get("RecordType")), fields), "fields": fields})
+                     "outcome": _outcome((e.get("RecordType") or ""), fields), "fields": fields})
 
     # sf-mod-check's WinnerOfficial on a lost entry (like the Official flag in loadOrder) makes the pair a BlueprintShips
     # pair, per winner name so any entry counts. That changes its wording and keeps it out of "order matters" and the
     # move candidates. winner_official, the ratings and official_undone keep the load order's own flags.
-    marked = {_text(e.get("Winner")).lower() for e in lost_in if _flag(e.get("WinnerOfficial"))}
+    marked = {(e.get("Winner") or "").lower() for e in (cj.get("lost") or []) if e.get("WinnerOfficial")}
     pairs, by_pair = [], {}
     for i, x in enumerate(lost):
         if x["loser_official"]:
@@ -339,51 +309,23 @@ def analyse(cj, lo):
         if x["loser_official"] and not x["winner_official"] and x["outcome"] == "navi":
             log.info(SECTION, f"{x['winner']} over {x['loser']} on the navmesh info map {x['fk']}: not counted as "
                               "undoing an official change (each plugin's copy lists only its own navmeshes)")
-    # the other lists get the same care as lost: non-object items skipped, names trimmed, non-text read as "". An
-    # ITM or missing asset that names no plugin, or a type change that names neither its Plugin nor its First, can't
-    # be placed, so it is skipped (and counted under --verbose) rather than reported under a blank name.
-    itms = [{"plugin": _text(x.get("Plugin")), "fk": _text(x.get("formKey")), "type": _text(x.get("RecordType")),
-             "edid": _edid(x.get("EditorID"))} for x in _objs(cj.get("itms"))]
-    tcs = [{"fk": _text(x.get("formKey")), "edid": _edid(x.get("EditorID")), "plugin": _text(x.get("Plugin")),
-            "plugin_type": _text(x.get("PluginType")) or None, "first": _text(x.get("First")),
-            "first_type": _text(x.get("FirstType")) or None, "text": _text(x.get("finding"))}
-           for x in _objs(cj.get("typeChanges"))]
-    missing = [dict(m, plugin=_text(m.get("plugin")), kind=_text(m.get("kind")))
-               for m in _objs(cj.get("missingAssets"))]
-    kept = {"itms": [x for x in itms if x["plugin"]], "typeChanges": [x for x in tcs if x["plugin"] or x["first"]],
-            "missingAssets": [x for x in missing if x["plugin"]]}
-    for name, before in (("itms", itms), ("typeChanges", tcs), ("missingAssets", missing)):
-        if len(before) != len(kept[name]):
-            log.info(SECTION, f"conflicts.json: {len(before) - len(kept[name])} {name} item(s) name no plugin; "
-                              "skipped")
-    # a type change whose First is its own Plugin isn't a clash between two plugins, so it is skipped too
-    two = [x for x in kept["typeChanges"] if x["plugin"].lower() != x["first"].lower()]
-    if len(two) != len(kept["typeChanges"]):
-        log.info(SECTION, f"conflicts.json: {len(kept['typeChanges']) - len(two)} typeChanges item(s) name the same "
-                          "plugin as Plugin and First; skipped")
-        kept["typeChanges"] = two
-    itms, tcs, missing = kept["itms"], kept["typeChanges"], kept["missingAssets"]
+    itms = [{"plugin": (x.get("Plugin") or ""), "fk": (x.get("formKey") or ""), "type": (x.get("RecordType") or ""),
+             "edid": x.get("EditorID")} for x in cj.get("itms", []) or []]
+    tcs = [{"fk": (x.get("formKey") or ""), "edid": x.get("EditorID"), "plugin": (x.get("Plugin") or ""),
+            "plugin_type": x.get("PluginType"), "first": (x.get("First") or ""), "first_type": x.get("FirstType"),
+            "text": x.get("finding")} for x in cj.get("typeChanges", []) or []]
     problems = []
-    for t in _list(cj.get("loadOrderProblems")):
-        t = _text(t)
-        if not t:
-            continue  # a line that isn't text, or is blank, says nothing
-        plugin, kind, seen_by = _problem(t)
-        problems.append({"text": t, "plugin": plugin or None, "kind": kind, "seen_by": seen_by})
-    uf = cj.get("UnreadableFields")
-    # a count that isn't a whole number above 0 says nothing was missed there, so it is left out
-    uf = ({str(k): v for k, v in uf.items() if isinstance(v, int) and not isinstance(v, bool) and v > 0}
-          if isinstance(uf, dict) else {})
+    for t in cj.get("loadOrderProblems", []) or []:
+        plugin, kind, seen_by = _problem(str(t))
+        problems.append({"text": str(t), "plugin": plugin, "kind": kind, "seen_by": seen_by})
 
-    res = {"load_order": order, "generated": _text(cj.get("generated")) or None, "lost": lost, "pairs": pairs,
+    res = {"load_order": order, "generated": cj.get("generated"), "lost": lost, "pairs": pairs,
            "official_undone": official_undone, "itms": itms, "type_changes": tcs, "problems": problems,
-           "not_compared": {"errors": [x for x in (_text(x) for x in _list(cj.get("Errors"))) if x],
-                            "unreadable_fields": uf},
-           "assets": {"checked": cj.get("assetsChecked") if isinstance(cj.get("assetsChecked"), bool) else None,
-                      "missing": missing,
-                      "archive_counts": cj.get("archiveCounts") if isinstance(cj.get("archiveCounts"), dict) else None,
-                      "archive_limit_warnings": [x for x in (_text(x) for x in _list(cj.get("archiveLimitWarnings")))
-                                                 if x]},
+           "not_compared": {"errors": list(cj.get("Errors") or []),
+                            "unreadable_fields": dict(cj.get("UnreadableFields") or {})},
+           "assets": {"checked": cj.get("assetsChecked"), "missing": list(cj.get("missingAssets") or []),
+                      "archive_counts": cj.get("archiveCounts"),
+                      "archive_limit_warnings": list(cj.get("archiveLimitWarnings") or [])},
            "heavy": None}
     res["plugins"] = _ratings(lo, res, {n.lower() for n in order})
     res["differs"] = _differs(lo, cj)
@@ -461,11 +403,9 @@ def _ratings(lo, res, loaded):
 def _differs(lo, cj):
     """Does the --conflicts file's load order differ from ours? Plugins conflicts.json lists as Official, and names
     sf-mod-check counts official (sfta01 to sfta06 and the like), aren't mods, so they aren't compared."""
-    entries = [(e, e["FileName"].lower()) for e in _load_entries(cj, quiet=True)]
-    flagged = {n for e, n in entries if e.get("Official")}
-    left = []
-    seen = set()
-    ours = []
+    entries = [(e, (e.get("FileName") or "").lower()) for e in cj.get("loadOrder") or []]
+    flagged = {n for e, n in entries if n and e.get("Official")}
+    left, seen, ours = [], set(), []
     for p in _mod_plugins(lo):
         n = p.name.lower()
         if n in flagged or inputs.modcheck_official(n):
@@ -477,7 +417,7 @@ def _differs(lo, cj):
     theirs = []
     for e, n in entries:
         if e.get("Official") or inputs.modcheck_official(n):
-            if n not in seen:
+            if n and n not in seen:
                 seen.add(n)
                 left.append(n)
         else:
@@ -574,23 +514,17 @@ def add_findings(ctx, res, source):
         if not real:
             continue
         offs = sorted({x["loser"] for x in xs})
-        recs = sorted({x["fk"] for x in xs if x["fk"]})
-        n = len(recs) + sum(1 for x in xs if not x["fk"])  # an entry with no usable formKey counts on its own
+        recs = sorted({x["fk"] for x in xs})
         add(Finding("caution" if any(f["weight"] >= 3 for f in real) else "note", SECTION,
-                    f"{w} undoes official changes from {', '.join(offs)} on {n} record(s) (fields: "
+                    f"{w} undoes official changes from {', '.join(offs)} on {len(recs)} record(s) (fields: "
                     f"{_names(real)}): it wasn't built with them as masters.",
                     fix=(f"Look for an update of {w} made for the current game and DLCs, or a patch that carries the "
                          "official changes forward. Moving it won't help: official files always load first."),
                     plugins=[w] + offs, data={"records": recs[:50]}))
 
     for t in res["type_changes"]:
-        name = t["edid"] or t["fk"]
-        rec = f"record {name}" if name else "a record"  # EditorID and formKey both missing or not text
-        if t["plugin"] and t["first"]:
-            said = f"{t['plugin']} gives {rec} a different record type than {t['first']}."
-        else:  # analyse keeps a type change that names at least one of the two
-            said = f"{t['plugin'] or t['first']} and another plugin give {rec} different record types."
-        add(Finding("problem", SECTION, t["text"] or said,
+        add(Finding("problem", SECTION,
+                    t["text"] or f"{t['plugin']} gives {t['fk']} a different record type than {t['first']}.",
                     fix=("The game keeps whichever record loads first and drops the other. Tell the mod's author: "
                          "the record needs its own FormID (xEdit: right-click > Change FormID)."),
                     plugins=[x for x in (t["plugin"], t["first"]) if x], data={"fk": t["fk"]}))
@@ -613,7 +547,7 @@ def add_findings(ctx, res, source):
                         "the file is damaged.", plugins=[pr["plugin"]] if pr["plugin"] else []))
 
     nc = res["not_compared"]
-    if nc["errors"] or nc["unreadable_fields"]:  # analyse keeps only counts above 0
+    if nc["errors"] or nc["unreadable_fields"]:
         add(Finding("note", SECTION,
                     f"sf-mod-check couldn't compare everything: {len(nc['errors'])} error line(s) and "
                     f"{sum(nc['unreadable_fields'].values())} unreadable field(s), so conflicts there aren't listed.",
@@ -622,7 +556,7 @@ def add_findings(ctx, res, source):
 
     miss = {}
     for m in res["assets"]["missing"]:
-        miss.setdefault(m["plugin"], []).append(m)  # analyse keeps only assets that name a plugin
+        miss.setdefault((m.get("plugin") or ""), []).append(m)
     for plugin, ms in miss.items():
         scripts = [m for m in ms if (m.get("kind") or "").lower().startswith("script")]
         models = len(ms) - len(scripts)

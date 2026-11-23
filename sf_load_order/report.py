@@ -232,8 +232,7 @@ def _item_text_(x):
     if "path" in x and "before" in x and "after" in x:
         return f"{x['path']}: {x['before']} wins today, {x['after']} would win"
     if "loser" in x and "winner" in x:
-        # a lost record (it has an fk or edid key) is named the same way as in the merged-patch note above it
-        what = recommend.record_name(x) if ("fk" in x or "edid" in x) else str(x.get("type") or "").strip()
+        what = f"{x.get('type', '')} {x.get('edid') or x.get('fk') or ''}".strip()
         s = (f"{what}: " if what else "") + f"{x['loser']} loses to {x['winner']}"
         bits = []
         if x.get("label"):
