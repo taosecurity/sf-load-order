@@ -179,6 +179,11 @@ class Skips(unittest.TestCase):
     def ctx(self, lo, d):
         return cli.Context(types.SimpleNamespace(out=d, state=d, no_state=True), lo, model.Report("test"))
 
+    def test_pair_that_couldnt_be_compared_says_so(self):
+        self.assertEqual(rules._differ_words({"differ": 2, "paths": 3}), "ship 2 loose file(s) with different copies")
+        self.assertEqual(rules._differ_words({"differ": 0, "paths": 3}),
+                         "share 3 loose file(s) that couldn't be compared")
+
     def test_not_vortex(self):
         with tempfile.TemporaryDirectory() as d:
             st = rules.run(self.ctx(model.LoadOrder(source="mo2", mods=[]), d))

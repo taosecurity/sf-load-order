@@ -107,6 +107,9 @@ def find_manifests(lo, given=None):
 
 
 # ---------- reading patch check ----------
+EXIT1_NO_REASON = "sf-mod-check patch check exited 1 (something to rebuild or review) without a problem or caution line"
+
+
 def _state(code, findings):
     if code == 2:
         return "cannot check"
@@ -114,6 +117,8 @@ def _state(code, findings):
         return "rebuild"
     if any(f["rule"] == "patch-off" for f in findings):
         return "not enabled"
+    if code == 1:  # sf-mod-check says there is something to rebuild or review, even with no problem or caution line
+        return "rebuild"
     return "up to date"
 
 
@@ -157,6 +162,9 @@ def _entry(patch, manifest, code, findings, result=None, why=None, smc_state=Non
     if state == "cannot check":
         e["level"] = "caution"
         e["reasons"] = [why or "sf-mod-check patch check couldn't check it"]
+    elif state == "rebuild" and not e["reasons"]:
+        e["level"] = "caution"
+        e["reasons"] = [EXIT1_NO_REASON]
     return e
 
 
@@ -256,7 +264,10 @@ def _report(ctx, e):
         _add(ctx, "caution", f"Couldn't check whether merged patch {name} is up to date: {e['reasons'][0]}.",
              f"Run sf-mod-check patch check \"{name}\" --log <file> to see why.", [name], manifest=e["manifest"])
         return
-    if e["state"] == "rebuild":
+    if e["state"] == "rebuild" and not any(f["level"] != "note" for f in e["findings"]):
+        _add(ctx, "caution", f"Merged patch {name} may need a rebuild: {EXIT1_NO_REASON}.",
+             f"Run sf-mod-check patch check \"{name}\" --log <file> to see why.", [name], manifest=e["manifest"])
+    elif e["state"] == "rebuild":
         bad = [f for f in e["findings"] if f["level"] != "note"]
         shown = "; ".join(f"[{f['rule']}] {f['text'].rstrip('.')}" for f in bad[:SHOWN])
         more = f"; and {len(bad) - SHOWN} more" if len(bad) > SHOWN else ""

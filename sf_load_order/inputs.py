@@ -487,14 +487,15 @@ def from_vortex_profile(args, env, drives, registry):
                       f"plugin(s), {len(vp['extra_mods'])} extra mod(s), {len(vp['missing_plugins'])} missing")
     if vp["deployed"] is False:
         _profile_mods(lo, modlist)
-        # read the plugins this profile has but Data doesn't from their staging folders, so order and archive checks
-        # describe this profile, not the deployed one
+        # read this profile's plugins from their staging folders (Data's copy, when there is one, is the deployed
+        # profile's, maybe another version), so order and archive checks describe this profile, not the deployed one
         moved = 0
         for p in lo.plugins:
-            if p.path is None and not p.official:
-                p.path = _staging_copy(lo, p.name.lower())
-                if p.path:
-                    p.name = os.path.basename(p.path)  # the export's lower case name, as the file is spelled
+            if not p.official:
+                staged = _staging_copy(lo, p.name.lower())
+                if staged:
+                    p.path = staged
+                    p.name = os.path.basename(staged)  # the export's lower case name, as the file is spelled
                     moved += 1
         log.info(SECTION, f"vortex profile: {moved} plugin(s) read from staging folders instead of Data")
         n = len(vp["extra_plugins"]) + len(vp["extra_mods"])

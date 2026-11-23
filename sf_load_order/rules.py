@@ -199,6 +199,12 @@ def analyse(lo, modlist, loose_result, deployed_profile=None):
     return {"has_rules": with_rules, "pairs": pairs, "no_shared": no_shared, "unmatched": unmatched}
 
 
+def _differ_words(p):
+    if p["differ"]:
+        return f"ship {p['differ']} loose file(s) with different copies"
+    return f"share {p['paths']} loose file(s) that couldn't be compared"
+
+
 def _rule_words(rs):
     return "; ".join(f"{r['mod']} loads {r['type']} {r['other']}" for r in rs)
 
@@ -214,7 +220,7 @@ def _findings(report, r, deployed_profile):
             a, b = p["mods"]
             dw = _deployed_words(p["winner"], p["deployed"])
             out.append(Finding("note", SECTION,
-                               f"Mods {a} and {b} ship {p['differ']} loose file(s) with different copies. "
+                               f"Mods {a} and {b} {_differ_words(p)}. "
                                + (f"{dw} (Vortex's deployment record)." if dw else
                                   "Which copies Vortex deployed isn't known." if not not_here else "")
                                + not_here, None, [], dict(p)))
@@ -230,8 +236,8 @@ def _findings(report, r, deployed_profile):
         dw = _deployed_words(p["winner"], p["deployed"])
         picked = f"Vortex picked {p['winner']}'s copy" if p["winner"] else (dw or "which copy Vortex picked isn't known")
         out.append(Finding("caution", SECTION,
-                           f"Real clash with no rule: mods {a} and {b} ship {p['differ']} loose file(s) with "
-                           f"different copies, and neither has a load-before or load-after rule for the other; "
+                           f"Real clash with no rule: mods {a} and {b} {_differ_words(p)}, "
+                           f"and neither has a load-before or load-after rule for the other; "
                            f"{picked}.{not_here}",
                            f"On Vortex's Mods page, open the conflict icon of {a} or {b} and set which one loads "
                            "after the other (its copies win), then deploy.", [], dict(p)))

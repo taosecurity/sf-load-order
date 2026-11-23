@@ -13,8 +13,9 @@ install with every enabled mod's files, loose and archived:
     a master of the build), are cautions;
   - identical copies and a master's files the build overrides are notes.
 
-The installed copy of the build itself (a mod shipping a plugin with the same name as one of the build's plugins)
-is left out, since the build replaces it.
+The installed copy of the build itself (a mod shipping a plugin with the same name as one of the build's plugins,
+or a mod whose name is a build zip's name with another version, such as a loose-files part) is left out, since the
+build replaces it. A zip packed with its mod's own folder (MyMod\\MyMod.esm) is read as if that folder were Data.
 
 Depth: light compares names only (every shared path is a caution "not compared"); medium (default) compares
 contents (the SHA-1 of each file's content; a .dds by its pixel data, as the archives check does); heavy adds the
@@ -26,6 +27,7 @@ Reads only. The zip is never unpacked to its own member paths: loose files are h
 (a numbered folder, and a name checked to be a plain file name).
 """
 import os
+import re
 import shutil
 import struct
 import zipfile
@@ -47,11 +49,38 @@ class CandidateError(Exception):
     """A zip that can't be checked at all: the run stops with exit 2."""
 
 
-def _member_path(name):
-    """A zip member's game path: lower case, backslashes, a leading Data\\ folder stripped; None for a folder."""
+def _raw_path(name):
     p = name.replace("/", "\\").strip("\\")
     while p.startswith(".\\"):
         p = p[2:]
+    return p
+
+
+def wrapper_folder(names):
+    """The one top folder every member sits under when it isn't a game folder, Data or fomod (a zip packed with
+    its mod's own folder, such as MyMod\\MyMod.esm), else None."""
+    tops = set()
+    for n in names:
+        p = _raw_path(n)
+        if not p:
+            continue
+        if "\\" not in p:
+            return None
+        tops.add(p.split("\\", 1)[0].lower())
+        if len(tops) > 1:
+            return None
+    if len(tops) != 1:
+        return None
+    top = next(iter(tops))
+    return None if top in loose.ROOTS or top in ("data", "fomod") else top
+
+
+def _member_path(name, wrapper=None):
+    """A zip member's game path: lower case, backslashes, a wrapper folder (see wrapper_folder) and then a leading
+    Data\\ folder stripped; None for a folder."""
+    p = _raw_path(name)
+    if wrapper and p.lower().startswith(wrapper + "\\"):
+        p = p[len(wrapper) + 1:]
     if p.lower() == "data" or p.lower().startswith("data\\"):
         p = p[5:]
     return p.lower() or None
@@ -94,10 +123,13 @@ def read_zips(zips, work, deep):
                     "fomod": False}
         try:
             with zipfile.ZipFile(z) as zf:
+                wrapper = wrapper_folder([i.filename for i in zf.infolist() if not i.is_dir()])
+                if wrapper:
+                    log.info(SECTION, f"{zname}: every file sits in the folder {wrapper}, read as the Data folder")
                 for i in zf.infolist():
                     if i.is_dir():
                         continue
-                    p = _member_path(i.filename)
+                    p = _member_path(i.filename, wrapper)
                     if not p:
                         continue
                     info_out["files"] += 1
@@ -165,18 +197,34 @@ def build_archive_files(build, cache, deep):
     return files, idle
 
 
-def installed_files(lo, build_names):
+VERSION_TAIL = re.compile(r"[-_ ]v?\d+(?:[.\-_]\d+)*$", re.I)
+
+
+def mod_stem(name):
+    """A zip or mod name without its folder, .zip and trailing version: ShipMod-Loose-8.8.40.zip and the Vortex
+    mod ShipMod-Loose-8.8.40-1700000000 both give shipmod-loose."""
+    n = os.path.basename(str(name or "").replace("\\", "/")).lower()
+    if n.endswith(".zip"):
+        n = n[:-4]
+    return VERSION_TAIL.sub("", n)
+
+
+def installed_files(lo, build_names, build_stems=()):
     """({path: [(owner, owner plugins, "loose"|"archive", full path)]}, replaced mod names, mods checked,
     mods with no folder). Mod managers: each enabled mod's folder (loose files, and the archives its enabled
-    plugins load); a plain Plugins.txt: the Data folder's loose files and each enabled plugin's archives."""
+    plugins load); a plain Plugins.txt: the Data folder's loose files and each enabled plugin's archives.
+    A mod is the installed copy of the build (left out) when it ships one of the build's plugins, or when its name,
+    id or folder has a build zip's name without the version (a part with no plugin)."""
     enabled = {n.lower() for n in lo.enabled()}
+    stems = {s for s in build_stems if s}
     out, replaced, no_folder, checked = defaultdict(list), [], [], 0
     if lo.mods is not None:
         for m in lo.mods:
             if not m.enabled:
                 continue
             plugs = list(m.plugins or [])
-            if {p.lower() for p in plugs} & build_names:
+            if {p.lower() for p in plugs} & build_names or \
+                    stems & {mod_stem(m.name), mod_stem(m.id), mod_stem(m.path)}:
                 replaced.append(m.name)
                 continue
             if not m.path or not os.path.isdir(m.path):
@@ -302,9 +350,10 @@ def _text(kind, owner, where, n, ex):
 def own_parts(build, arch_files):
     """[(level, text, fix, paths)] for paths two parts of the build both ship."""
     parts = defaultdict(set)
+    zip_of = {pl["name"]: pl["zip"] for pl in build["plugins"]}  # a part is a zip, whether loose or archived
     for p, entries in arch_files.items():
         for plug, _full, _d in entries:
-            parts[p].add(plug)
+            parts[p].add(zip_of.get(plug, plug))
     for p, entries in build["loose"].items():
         for zname, _d in entries:
             parts[p].add(zname)
@@ -412,7 +461,8 @@ def run(ctx, zips):
 
     build_names = {p["name"].lower() for p in build["plugins"]}
     masters = {m.lower() for p in build["plugins"] for m in p["masters"]} - build_names
-    inst, replaced, checked, no_folder = installed_files(lo, build_names)
+    inst, replaced, checked, no_folder = installed_files(
+        lo, build_names, {mod_stem(z["path"]) for z in build["zips"]})
     unreadable = _expand_archives(inst, cache)
     build_paths = defaultdict(list)
     for p, entries in build["loose"].items():

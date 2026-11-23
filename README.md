@@ -364,7 +364,7 @@ rules, not by the plugin order, so this section looks at each pair of enabled mo
 with different content. It needs a Vortex source with a modlist export (`--vortex-profile`, or `--vortex-modlist`),
 and the loose-file check must have run.
 
-- Today's exports from the extension hold no mod rules. Then each differing pair is a note that says whose copy
+- Exports from Modlist Backup before 0.6.2 hold no mod rules. Then each differing pair is a note that says whose copy
   Vortex deployed (from the deployment record, else from the copy Data holds), and one note says plainly what can't
   be seen. Installing Modlist Backup 0.6.2 or later adds the rules to the export.
 - With rules in the export: a pair of mods with different copies and **no** ordering rule is a caution ("Real clash
@@ -462,8 +462,10 @@ The files are written even when nothing moves; they then equal your current orde
 `sf-load-order candidate <zip> [<zip> ...]` checks a new build before you install it: the zips are the parts of one
 build (one plugin each). It uses the same load order options as a normal run and writes `report.txt`,
 `report.html` and `report.json` to `--out`. It only reads the zips; the copies it needs go to `<out>\work\candidate`.
-A mod that already holds a plugin with the same name as one of the build's is taken to be the older copy of this
-build and is left out of the comparison.
+A mod that already holds a plugin with the same name as one of the build's, or whose name is a build zip's name
+with another version (such as `ShipMod-Loose-0.2.0` for `ShipMod-Loose-0.3.0.zip`), is taken to be the older copy
+of this build and is left out of the comparison. A zip whose files all sit in one folder of their own (such as
+`ShipMod\ShipMod.esm`) is read as if that folder were Data.
 
 Example, with a new build of ShipMod, built on the installed CoreTools:
 

@@ -147,6 +147,35 @@ class Medium(Setup):
         code, _out, _j = self.run_candidate("--strict")
         self.assertEqual(code, 1)
 
+    def test_loose_part_installed_copy_left_out(self):
+        # a build part with no plugin: its installed older version is found by the zip's name without the version
+        mo2 = os.path.join(self.t, "mo2b")
+        fixtures.mo2(mo2, "Default", [
+            ("Build-Loose-0.9", True, {"scripts\\loose.pex": b"old", "meshes\\l.nif": b"old"}),
+            ("OtherMod", True, {"OtherMod.esm": {}, "scripts\\shared.pex": b"x"})])
+        z = make_zip(os.path.join(self.t, "Build-Loose-1.0.zip"), {"scripts/loose.pex": b"new",
+                                                                    "meshes/l.nif": b"new"})
+        code, out, _err = run_cli("candidate", z, "--mo2", mo2, "--data", self.data, "--no-state", "--out", self.out)
+        self.assertEqual(code, 0, out)
+        with open(os.path.join(self.out, "report.json"), encoding="utf-8") as f:
+            j = json.load(f)
+        self.assertEqual(j["candidate"]["replaced"], ["Build-Loose-0.9"])
+        self.assertEqual(j["candidate"]["findings"]["problem"], 0)
+
+    def test_wrapper_folder_read_as_data(self):
+        z = make_zip(os.path.join(self.t, "Wrapped-1.0.zip"), {"Wrapped/Wrapped.esm": ("plugin", ()),
+                                                                "Wrapped/scripts/shared.pex": b"x"})
+        _code, _out, j = self.run_candidate(zips=[z])
+        self.assertEqual(j["candidate"]["plugins"], ["Wrapped.esm"])
+        self.assertIn(("problem", "script", "OtherMod", "loose"), self.kinds(j))
+
+    def test_one_zip_loose_and_archived_is_one_part(self):
+        z = make_zip(os.path.join(self.t, "Solo-1.0.zip"), {
+            "Solo.esm": ("plugin", ()), "scripts/solo.pex": b"s",
+            "Solo - Main.ba2": ("ba2", {"scripts\\solo.pex": b"s"})})
+        _code, _out, j = self.run_candidate(zips=[z])
+        self.assertFalse([f for f in j["findings"] if "more than one part of this build" in f["text"]])
+
     def test_no_clash_is_clean(self):
         z = make_zip(os.path.join(self.t, "Clean-1.0.zip"), {"Clean.esm": ("plugin", ()),
                                                               "meshes/clean.nif": b"c"})
@@ -270,6 +299,21 @@ class Parsers(unittest.TestCase):
         self.assertEqual(candidate._member_path("Data/Textures/A.DDS"), "textures\\a.dds")
         self.assertEqual(candidate._member_path("./data\\x.esm"), "x.esm")
         self.assertIsNone(candidate._member_path("Data/"))
+        self.assertEqual(candidate._member_path("MyMod/Data/Scripts/a.pex", "mymod"), "scripts\\a.pex")
+
+    def test_wrapper_folder(self):
+        self.assertEqual(candidate.wrapper_folder(["MyMod/MyMod.esm", "MyMod/Scripts/a.pex"]), "mymod")
+        self.assertIsNone(candidate.wrapper_folder(["Scripts/a.pex", "Scripts/b.pex"]))  # a game folder
+        self.assertIsNone(candidate.wrapper_folder(["Data/a.esm", "Data/b.esm"]))
+        self.assertIsNone(candidate.wrapper_folder(["MyMod/a.esm", "b.esm"]))
+        self.assertIsNone(candidate.wrapper_folder(["A/a.esm", "B/b.esm"]))
+
+    def test_mod_stem(self):
+        self.assertEqual(candidate.mod_stem("C:\\x\\ShipMod-Loose-8.8.40.zip"), "shipmod-loose")
+        self.assertEqual(candidate.mod_stem("ShipMod-Loose-8.8.40-1700000000"), "shipmod-loose")
+        self.assertEqual(candidate.mod_stem("ShipMod v2"), "shipmod")
+        self.assertEqual(candidate.mod_stem("Mod-2D"), "mod-2d")
+        self.assertEqual(candidate.mod_stem(None), "")
 
 
 if __name__ == "__main__":

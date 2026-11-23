@@ -219,7 +219,7 @@ credits and writes nothing. Screen output keeps the console's character set and 
 - It never uploads anything and makes no network connections. It runs sf-mod-check only when one is found or given.
 - It never ships or copies LOOT's masterlist; it reads the person's own copy.
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate` doesn't compare records the build shares with
-  other mods yet (only files). Today's Modlist Backup exports hold no mod rules, so the Vortex rules section only
+  other mods yet (only files). Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
   names who won; it says so. Install extension 0.6.2 or later for the rules.
 - Record conflicts need sf-mod-check 0.8.0 or newer. Under MO2, sf-mod-check sees the mods only when started from MO2;
   otherwise use `--conflicts`.

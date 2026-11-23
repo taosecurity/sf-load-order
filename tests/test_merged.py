@@ -182,6 +182,19 @@ class Runs(Base):
         self.assertEqual(entries[0]["level"], "problem")
         self.assertEqual([f.level for f in self.mine(c)], ["problem"])
 
+    def test_exit_1_with_notes_only_is_not_up_to_date(self):
+        j = check_json("rebuild", [finding("NOTE", "updated", "ModA.esm changed, no patched record did.")],
+                       "RESULT: REBUILD")
+        exe = self.fake(patch={"patch.esm": {"exit": 1, "json": j}})
+        c = self.ctx(self.lo(), sf_mod_check=exe)
+        entries, _ = merged.run(c)
+        e = entries[0]
+        self.assertEqual((e["state"], e["level"], e["rebuild"]), ("rebuild", "caution", True))
+        self.assertEqual(e["reasons"], [merged.EXIT1_NO_REASON])
+        fs = self.mine(c)
+        self.assertFalse([f for f in fs if "is up to date" in f.text])
+        self.assertIn("may need a rebuild", [f for f in fs if f.level == "caution"][0].text)
+
     def test_patch_off(self):
         j = check_json("not active", [finding("NOTE", "patch-off", "Patch.esm isn't in the load order.",
                                               plugin="Patch.esm", records=())],

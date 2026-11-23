@@ -209,6 +209,17 @@ class Deployed(Base):
         self.assertEqual(modc.path, os.path.join(self.staging, "modc-3", "ModC.esm"))
         self.assertEqual(modc.masters, ["Starfield.esm"])
 
+    def test_other_profile_shared_plugin_read_from_staging(self):
+        """Code review 2026-11-23: a plugin both profiles have is read from this profile's staging copy, not from
+        Data (the deployed profile's copy, maybe another version)."""
+        fixtures.plugin(os.path.join(self.staging, "moda-1", "ModA.esm"), masters=["Starfield.esm", "ModC.esm"])
+        self.other_set()
+        lo = self.ok("--vortex-profile", PROFILE, *self.common())
+        moda = next(p for p in lo.plugins if p.name.lower() == "moda.esm")
+        self.assertEqual(os.path.normcase(moda.path), os.path.normcase(os.path.join(self.staging, "moda-1",
+                                                                                     "ModA.esm")))
+        self.assertEqual(moda.masters, ["Starfield.esm", "ModC.esm"])
+
     def test_other_profile_mods_follow_the_modlist(self):
         """Bug hunt 2026-11-23: with the staging folder known only from the deployment record (no --vortex-staging,
         no default), a profile that isn't deployed still reads its own plugins from staging, and its mods are the
