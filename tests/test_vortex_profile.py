@@ -204,21 +204,30 @@ class Deployed(Base):
         fs = inputs.findings(lo)
         self.assertEqual([f.level for f in fs if "another profile" in f.text], ["caution"])
         self.assertFalse([f for f in fs if f.level == "problem"], [f.text for f in fs])  # no "not in Data" wall
-        # ModC is read from its staging folder, so its masters are known
+        # 0.2.2: the caution names the skipped checks and both fixes
+        c = next(f for f in fs if "another profile" in f.text)
+        for words in ("order, patch, archive, loose-file, mod-rule, record and recommended-order checks were "
+                      "skipped", "only the plugin names and the known clashes were checked"):
+            self.assertIn(words, c.text)
+        self.assertIn(f"Deploy the profile {PROFILE} in Vortex", c.fix)
+        self.assertIn("pass --data with a folder that holds this profile's files", c.fix)
+        # ModC points at its staging folder (a location only), and 0.2.2 doesn't read its header
         modc = next(p for p in lo.plugins if p.name == "ModC.esm")
         self.assertEqual(modc.path, os.path.join(self.staging, "modc-3", "ModC.esm"))
-        self.assertEqual(modc.masters, ["Starfield.esm"])
+        self.assertEqual((modc.kind, modc.masters), (None, None))
+        sf = next(p for p in lo.plugins if p.name == "Starfield.esm")
+        self.assertEqual(sf.kind, "F")  # official plugins are still read
 
-    def test_other_profile_shared_plugin_read_from_staging(self):
-        """Code review 2026-11-23: a plugin both profiles have is read from this profile's staging copy, not from
-        Data (the deployed profile's copy, maybe another version)."""
+    def test_other_profile_shared_plugin_points_at_staging(self):
+        """Code review 2026-11-23: a plugin both profiles have points at this profile's staging copy, not at
+        Data (the deployed profile's copy, maybe another version). 0.2.2: its header isn't read."""
         fixtures.plugin(os.path.join(self.staging, "moda-1", "ModA.esm"), masters=["Starfield.esm", "ModC.esm"])
         self.other_set()
         lo = self.ok("--vortex-profile", PROFILE, *self.common())
         moda = next(p for p in lo.plugins if p.name.lower() == "moda.esm")
         self.assertEqual(os.path.normcase(moda.path), os.path.normcase(os.path.join(self.staging, "moda-1",
                                                                                      "ModA.esm")))
-        self.assertEqual(moda.masters, ["Starfield.esm", "ModC.esm"])
+        self.assertEqual((moda.kind, moda.masters), (None, None))
 
     def test_other_profile_mods_follow_the_modlist(self):
         """Bug hunt 2026-11-23: with the staging folder known only from the deployment record (no --vortex-staging,
@@ -284,6 +293,7 @@ class Run(Base):
         out = os.path.join(self.t, "out")
         a = args("--vortex-profile", PROFILE, *self.common(), "--depth", "light", "--no-state", "--quiet",
                  "--out", out, *argv)
+        os.makedirs(out, exist_ok=True)  # main() makes it; this calls run()
         saved = inputs.read
         inputs.read = lambda a_, env=None, drives=None, registry=None: saved(a_, self.env, [], lambda: None)
         try:
@@ -291,6 +301,7 @@ class Run(Base):
         finally:
             inputs.read = saved
         self.assertEqual(code, 0)
+        self.assertIn("json", report.outputs, report.sections.get("report"))
         with open(report.outputs["json"], encoding="utf-8") as f:
             return report, json.load(f)
 
@@ -299,12 +310,22 @@ class Run(Base):
         report, d = self.run_tool("--depth", "medium")  # the last --depth wins
         self.assertEqual(d["vortex_profile"]["name"], PROFILE)
         self.assertIs(d["vortex_profile"]["deployed"], False)
-        self.assertEqual(d["sections"]["records"]["status"], "skipped")
-        self.assertIn("another profile", d["sections"]["records"]["why"])
-        # code review round 6: the older-master checks still run (they read staging); only the merged part is skipped
-        self.assertEqual(d["sections"]["patches"]["status"], "done")
-        self.assertEqual(d["sections"]["patches"]["merged"]["status"], "skipped")
+        # 0.2.2: every check that reads the profile's files is skipped; inputs and clashes still run
+        for s in ("order", "patches", "archives", "loose", "rules", "records", "recommend"):
+            self.assertEqual(d["sections"][s]["status"], "skipped", s)
+            self.assertIn("another profile", d["sections"][s]["why"])
+        self.assertEqual(d["sections"]["inputs"]["status"], "done")
+        self.assertEqual(d["sections"]["clashes"]["status"], "done")
         self.assertIn("another profile", d["patches"]["not_checked"])
+        for k in ("order", "archives", "loose", "recommend"):
+            self.assertNotIn(k, d.get("results") or {})
+        self.assertFalse(d.get("rules"))
+        self.assertFalse(d.get("recommended"))
+        self.assertNotIn("vortex_json", d.get("outputs") or {})
+        mods = [p for p in d["load_order"]["plugins"] if not p.get("official")]
+        self.assertTrue(mods)
+        self.assertTrue(all(p.get("kind") is None and p.get("masters") is None for p in mods), mods)
+        self.assertEqual([f["level"] for f in d["findings"] if "another profile" in f["text"]], ["caution"])
 
     def test_other_profile_loose_pairs_ignore_data(self):
         """Bug hunt 2026-11-23: when Data holds another profile, its loose copies don't say which of this profile's
@@ -318,12 +339,9 @@ class Run(Base):
             f.write(b"A")
         self.other_set()
         report, d = self.run_tool()
-        pair = [f for f in d["findings"] if f["section"] == "loose" and "both ship" in f["text"]]
-        self.assertEqual(len(pair), 1, [f["text"] for f in d["findings"]])
-        self.assertNotIn("Data holds", pair[0]["text"])
-        self.assertEqual(pair[0]["data"]["in_data"], {})
-        # code review round 2: Data's files are another profile's, so the stray-file check doesn't read them
-        self.assertIs(d["results"]["loose"]["data_checked"], False)
+        # 0.2.2: the loose-file check is skipped, so no pair is judged from another profile's files
+        self.assertEqual(d["sections"]["loose"]["status"], "skipped")
+        self.assertFalse([f for f in d["findings"] if f["section"] in ("loose", "rules", "archives")])
 
     def test_other_profile_with_the_same_plugins_ignores_data(self):
         """Code review round 2: a profile that isn't deployed but has the same plugins in Data (it differs only by a
@@ -339,7 +357,8 @@ class Run(Base):
             f.write(b"C")
         report, d = self.run_tool()
         self.assertIs(d["vortex_profile"]["deployed"], False)
-        self.assertIs(d["results"]["loose"]["data_checked"], False)
+        self.assertEqual(d["sections"]["loose"]["status"], "skipped")
+        self.assertNotIn("loose", d.get("results") or {})
 
     def test_deployed_runs_patches(self):
         self.deployed_set()

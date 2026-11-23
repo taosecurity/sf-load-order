@@ -52,7 +52,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.2.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -109,8 +109,11 @@ there changes what "changed since the last run" reports.
   isn't the extension's own folder (shown in `%APPDATA%\Vortex\modlist-backup-auto-export.json`); `--vortex-stamp
   YYYYMMDD-HHMMSS` picks an older set:
   `.\sf-load-order.cmd --vortex-profile "Example-Profile" --vortex-exports "<exports folder>" --vortex-staging "<staging folder>"`
-  If the profile isn't the deployed one, the report has one caution saying so and skips the record and merged-patch
-  checks. In report.json, `vortex_profile` holds the check.
+  If the profile isn't the deployed one, the report has one caution saying so, and every check that reads the
+  profile's files is skipped (order, patches, archives, loose files, rules, records and the suggested order); only the
+  dropped-name and known-clash checks run. The fix is to deploy the profile in Vortex, or to pass `--data` with a
+  folder that holds its files. In report.json, `vortex_profile` holds the check, the skipped sections say why, and
+  the mod plugins' `kind` and `masters` are `null`.
 - Merged patches built by `sf-mod-check patch`: a `patch-sources.json` beside the patch is found by itself; one
   somewhere else is given with `--patch-sources`. This needs sf-mod-check 0.15.0 or newer (the section says why when it
   can't run):

@@ -68,12 +68,10 @@ def build(d, modlist, record=True):
     return lo
 
 
-def run(d, modlist, record=True, deployed=None):
+def run(d, modlist, record=True):
     lo = build(d, modlist, record)
     args = types.SimpleNamespace(out=d, state=os.path.join(d, "state"), no_state=True)
     ctx = cli.Context(args, lo, model.Report("test"))
-    if deployed is not None:
-        ctx.report.vortex_profile = {"name": "P", "deployed": deployed}
     ctx.report.sections["loose"] = loose.run(ctx)
     st = rules.run(ctx)
     return ctx, st, [f for f in ctx.report.findings if f.section == "rules"]
@@ -111,13 +109,6 @@ class NoRules(unittest.TestCase):
             _ctx, _st, found = run(d, [entry(m) for m in MODS])
         self.assertIn("(Vortex's deployment record)", next(f.text for f in found if "S1 and S2" in f.text))
 
-    def test_not_deployed_profile_names_no_winner(self):
-        with tempfile.TemporaryDirectory() as d:
-            ctx, _st, found = run(d, [entry(m) for m in MODS], deployed=False)
-        t = next(f.text for f in found if "S1 and S2" in f.text)
-        self.assertIn("Data holds another profile", t)
-        self.assertNotIn("deployed S2", t)
-        self.assertIsNone(next(p for p in ctx.report.rules["pairs"] if p["mods"] == ["S1", "S2"])["winner"])
 
 
 class WithRules(unittest.TestCase):
@@ -174,7 +165,7 @@ class WithRules(unittest.TestCase):
         r = rules.analyse(lo, [entry("A", rules_=[], overrides=["meshes/y.nif"]), entry("B"), entry("C")],
                           loose_result)
         self.assertTrue(r["pairs"][0]["overrides"], r["pairs"][0])
-        self.assertFalse(any("A and B" in f.text for f in rules._findings(None, r, True) if f.level == "caution"))
+        self.assertFalse(any("A and B" in f.text for f in rules._findings(None, r) if f.level == "caution"))
 
     def test_rule_over_identical_copies_and_over_nothing_shared(self):
         with tempfile.TemporaryDirectory() as d:
@@ -213,7 +204,7 @@ class Skips(unittest.TestCase):
         r = {"has_rules": True, "pairs": [{"mods": ["A", "B"], "same": False, "rule": [], "overrides": [],
                                            "differ": 0, "paths": 2, "winner": None, "deployed": None}],
              "no_shared": [], "unmatched": []}
-        found = rules._findings(None, r, True)
+        found = rules._findings(None, r)
         t = next(f.text for f in found if "A and B" in f.text)
         self.assertTrue(t.startswith("Possible clash with no rule"), t)
         self.assertIn("share 2 loose file(s) that couldn't be compared", t)

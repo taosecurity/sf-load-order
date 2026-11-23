@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.2.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -82,7 +82,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.2.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -108,12 +108,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.2.1.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.2.1.zip SHA256`.
+2. Download `sf-load-order-0.2.2.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.2.2.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.2.1 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.2.2 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -192,14 +192,19 @@ given more than once) reads another folder, `--vortex-stamp YYYYMMDD-HHMMSS` pic
 yourself. The modlist gives each mod's version and archive name, and its rules when the export has them.
 
 With `--vortex-profile`, the tool also checks that the Data folder holds this profile: no mod plugin may be in Data
-that the profile doesn't list, and Vortex's deployment record may name no mod that the profile doesn't enable. When
-it isn't (Vortex has another profile deployed), one caution says so and replaces the "file wasn't found" problems,
-and the record and merged-patch checks are skipped, since they would describe another load order.
+that the profile doesn't list, and Vortex's deployment record may name no mod that the profile doesn't enable.
 
-The other checks still describe the profile: its mods are the ones its modlist enables, every mod plugin with a copy
-in its mod's staging folder is read from that copy (even when Data holds one too), and the loose-file check doesn't use Data's copies to say which mod
-wins. When the profile is the deployed one, the report notes when the export's plugin list differs from the game's
-own Plugins.txt (the export is older than the last change).
+When it isn't (Vortex has another profile deployed), only the checks that work from the lists run: the plugin names
+the game drops, and the known clashes. Every check that reads the profile's plugin, archive or loose files is skipped
+(load order and masters, patches, archives, loose files, Vortex mod rules, record conflicts and the suggested order),
+since Data holds another profile's files. One caution says so, names the fix (deploy the profile in Vortex and run
+again, or pass `--data` with a folder that holds this profile's files) and replaces the "file wasn't found" problems.
+
+In `report.json` those sections say `skipped` with the reason, the mod plugins' `kind` and `masters` are `null` (their
+headers aren't read), and `recommended` is empty.
+
+When the profile is the deployed one, the report notes when the export's plugin list differs from the game's own
+Plugins.txt (the export is older than the last change).
 
 Vortex writes mod plugin names in lower case in its export, so sf-load-order takes each name's real spelling from
 the files in Data (or staging). It never reads Vortex's own database.
@@ -472,7 +477,7 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.2.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -575,7 +580,7 @@ Schema 1. Top-level keys:
 | `author`, `license`, `url` | Who made the tool, its license (`GPL-3.0`) and its project page. |
 | `generated` | When, as local time (`2026-11-19T21:30:00`). |
 | `counts` | `{"problem": n, "caution": n, "note": n}`. |
-| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `masters`), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
+| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `masters`; both `null` for a file that wasn't read, such as a mod plugin of a Vortex profile that isn't deployed), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
 | `findings` | Worst first. Each: `level` (`problem`, `caution`, `note`), `section`, `text` (what is wrong), `fix` (what to do, or `null`), `plugins` (names it is about) and `data` (extra detail: counts, FormIDs, paths, a ready `accept_entry`). |
 | `sections` | Per section (`inputs`, `order`, `patches`, `clashes`, `archives`, `loose`, `rules`, `records`, `recommend`; a `candidate` run has `inputs` and `candidate`): `status` (`done`, `skipped`, `failed` or `missing`), `why` when it didn't run, and a few counts (for example `patches.built_for_old`, the plugins still built for an older kind of a master). |
 | `recommended` | The suggested order as plugin names, or `null` when none was worked out. |

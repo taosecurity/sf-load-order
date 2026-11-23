@@ -487,8 +487,9 @@ def from_vortex_profile(args, env, drives, registry):
                       f"plugin(s), {len(vp['extra_mods'])} extra mod(s), {len(vp['missing_plugins'])} missing")
     if vp["deployed"] is False:
         _profile_mods(lo, modlist)
-        # read this profile's plugins from their staging folders (Data's copy, when there is one, is the deployed
-        # profile's, maybe another version), so order and archive checks describe this profile, not the deployed one
+        # point this profile's plugins at their staging folders (Data's copy, when there is one, is the deployed
+        # profile's). That is a location only (the clashes check hashes it); no check reads these files, since
+        # cli.NEEDS_DEPLOYED skips every check that would, and read() doesn't read their headers.
         moved = 0
         for p in lo.plugins:
             if not p.official:
@@ -497,15 +498,18 @@ def from_vortex_profile(args, env, drives, registry):
                     p.path = staged
                     p.name = os.path.basename(staged)  # the export's lower case name, as the file is spelled
                     moved += 1
-        log.info(SECTION, f"vortex profile: {moved} plugin(s) read from staging folders instead of Data")
+        log.info(SECTION, f"vortex profile: {moved} plugin(s) found in staging folders (not read)")
         n = len(vp["extra_plugins"]) + len(vp["extra_mods"])
         extra.insert(0, Finding(
             "caution", SECTION,
             f"Data holds another profile: {len(vp['extra_plugins'])} mod plugin(s) in Data aren't in the Vortex profile "
             f"{profile}" + (f", and Vortex's deployment record names {len(vp['extra_mods'])} mod(s) it doesn't enable"
-                           if vp["extra_mods"] else "") + ". Plugins missing from Data aren't listed as problems, "
-            "and the record and merged-patch checks were skipped, since both read Data.",
-            fix=f"Deploy the profile {profile} in Vortex and run again.",
+                           if vp["extra_mods"] else "") + ". So only the plugin names and the known clashes were "
+            "checked: the order, patch, archive, loose-file, mod-rule, record and recommended-order checks were "
+            "skipped, since they read the profile's files and Data holds another profile's. Plugins missing from "
+            "Data aren't listed as problems.",
+            fix=f"Deploy the profile {profile} in Vortex and run again, or pass --data with a folder that holds this "
+                "profile's files.",
             data={"extra_plugins": vp["extra_plugins"][:50], "extra_mods": vp["extra_mods"][:50], "count": n,
                   "missing_plugins": len(vp["missing_plugins"])}))
     if vp.get("plugins_txt_matches") is False and vp["deployed"] is not False:
@@ -692,7 +696,9 @@ def read(args, env=None, drives=None, registry=None):
         return None, str(e)
     log.info(SECTION, f"source {lo.source} from {why}: {len(lo.plugins)} plugins, "
                       f"{len(lo.mods) if lo.mods is not None else 'no'} mods")
-    plugin_header.fill(lo)
+    vp = getattr(lo, "_vortex_profile", None) or {}
+    # Data holds another profile: no check reads the mod plugins (cli.NEEDS_DEPLOYED), so their headers aren't read
+    plugin_header.fill(lo, official_only=vp.get("deployed") is False)
     lo._inputs_extra = extra  # not a dataclass field, so report.json never sees it; findings() returns it
     return lo, None
 

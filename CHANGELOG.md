@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.2 (2026-11-23)
+
+This release makes the check of a Vortex profile that isn't deployed simpler and clearer. No option or report.json key was renamed or removed.
+
+### Behavior change
+
+- When `--vortex-profile` names a profile that Data doesn't hold (Vortex has another profile deployed), every check that reads the profile's plugin, archive or loose files is skipped: load order and masters, patches, archives, loose files, Vortex mod rules, record conflicts and the suggested order. Before, some of these read the profile's staging copies and others gave weaker findings; now only the dropped-name and known-clash checks run.
+- One caution says so and names the fix: deploy the profile in Vortex and run again, or pass `--data` with a folder that holds this profile's files.
+- In report.json the skipped sections are `{"status": "skipped", "why": ...}`, so their `results` entries, the top-level `rules` and `outputs.vortex_json` are absent and `recommended` is empty. The mod plugins' `kind` and `masters` are `null`, since their headers aren't read. `patches` stays `{"not_checked": why}`.
+
+### Example
+
+A made-up profile `Example-Profile` while Data holds another one. report.json's sections read:
+
+    "order": {"status": "skipped", "why": "Data holds another profile, not Example-Profile (deploy Example-Profile in Vortex and run again)"}
+
+and the caution's fix reads: "Deploy the profile Example-Profile in Vortex and run again, or pass --data with a folder that holds this profile's files."
+
 ## 0.2.1 (2026-11-23)
 
 This release fixes the docs. It changes no behavior, option or report.json key.

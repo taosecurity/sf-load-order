@@ -128,12 +128,10 @@ def _overrides(modlist):
     return out
 
 
-def _deployed(pr, differ_paths, dep, deployed_profile):
+def _deployed(pr, differ_paths, dep):
     """(winner or None, {mod: count}, source) for a pair: whose copies of the differing paths Vortex deployed. The
     deployment record decides (source "record"); without one, the copy Data holds (the loose check's in_data; source
     "data"). source is None when neither says."""
-    if deployed_profile is False:
-        return None, {}, None
     a, b = pr["mods"]
     counts, source = {}, "record"
     if dep is not None:
@@ -159,7 +157,7 @@ def _deployed_words(winner, counts):
     return None
 
 
-def analyse(lo, modlist, loose_result, deployed_profile=None):
+def analyse(lo, modlist, loose_result):
     dep = getattr(lo, "_vortex_deployment", None)
     with_rules = has_rules(modlist)
     edges, unmatched = ordering(modlist) if with_rules else ({}, [])
@@ -170,7 +168,7 @@ def analyse(lo, modlist, loose_result, deployed_profile=None):
         k = frozenset((_key(a), _key(b)))
         seen.add(k)
         diff = [vortex_deploy.norm(p) for p in pr.get("not_same") or []]  # this pair's own two copies differ or can't be read
-        winner, counts, source = _deployed(pr, diff, dep, deployed_profile)
+        winner, counts, source = _deployed(pr, diff, dep)
         rule = edges.get(k)
         covered = bool(diff) and all(p in overrides.get(_key(a), set()) | overrides.get(_key(b), set())
                                      for p in diff)
@@ -200,10 +198,8 @@ def _rule_words(rs):
     return "; ".join(f"{r['mod']} loads {r['type']} {r['other']}" for r in rs)
 
 
-def _findings(report, r, deployed_profile):
+def _findings(report, r):
     out = []
-    not_here = (" Data holds another profile, so which copies are deployed isn't known."
-                if deployed_profile is False else "")
     if not r["has_rules"]:
         for p in r["pairs"]:
             if p["same"]:
@@ -213,9 +209,8 @@ def _findings(report, r, deployed_profile):
             out.append(Finding("note", SECTION,
                                f"Mods {a} and {b} {_differ_words(p)}. "
                                + (f"{dw} ({SOURCE_WORDS.get(p.get('deployed_from'), 'as far as can be told')})."
-                                  if dw else
-                                  "Which copies Vortex deployed isn't known." if not not_here else "")
-                               + not_here, None, [], dict(p)))
+                                  if dw else "Which copies Vortex deployed isn't known."),
+                               None, [], dict(p)))
         out.append(Finding("note", SECTION, NO_RULES,
                            "Install Vortex Modlist Backup 0.6.2 or later, let it export again, and run again.", [],
                            {"has_rules": False}))
@@ -231,7 +226,7 @@ def _findings(report, r, deployed_profile):
                            f"{'Real' if p['differ'] else 'Possible'} clash with no rule: mods {a} and {b} "
                            f"{_differ_words(p)}, "
                            f"and neither has a load-before or load-after rule for the other; "
-                           f"{picked}.{not_here}",
+                           f"{picked}.",
                            f"On Vortex's Mods page, open the conflict icon of {a} or {b} and set which one loads "
                            "after the other (its copies win), then deploy.", [], dict(p)))
     if quiet:
@@ -271,10 +266,8 @@ def run(ctx):
     if loose_result is None:
         why = (ctx.report.sections.get("loose") or {}).get("why")
         return {"status": "skipped", "why": "the loose-file check didn't run" + (f" ({why})" if why else "")}
-    vp = getattr(ctx.report, "vortex_profile", None) or {}
-    deployed_profile = vp.get("deployed")
-    r = analyse(lo, modlist, loose_result, deployed_profile)
-    found = _findings(ctx.report, r, deployed_profile)
+    r = analyse(lo, modlist, loose_result)  # (skipped when Data holds another profile: cli.NEEDS_DEPLOYED)
+    found = _findings(ctx.report, r)
     ctx.report.findings += found
     counts = {lv: sum(1 for f in found if f.level == lv) for lv in ("problem", "caution", "note")}
     ctx.results[SECTION] = r

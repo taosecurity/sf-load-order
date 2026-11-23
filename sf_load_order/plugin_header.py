@@ -61,11 +61,12 @@ def header(path):
     return kind, masters
 
 
-def fill(load_order):
-    """Read kind and masters for every plugin in a LoadOrder that has a path and hasn't been read yet. Never raises:
-    a plugin whose header can't be read gets kind "?" and no masters."""
+def fill(load_order, official_only=False):
+    """Read kind and masters for every plugin in a LoadOrder that has a path and hasn't been read yet (only the
+    official ones with official_only). Never raises: a plugin whose header can't be read gets kind "?" and no
+    masters."""
     for p in load_order.plugins:
-        if p.path and p.kind is None:
+        if p.path and p.kind is None and (p.official or not official_only):
             try:
                 p.kind, p.masters = header(p.path)
             except Exception as e:  # header() doesn't raise; this guards the run against anything it missed
