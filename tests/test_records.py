@@ -518,17 +518,32 @@ class StalenessOfficialNames(unittest.TestCase):
               "typeChanges": [5, "y", {"Plugin": " A.esm ", "formKey": 9, "First": " B.esm ", "finding": 3,
                                        "PluginType": 4, "FirstType": " Npc "},
                               {"Plugin": 7, "First": "B.esm", "formKey": "1"},
-                              {"Plugin": "A.esm", "First": None, "formKey": "2"}],
+                              {"Plugin": "A.esm", "First": None, "formKey": "2"},
+                              {"Plugin": None, "First": " ", "formKey": "3"}],
               "missingAssets": [{"plugin": 7, "kind": "Script", "path": "x.pex"}, {"plugin": " ", "path": "y.nif"}]}
         lo = make_lo(["A.esm", "B.esm"])
-        res = records.analyse(cj, lo)
+        buf = io.StringIO()
+        log._sinks.append(buf)
+        try:
+            res = records.analyse(cj, lo)
+        finally:
+            log._sinks.remove(buf)
         # code review 0.1.3 Opus round 2: items naming no plugin are skipped, not reported under a blank name
         self.assertEqual(res["itms"], [{"plugin": "B.esm", "fk": "000100:A.esm", "type": "Keyword", "edid": None}])
         self.assertEqual(res["assets"]["missing"], [])
+        # Opus round 3: a type change naming only one of its two plugins is still reported; only one naming
+        # neither is skipped. Every skip is counted under --verbose.
         self.assertEqual(res["type_changes"], [{"fk": "", "edid": None, "plugin": "A.esm", "plugin_type": None,
-                                                "first": "B.esm", "first_type": "Npc", "text": ""}])
+                                                "first": "B.esm", "first_type": "Npc", "text": ""},
+                                               {"fk": "1", "edid": None, "plugin": "", "plugin_type": None,
+                                                "first": "B.esm", "first_type": None, "text": ""},
+                                               {"fk": "2", "edid": None, "plugin": "A.esm", "plugin_type": None,
+                                                "first": "", "first_type": None, "text": ""}])
+        for line in ("2 itms item(s) name no plugin", "1 typeChanges item(s) name no plugin",
+                     "2 missingAssets item(s) name no plugin"):
+            self.assertIn(line, buf.getvalue())
         self.assertEqual(res["plugins"]["b.esm"]["itms"], 1)
-        self.assertEqual(res["plugins"]["a.esm"]["type_changes"], 1)
+        self.assertEqual(res["plugins"]["a.esm"]["type_changes"], 2)
         for odd in ({"a": 1}, "abc", 5, True):
             r = records.analyse({"loadOrder": base, "lost": [], "itms": odd, "typeChanges": odd}, lo)
             self.assertEqual((r["itms"], r["type_changes"]), ([], []))
@@ -540,6 +555,10 @@ class StalenessOfficialNames(unittest.TestCase):
         self.assertFalse([t for t in texts if t.startswith((" ", ":")) or "than ." in t])
         self.assertTrue(any(t.startswith("B.esm has 1 record(s) identical") for t in texts))
         self.assertTrue(any("A.esm gives" in t and "than B.esm" in t for t in texts))
+        self.assertIn("B.esm and another plugin give 1 different record types.", texts)
+        self.assertIn("A.esm and another plugin give 2 different record types.", texts)
+        tc = [f for f in ctx.report.findings if "and another plugin give 2" in f.text][0]
+        self.assertEqual(tc.plugins, ["A.esm"])
 
     def test_other_lists_with_odd_shapes_are_harmless(self):
         """Opus rerun round 1: loadOrderProblems, Errors, UnreadableFields, missingAssets and archiveLimitWarnings
