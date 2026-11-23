@@ -170,7 +170,8 @@ def _closure(load_order):
     for e in load_order:
         ms = e.get("Masters")
         ms = ms if isinstance(ms, list) else []  # a text or number Masters value names no masters
-        direct[(e.get("FileName") or "").lower()] = {str(m or "").strip().lower() for m in ms}
+        # master names are trimmed and blank ones dropped; entries naming the same plugin (any case) share one set
+        direct.setdefault(e["FileName"].lower(), set()).update(_text(m).lower() for m in ms if _text(m))
     out = {}
 
     def walk(n, seen):
@@ -211,9 +212,10 @@ def analyse(cj, lo):
             modof[p.lower()] = m.name
 
     lost = []
-    for e in (cj.get("lost") or []):
+    lost_in = [e for e in (cj.get("lost") or []) if isinstance(e, dict)]  # a non-object item names no record
+    for e in lost_in:
         fields = []
-        for f in e.get("Fields") or []:
+        for f in [f for f in (e.get("Fields") or []) if isinstance(f, dict)]:
             lab = label(f)
             name = f.get("Field") or "?"
             fields.append({"field": name, "label": lab, "weight": weight(name, lab),
@@ -230,7 +232,7 @@ def analyse(cj, lo):
     # sf-mod-check's WinnerOfficial on a lost entry (like the Official flag in loadOrder) makes the pair a BlueprintShips
     # pair, per winner name so any entry counts. That changes its wording and keeps it out of "order matters" and the
     # move candidates. winner_official, the ratings and official_undone keep the load order's own flags.
-    marked = {_text(e.get("Winner")).lower() for e in (cj.get("lost") or []) if e.get("WinnerOfficial")}
+    marked = {_text(e.get("Winner")).lower() for e in lost_in if e.get("WinnerOfficial")}
     pairs, by_pair = [], {}
     for i, x in enumerate(lost):
         if x["loser_official"]:

@@ -409,6 +409,32 @@ class StalenessOfficialNames(unittest.TestCase):
         res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
         self.assertEqual(res["pairs"][0]["advice"], "built")
 
+    def test_padded_master_name_reaches_the_closure(self):
+        """code review 0.1.3 round 5: a padded master " A.esm " still matches A.esm (the strip on master names)."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "B.esm", "Masters": [" A.esm "]}],
+              "lost": [lost("000100:A.esm", "A.esm", "B.esm", [field("Keywords")])]}
+        res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
+        self.assertEqual(res["pairs"][0]["advice"], "built")
+
+    def test_blank_master_names_are_dropped(self):
+        """code review 0.1.3 round 5: None and blank masters name no plugin, so they never reach the closure."""
+        cj = {"loadOrder": [{"FileName": "B.esm", "Masters": [None, "  ", 7, "A.esm"]}], "lost": []}
+        self.assertEqual(records._closure(records._load_entries(cj))["b.esm"], {"a.esm"})
+
+    def test_duplicate_entries_share_their_masters(self):
+        """code review 0.1.3 round 5: "B.esm" and " b.esm " are one plugin; the later entry doesn't drop A.esm."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "B.esm", "Masters": ["A.esm"]},
+                            {"FileName": " b.esm ", "Masters": []}], "lost": []}
+        self.assertEqual(records._closure(records._load_entries(cj))["b.esm"], {"a.esm"})
+
+    def test_odd_lost_items_are_skipped(self):
+        """code review 0.1.3 round 5: null, text and non-object Fields items in lost don't crash analyse."""
+        cj = {"loadOrder": [{"FileName": "A.esm"}, {"FileName": "B.esm"}],
+              "lost": [None, "x", 3, lost("000100:A.esm", "A.esm", "B.esm", [field("Keywords"), None, "y"])]}
+        res = records.analyse(cj, make_lo(["A.esm", "B.esm"]))
+        self.assertEqual(len(res["lost"]), 1)
+        self.assertEqual(len(res["lost"][0]["fields"]), 1)
+
     def test_lost_names_are_trimmed_like_the_load_order(self):
         """code review 0.1.3 round 4: a padded Loser or Winner still matches the load order's Official flag."""
         cj = {"loadOrder": [{"FileName": " B.esm ", "Official": True}, {"FileName": "C.esm"}],
