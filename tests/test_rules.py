@@ -184,6 +184,15 @@ class Skips(unittest.TestCase):
         self.assertEqual(rules._differ_words({"differ": 0, "paths": 3}),
                          "share 3 loose file(s) that couldn't be compared")
 
+    def test_pair_that_couldnt_be_compared_isnt_a_real_clash(self):
+        r = {"has_rules": True, "pairs": [{"mods": ["A", "B"], "same": False, "rule": [], "overrides": [],
+                                           "differ": 0, "paths": 2, "winner": None, "deployed": None}],
+             "no_shared": [], "unmatched": []}
+        found = rules._findings(None, r, True)
+        t = next(f.text for f in found if "A and B" in f.text)
+        self.assertTrue(t.startswith("Possible clash with no rule"), t)
+        self.assertIn("share 2 loose file(s) that couldn't be compared", t)
+
     def test_not_vortex(self):
         with tempfile.TemporaryDirectory() as d:
             st = rules.run(self.ctx(model.LoadOrder(source="mo2", mods=[]), d))

@@ -249,6 +249,17 @@ class BadZips(Setup):
         _code, _out, j = self.run_candidate(zips=[z])
         self.assertTrue(any("installer (fomod)" in f["text"] and f["level"] == "caution" for f in j["findings"]))
 
+    def test_fomod_option_folders_not_claimed_checked(self):
+        z = make_zip(os.path.join(self.t, "Opt-1.0.zip"), {"fomod/ModuleConfig.xml": b"<config/>",
+                                                           "Core/Opt.esm": ("plugin", ()),
+                                                           "Core/Scripts/shared.pex": b"pex"})
+        _code, _out, j = self.run_candidate(zips=[z])
+        texts = [f["text"] for f in j["findings"] if "installer (fomod)" in f["text"]]
+        self.assertEqual(len(texts), 1)
+        self.assertIn("the 2 file(s) in its option folders weren't compared", texts[0])
+        self.assertNotIn("every file in it was checked", texts[0])
+        self.assertEqual(j["candidate"]["zips"][0]["not_compared"], 2)
+
 
 class PluginsTxt(unittest.TestCase):
     def test_data_loose_files(self):

@@ -236,7 +236,8 @@ def _findings(report, r, deployed_profile):
         dw = _deployed_words(p["winner"], p["deployed"])
         picked = f"Vortex picked {p['winner']}'s copy" if p["winner"] else (dw or "which copy Vortex picked isn't known")
         out.append(Finding("caution", SECTION,
-                           f"Real clash with no rule: mods {a} and {b} {_differ_words(p)}, "
+                           f"{'Real' if p['differ'] else 'Possible'} clash with no rule: mods {a} and {b} "
+                           f"{_differ_words(p)}, "
                            f"and neither has a load-before or load-after rule for the other; "
                            f"{picked}.{not_here}",
                            f"On Vortex's Mods page, open the conflict icon of {a} or {b} and set which one loads "

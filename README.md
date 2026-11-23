@@ -368,7 +368,7 @@ and the loose-file check must have run.
   Vortex deployed (from the deployment record, else from the copy Data holds), and one note says plainly what can't
   be seen. Installing Modlist Backup 0.6.2 or later adds the rules to the export.
 - With rules in the export: a pair of mods with different copies and **no** ordering rule is a caution ("Real clash
-  with no rule"). Rules that only order identical copies, rules between mods that share no loose file, and rules that
+  with no rule", or "Possible clash with no rule" when the copies couldn't be compared). Rules that only order identical copies, rules between mods that share no loose file, and rules that
   name a mod that isn't enabled are listed as notes.
 - When the profile isn't the deployed one, no winner is named.
 - The section is skipped, with the reason, for MO2, a plain Plugins.txt, no modlist, or when the loose-file check
@@ -484,6 +484,7 @@ RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
 | The installed mods left out as the build's older copy | note |
 | Files that can't be compared, or `--depth light` (names only) | caution |
 | Build archives no plugin of the build loads, a fomod installer, an installed archive that can't be read | caution |
+| Files in a fomod installer's option folders (such as `00 Core\`): not compared, since where they land depends on the installer's choices | caution (counted in `not_compared`) |
 
 At `--depth heavy` it also runs `sf-mod-check check` on each plugin of the build: deleted references are a problem,
 ITMs and errors are cautions. It reads each plugin's masters from the Data folder, so a plugin whose master is
@@ -584,7 +585,7 @@ New in 0.2.0 (nothing was renamed):
 | `vortex_profile` | With `--vortex-profile`: `name`, `stamp`, `files` (modlist, loadorder, plugins) and the deployed check (`deployed`, `extra_plugins`, `extra_mods`, `missing_plugins`, `plugins_txt_matches`). `null` for other sources. |
 | `patches` | Merged patches: a list of `{patch, manifest, state, level, rebuild, reasons, checked, result, findings}` (`state` is `up to date`, `rebuild`, `not enabled` or `cannot check`; `smc_state` is sf-mod-check's own word), `[]` when no manifest was found, or `{"not_checked": why}`. |
 | `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, winner, deployed, rule}`), `no_shared`, `unmatched` and `findings` (counts). |
-| `candidate` | `candidate` runs: `zips`, `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`) and `heavy`. `null` in a normal run. |
+| `candidate` | `candidate` runs: `zips` (each with `path`, `files`, `loose`, `archives`, `plugins`, `fomod` and `not_compared`), `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`) and `heavy`. `null` in a normal run. |
 
 The "files its records use aren't installed" findings count the files by kind (script, model, mesh, material,
 texture, sound) in their text, and their `data` has a `kinds` count.

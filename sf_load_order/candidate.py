@@ -120,12 +120,15 @@ def read_zips(zips, work, deep):
                                  "as a .zip.")
         zname = os.path.basename(z)
         info_out = {"path": os.path.abspath(z), "files": 0, "loose": 0, "archives": [], "plugins": [],
-                    "fomod": False}
+                    "fomod": False, "not_compared": 0}
         try:
             with zipfile.ZipFile(z) as zf:
                 wrapper = wrapper_folder([i.filename for i in zf.infolist() if not i.is_dir()])
                 if wrapper:
                     log.info(SECTION, f"{zname}: every file sits in the folder {wrapper}, read as the Data folder")
+                fomod = any(_member_path(i.filename, wrapper) == "fomod\\moduleconfig.xml"
+                            for i in zf.infolist() if not i.is_dir())
+                info_out["fomod"] = fomod
                 for i in zf.infolist():
                     if i.is_dir():
                         continue
@@ -134,8 +137,11 @@ def read_zips(zips, work, deep):
                         continue
                     info_out["files"] += 1
                     base = p.rsplit("\\", 1)[-1]
-                    if p == "fomod\\moduleconfig.xml":
-                        info_out["fomod"] = True
+                    top = p.split("\\", 1)[0]
+                    if fomod and "\\" in p and top != "fomod" and top not in loose.ROOTS:
+                        # a fomod option folder (00 Core\...): where its files land depends on the installer's choices
+                        info_out["not_compared"] += 1
+                        continue
                     if "\\" not in p and p.endswith(".ba2"):
                         n = len(out["archives"])
                         copy = os.path.join(work, f"{n}.ba2")
@@ -453,7 +459,13 @@ def run(ctx, zips):
                     "compare.", fix="Check that this is the mod's own zip (its files at the top, or in a Data "
                     "folder)."))
     for zi in build["zips"]:
-        if zi["fomod"]:
+        if zi["fomod"] and zi["not_compared"]:
+            add(Finding("caution", SECTION, f"{os.path.basename(zi['path'])} has an installer (fomod), whose choices "
+                        f"aren't resolved here, so the {zi['not_compared']} file(s) in its option folders weren't "
+                        "compared (only files at its top, in a Data folder or in a game folder were).",
+                        fix="Install it with Vortex or MO2 and run sf-load-order on the profile, or check a zip "
+                        "packed without the installer."))
+        elif zi["fomod"]:
             add(Finding("caution", SECTION, f"{os.path.basename(zi['path'])} has an installer (fomod), whose choices "
                         "aren't resolved here, so every file in it was checked, chosen or not.",
                         fix="Read the findings with that in mind."))
