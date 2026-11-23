@@ -2,7 +2,17 @@
 
 ## 0.1.3 (unreleased)
 
-This release is a fix pass. It is not finished yet.
+This release is a fix pass. It removes a false caution for `--conflicts` runs that include sfta01.esm to sfta06.esm, makes the recommender use the same "acts on" rule as the ratings, and corrects a wrong line in the 0.1.2 notes. No option or output file changes.
+
+### Example
+
+This is a real run on a small made-up load order: ShipMod.esm plus sfta01.esm and sfta02.esm enabled, and a conflicts.json (as sf-mod-check 0.12.0 writes it) that lists the two sfta files as official and leaves them out of its mod list:
+
+    > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --conflicts conflicts.json --state state --out report
+    sf-load-order 0.1.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 0 caution(s), 1 note(s) (report: report\report.txt)
+
+On the same files, 0.1.2 gave 2 cautions: "The --conflicts file was made for another load order (2 enabled plugin(s) aren't in it)" and "The record-conflict data was made for a different load order than this one, so the scores may be off". Both were false.
 
 ### Fixes
 
