@@ -292,6 +292,40 @@ class SevenZip(Setup):
         self.assertEqual(code, 2)
         self.assertIn("couldn't unpack Mod.7z: ERROR: Wrong password", out)
 
+    def test_old_timestamp_repacks(self):
+        """A file dated before 1980 (7-Zip keeps the archive's date) is repacked, not a traceback."""
+        sz = os.path.join(self.t, "Build-1.0.7z")
+        with open(sz, "wb") as f:
+            f.write(b"7z\xbc\xaf")
+        _calls, a, b = self.fake(self.members_of(self.main))
+        with a, b:
+            fake_x = candidate._run_7z
+
+            def dated(exe, args):
+                r = fake_x(exe, args)
+                if args[0] == "x":
+                    dest = [x for x in args if x.startswith("-o")][0][2:]
+                    for folder, _d, files in os.walk(dest):
+                        for fn in files:
+                            os.utime(os.path.join(folder, fn), (0, 0))
+                return r
+            with mock.patch.object(candidate, "_run_7z", dated):
+                code, out, j = self.run_candidate("--depth", "light", zips=[sz])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(j["sections"]["candidate"]["status"], "done", j["sections"]["candidate"])
+        self.assertEqual(j["candidate"]["zips"][0]["format"], "7z")
+
+    def test_repack_error_is_a_clear_refusal(self):
+        sz = os.path.join(self.t, "Mod.7z")
+        with open(sz, "wb") as f:
+            f.write(b"7z\xbc\xaf")
+        _calls, a, b = self.fake({"a.txt": b"x"})
+        with a, b, mock.patch.object(candidate.zipfile.ZipFile, "write", side_effect=FileNotFoundError("too long")):
+            code, out, _j = self.run_candidate(zips=[sz])
+        self.assertEqual(code, 2)
+        self.assertIn("couldn't be read back", out)
+        self.assertIn("shorter --out folder", out)
+
     def test_unsafe_member_names(self):
         for bad in ("../x", "a/../x", "/x", "C:/x", "a\\..\\x"):
             self.assertTrue(candidate._unsafe_member(bad), bad)
@@ -822,6 +856,16 @@ class Parsers(unittest.TestCase):
         self.assertEqual(candidate.mod_stem("ShipMod v2"), "shipmod")
         self.assertEqual(candidate.mod_stem("Mod-2D"), "mod-2d")
         self.assertEqual(candidate.mod_stem(None), "")
+        self.assertEqual(candidate.mod_stem("C:\\x\\ShipMod-Loose-9.0.0.7z"), "shipmod-loose")
+        self.assertEqual(candidate.mod_stem("ShipMod-Loose-9.0.0.RAR"), "shipmod-loose")
+
+    def test_candidate_fix_never_names_conflicts(self):
+        err =("found x 0.7.0 at C:\\t (PATH), but sf-load-order needs sf-mod-check 0.9.0 or later. Fix: download "
+               "the newest release, or run the conflict command yourself and pass its conflicts.json with --conflicts.")
+        why, fix = candidate._split_fix(err, "Download the newest sf-mod-check.")
+        self.assertEqual(fix, "Download the newest sf-mod-check.")
+        self.assertTrue(why.startswith("found x 0.7.0"))
+        self.assertEqual(candidate._split_fix("a. Fix: Pass --data.", "d"), ("a.", "Pass --data."))
 
 
 if __name__ == "__main__":

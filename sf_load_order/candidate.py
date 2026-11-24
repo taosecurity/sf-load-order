@@ -163,15 +163,20 @@ def _unpack(path, work, n):
         raise CandidateError(f"7-Zip couldn't unpack {base}: {last}. {again}")
     root = os.path.realpath(dest)
     out = os.path.join(work, "unpacked", f"{n}.zip")
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as zf:
-        for folder, _dirs, files in os.walk(dest):
-            for f in files:
-                full = os.path.join(folder, f)
-                if os.path.islink(full):
-                    continue
-                if not os.path.realpath(full).startswith(root + os.sep):
-                    raise CandidateError(f"{base} unpacked a file outside its folder ({full}). {again}")
-                zf.write(full, os.path.relpath(full, dest).replace("\\", "/"))
+    try:
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED, strict_timestamps=False) as zf:
+            for folder, _dirs, files in os.walk(dest):
+                for f in files:
+                    full = os.path.join(folder, f)
+                    if os.path.islink(full):
+                        continue
+                    if not os.path.realpath(full).startswith(root + os.sep):
+                        raise CandidateError(f"{base} unpacked a file outside its folder ({full}). {again}")
+                    zf.write(full, os.path.relpath(full, dest).replace("\\", "/"))
+    except (OSError, ValueError) as e:
+        raise CandidateError(f"{base} was unpacked into {dest}, but its files couldn't be read back "
+                             f"({type(e).__name__}: {e}). Fix: run again with a shorter --out folder (such as "
+                             "C:\\slo), or unpack it yourself and pack it again as a .zip.")
     return out
 
 
@@ -285,11 +290,13 @@ VERSION_TAIL = re.compile(r"[-_ ]v?\d+(?:[.\-_]\d+)*$", re.I)
 
 
 def mod_stem(name):
-    """A zip or mod name without its folder, .zip and trailing version: ShipMod-Loose-8.8.40.zip and the Vortex
+    """A zip or mod name without its folder, .zip (.7z, .rar) and trailing version: ShipMod-Loose-8.8.40.zip and the Vortex
     mod ShipMod-Loose-8.8.40-1700000000 both give shipmod-loose."""
     n = os.path.basename(str(name or "").replace("\\", "/")).lower()
-    if n.endswith(".zip"):
-        n = n[:-4]
+    for ext in (".zip",) + NOT_ZIP:
+        if n.endswith(ext):
+            n = n[:-len(ext)]
+            break
     return VERSION_TAIL.sub("", n)
 
 
@@ -558,8 +565,13 @@ def _rec_skip(report, why, fix=None, level="caution", **kw):
                  "shared_records": 0, "mods": []}, **kw)
 
 
-def _split_fix(err):
-    return (err.split(" Fix: ")[0], err.split(" Fix: ")[1]) if " Fix: " in err else (err, None)
+def _split_fix(err, default=None):
+    """(why, fix) from an error with a " Fix: " part. A fix written for the main command's --conflicts (which
+    candidate doesn't take) becomes default."""
+    why, fix = (err.split(" Fix: ")[0], err.split(" Fix: ")[1]) if " Fix: " in err else (err, None)
+    if fix and "--conflicts" in fix:
+        fix = default
+    return why, fix
 
 
 def _rec_plugins_txt(lo, build, replaced):
@@ -680,7 +692,7 @@ def _records(ctx, build, replaced):
     if not err:
         err = sfmodcheck.version(prog) or sfmodcheck.too_old(prog)
     if err:
-        why, fix = _split_fix(err)
+        why, fix = _split_fix(err, f"Download the newest sf-mod-check from {sfmodcheck.RELEASES} and run again.")
         return _rec_skip(report, why, fix=fix, program=prog.to_dict() if prog else None)
     pd = prog.to_dict()
     if not (lo.data and os.path.isdir(lo.data)):
@@ -733,7 +745,7 @@ def _records(ctx, build, replaced):
     if not failed:
         cj, err = records.load(r.conflicts)
         if err:
-            failed = _split_fix(err)
+            failed = _split_fix(err, REC_FIX_CONFLICT)
     if failed:
         add(Finding("caution", SECTION, REC_SKIPPED + failed[0].rstrip(".") + ".", fix=failed[1]))
         log.info(SECTION, f"record check failed: {failed[0]}")
