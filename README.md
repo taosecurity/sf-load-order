@@ -236,6 +236,11 @@ listed twice, a name the game drops (a plugin whose name ends in an official plu
 `-ShatteredSpace.esm`, or starts with `BlueprintShips-`, is removed from Plugins.txt by the game and never loads),
 or no Data folder found.
 
+A caution also comes when `StarfieldCustom.ini` (in `Documents\My Games\Starfield`, or the MO2 profile's own copy
+when the profile uses local INI files) has `sTestFile` lines: the game (and MO2) then load the files those lines name
+and skip Plugins.txt, so the order the report checks may not be what the game loads. The fix is to remove the lines
+and manage the order through Plugins.txt or your mod manager.
+
 ### Load order and masters
 
 - Each mod plugin's masters: missing, turned off, dropped by the game, or loading after the plugin that needs them.
