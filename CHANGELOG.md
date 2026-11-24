@@ -2,14 +2,30 @@
 
 ## 0.2.2 (2026-11-23)
 
+### What's new
+
 This release makes the check of a Vortex profile that isn't deployed, and `candidate` over an older copy of the build, simpler and clearer, and gives a note for old patch manifests. No option or report.json key was renamed or removed.
 
 ### Behavior change
 
 - When `--vortex-profile` names a profile that Data doesn't hold (Vortex has another profile deployed), every check that reads the profile's plugin, archive or loose files is skipped: load order and masters, patches, archives, loose files, Vortex mod rules, record conflicts and the suggested order. Before, some of these read the profile's staging copies and others gave weaker findings; now only the dropped-name and known-clash checks run.
 - One caution says so and names the fix: deploy the profile in Vortex and run again, or pass `--data` with a folder that holds this profile's files.
-- In report.json the skipped sections are `{"status": "skipped", "why": ...}`, so their `results` entries, the top-level `rules` and `outputs.vortex_json` are absent and `recommended` is `null`. The mod plugins' `kind` and `masters` are `null`, since their headers aren't read. `patches` stays `{"not_checked": why}`.
+- In report.json the skipped sections are `{"status": "skipped", "why": ...}`, so their `results` entries and `outputs.vortex_json` are absent, and the top-level `rules` and `recommended` are `null`. The mod plugins' `kind` and `masters` are `null`, since their headers aren't read. `patches` stays `{"not_checked": why}`.
 - `candidate` with a plain Plugins.txt and the build's older copy installed no longer compares Data's loose files, which can't be told apart from that copy's. One caution (kind `data-unsorted`, with `replaced`) says so and names the fix: use `--mo2` or `--vortex-profile`, or remove the older copy. Before, each such file was a caution of kind `data-old`; that kind is gone. Archives are still compared plugin by plugin.
+
+### Example
+
+A made-up profile `Example-Profile` while Data holds another one (here a Data folder with `ModA.esm` and `ModB.esp`, and an export of `Example-Profile` with `ModA.esm` and `ModC.esm`):
+
+    > python sf-load-order.py --vortex-profile Example-Profile --vortex-exports exports --data game\Data --vortex-staging staging --no-state --out out
+    sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 1 caution(s), 0 note(s) (report: out\report.txt)
+
+In `out\report.json`, the `order` section reads:
+
+    "order": {"status": "skipped", "why": "Data holds another profile, not Example-Profile (deploy Example-Profile in Vortex and run again)"}
+
+The caution's fix reads: "Deploy the profile Example-Profile in Vortex and run again, or pass --data with a folder that holds this profile's files."
 
 ### Fixes
 
@@ -17,14 +33,6 @@ This release makes the check of a Vortex profile that isn't deployed, and `candi
 - For a Vortex profile that isn't deployed, the note "N mod(s) Vortex deployed aren't in the load order export ..., so they were added from Vortex's deployment record" named the deployed profile's mods as if they were this profile's. That note is no longer given for such a profile; the caution already counts those mods as ones the profile doesn't enable.
 - A `--patch-sources` file that doesn't exist was counted as a manifest found in the note that sf-mod-check wasn't found. Now it gets its own caution, "the file wasn't found", whether or not sf-mod-check is installed, and it is no longer listed in report.json's `patches`.
 - The exit-code tables in the README and AGENTS.md now say that `--help` and `--version` exit 0.
-
-### Example
-
-A made-up profile `Example-Profile` while Data holds another one. report.json's sections read:
-
-    "order": {"status": "skipped", "why": "Data holds another profile, not Example-Profile (deploy Example-Profile in Vortex and run again)"}
-
-and the caution's fix reads: "Deploy the profile Example-Profile in Vortex and run again, or pass --data with a folder that holds this profile's files."
 
 ## 0.2.1 (2026-11-23)
 
