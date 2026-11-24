@@ -125,7 +125,7 @@ there changes what "changed since the last run" reports.
   The report has the inputs and one section, "The new build against the installed mods". A shared script (`.pex`)
   or a file with different content is a problem; a build part clashing with another part of the same build is a
   problem for scripts and a caution for other files; one archive name in two zips is a problem. At the default
-  depth it also runs `sf-mod-check conflict` with the build's plugins loading last and reports, per installed mod, the
+  depth it also runs `sf-mod-check conflict` with the build's plugins where its installed copy sat (else last) and reports, per installed mod, the
   records the build also changes (kind `shared-records`: a caution when any is Forwardable or Choice, else a note;
   report.json `candidate.records`). Without sf-mod-check, or under MO2 run from outside MO2, one caution says the
   record check was skipped. `--depth heavy` adds

@@ -521,12 +521,14 @@ other caution says the records weren't checked: run from the command line, sf-mo
 | Files in a fomod installer's option folders (such as `00 Core\`): not compared, since where they land depends on the installer's choices | caution (counted in `not_compared`) |
 | Records the build changes that an installed mod also changes, with fields a conflict patch can forward (Forwardable) or fields both changed (Choice) | caution, one per installed mod (kind `shared-records`) |
 | Records shared with an installed mod that differ in nothing that matters (No effect) | note (kind `shared-records`) |
-| The record check couldn't run (no sf-mod-check, no Data folder, a Vortex profile that isn't deployed, MO2 started from outside MO2) or failed | caution |
+| The record check couldn't run (no sf-mod-check, no Data folder, a Vortex profile that isn't deployed, MO2 started from outside MO2) or failed, or a build plugin couldn't be loaded (a missing master) | caution |
 | No shared records, or `--depth light` (the record check doesn't run) | note |
 
 At `--depth medium` (the default) and `heavy` it also checks records: it runs `sf-mod-check conflict` (0.8.0 or
-newer) on the load order with the build's plugins added at the end, where a new mod lands, and the installed
-copy of the build left out. The build's plugins are read from `<out>\work\candidate\extra` (`--extra-data`), and
+newer) on the load order with the installed copy of the build left out and the build's plugins in its place (so
+installed patches built on it still load after it), or added at the end, where a new mod lands, when no copy is
+installed. A build plugin that sf-mod-check couldn't load (a master that isn't installed) gets a caution naming the
+missing master, and its records aren't compared. The build's plugins are read from `<out>\work\candidate\extra` (`--extra-data`), and
 only records are compared (`--no-assets`). For each installed mod whose records the build also changes, one
 finding gives the count, how many are Forwardable or Choice, and up to five examples. Bethesda's records the
 build overrides aren't reported. Under MO2, sf-mod-check sees the mods only when sf-load-order is started from

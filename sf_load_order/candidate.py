@@ -563,15 +563,23 @@ def _split_fix(err):
 
 
 def _rec_plugins_txt(lo, build, replaced):
-    """The Plugins.txt the record check runs: the load order without the installed copy of the build, then the
-    build's plugins as active lines at the end (where a new mod lands)."""
+    """The Plugins.txt the record check runs: the load order without the installed copy of the build, and the
+    build's plugins as active lines where that copy sat (so installed patches built on it still load after it), or
+    at the end (where a new mod lands) when no copy is installed."""
     drop = {p["name"].lower() for p in build["plugins"]}
     gone = set(replaced or ())
     for m in (lo.mods or []):
         if m.name in gone:
             drop |= {p.lower() for p in (m.plugins or [])}
     drop |= {n.lower() for n in gone}  # a plain Plugins.txt: replaced holds plugin names
-    lines = [ln for ln in sfmodcheck.plugins_txt_lines(lo) if ln.startswith("#") or ln.lstrip("*").lower() not in drop]
+    lines, at = [], None
+    for ln in sfmodcheck.plugins_txt_lines(lo):
+        if not ln.startswith("#") and ln.lstrip("*").lower() in drop:
+            at = len(lines) if at is None else at
+            continue
+        lines.append(ln)
+    tail = lines[at:] if at is not None else []
+    del lines[len(lines) - len(tail):]
     todo, seen = [], set()
     for p in build["plugins"]:
         if p["copy"] and p["name"].lower() not in seen:
@@ -584,7 +592,7 @@ def _rec_plugins_txt(lo, build, replaced):
         todo.remove(p)
         placed.add(p["name"].lower())
         lines.append("*" + p["name"])
-    return lines, drop
+    return lines + tail, drop
 
 
 def _shared_records(cj, lo, build_names):
@@ -598,9 +606,9 @@ def _shared_records(cj, lo, build_names):
         n = name.lower()
         return bool(flag) or n in official or inputs.is_official(name) or inputs.modcheck_official(n)
     modof = {}
-    for m in (lo.mods or []):
-        for p in (m.plugins or []):
-            modof.setdefault(p.lower(), m.name)
+    for m in (lo.mods or []):  # enabled mods only; for MO2 the later (higher priority) one supplies the plugin
+        for p in (m.plugins or []) if m.enabled else ():
+            modof[p.lower()] = m.name
     per = {}  # installed plugin (lower) -> {fk: {"labels": set, "edid", "type"}}
     names = {}
     for e in cj.get("lost") or []:
@@ -615,7 +623,8 @@ def _shared_records(cj, lo, build_names):
         names.setdefault(key, other)
         fk = e.get("formKey") or ""
         rec = per.setdefault(key, {}).setdefault(fk, {"labels": set(), "edid": e.get("EditorID"),
-                                                       "type": e.get("RecordType") or "", "build_won": wb})
+                                                       "type": e.get("RecordType") or "", "build_won": False})
+        rec["build_won"] = rec["build_won"] or wb
         rec["labels"] |= {records.label(f) for f in e.get("Fields") or []}
     out = []
     for key, recs in per.items():
@@ -637,7 +646,8 @@ def _shared_records(cj, lo, build_names):
 
 
 def _records(ctx, build, replaced):
-    """The record check (G02): sf-mod-check conflict with the build's plugins loading last (--extra-data), and the
+    """The record check (G02): sf-mod-check conflict with the build's plugins in the installed copy's place, else
+    loading last (--extra-data), and the
     records they share with installed mods as findings. Returns the report.json candidate "records" dict, or None
     at --depth light."""
     from . import records
@@ -729,6 +739,19 @@ def _records(ctx, build, replaced):
         log.info(SECTION, f"record check failed: {failed[0]}")
         return dict({"status": "failed", "why": failed[0], "file": None, "shared_records": 0, "mods": []}, **kw)
     names = {p["name"].lower() for p in plugs if p["copy"]}
+    in_lo = {(e.get("FileName") or "").lower() for e in cj.get("loadOrder") or []}
+    not_loaded = []  # sf-mod-check skips a plugin it can't load (a missing master) and still exits 0
+    for p in plugs:
+        if p["copy"] and p["name"].lower() not in in_lo and p["name"] not in not_loaded:
+            not_loaded.append(p["name"])
+            absent = [m for m in p["masters"] if m.lower() not in in_lo and m.lower() not in names]
+            why = (f"its master(s) {', '.join(absent)} aren't installed" if absent
+                   else "sf-mod-check skipped it")
+            add(Finding("caution", SECTION, f"The record check didn't load {p['name']} ({why}), so its records "
+                        "weren't compared with the installed mods.",
+                        fix=f"Install {', '.join(absent)} first, then run again." if absent else REC_FIX_CONFLICT,
+                        plugins=[p["name"]]))
+    kw["not_loaded"] = not_loaded
     mods = _shared_records(cj, lo, names)
     loaded = sum(1 for e in cj.get("loadOrder") or [] if not e.get("Official")
                  and (e.get("FileName") or "").lower() not in names)
@@ -754,7 +777,7 @@ def _records(ctx, build, replaced):
         else:
             add(Finding("note", SECTION, f"This build changes {m['records']} record(s) that {who} also changes, with "
                         f"no difference that matters (No effect). Examples: {ex}.", plugins=[m["plugin"]], data=data))
-    if not mods:
+    if not mods and len(not_loaded) < len(names):
         add(Finding("note", SECTION, "The build's plugins share no changed records with the installed mods "
                     f"(sf-mod-check conflict, {loaded} mod plugin(s) loaded)."))
     total = sum(m["records"] for m in mods)

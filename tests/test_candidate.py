@@ -516,7 +516,7 @@ class Records(unittest.TestCase):
     """0.2.3 (G02): candidate runs sf-mod-check conflict with the build's plugins loading last and reports the
     records they share with installed mods. On 0.2.2 there is no candidate.records key and no shared-records finding.
 
-    Plain setup: Data has New.esm (the installed older copy of the build), Other.esm and Third.esm, enabled in that
+    Plain setup: Data has New.esm (the installed older copy of the build, which the build replaces in place), Other.esm and Third.esm, enabled in that
     order; the build is New-1.1.zip (New.esm) and New-Part-1.1.zip (NewPart.esm, master New.esm)."""
 
     def setUp(self):
@@ -576,8 +576,8 @@ class Records(unittest.TestCase):
         extra = c[c.index("--extra-data") + 1]
         self.assertEqual(sorted(os.listdir(extra)), ["New.esm", "NewPart.esm"])
         self.assertEqual(c[c.index("--data") + 1], self.data)
-        # the installed copy of the build is left out, and the build loads last
-        self.assertEqual(self.fake.plugins_seen(), ["*Other.esm", "*Third.esm", "*New.esm", "*NewPart.esm"])
+        # the installed copy of the build is left out, and the build takes its place (round 2)
+        self.assertEqual(self.fake.plugins_seen(), ["*New.esm", "*NewPart.esm", "*Other.esm", "*Third.esm"])
         rec = j["candidate"]["records"]
         self.assertEqual(rec["status"], "done")
         self.assertEqual(rec["shared_records"], 3)
@@ -599,7 +599,42 @@ class Records(unittest.TestCase):
         # code review round 1: NewPart.esm masters New.esm, so it loads after it whatever order the zips come in
         self.zips.reverse()
         self.go(prog=self.fake.write(conflicts=self.cj))
+        self.assertEqual(self.fake.plugins_seen(), ["*New.esm", "*NewPart.esm", "*Other.esm", "*Third.esm"])
+
+    def test_build_takes_old_copys_place(self):
+        # code review round 2: an installed patch built on the old copy keeps loading after the build
+        data, ptxt = fixtures.game(os.path.join(self.t, "game2"),
+                                   {"New.esm": {}, "Patch.esm": {}, "Other.esm": {}})
+        self.go(prog=self.fake.write(conflicts=self.cj), args=["--plugins-txt", ptxt, "--data", data])
+        self.assertEqual(self.fake.plugins_seen(), ["*New.esm", "*NewPart.esm", "*Patch.esm", "*Other.esm"])
+
+    def test_new_mod_loads_last(self):
+        data, ptxt = fixtures.game(os.path.join(self.t, "game2"), {"Other.esm": {}, "Third.esm": {}})
+        self.go(prog=self.fake.write(conflicts=self.cj), args=["--plugins-txt", ptxt, "--data", data])
         self.assertEqual(self.fake.plugins_seen(), ["*Other.esm", "*Third.esm", "*New.esm", "*NewPart.esm"])
+
+    def test_build_plugin_not_loaded(self):
+        # code review round 2: sf-mod-check skips a plugin whose master is missing and still exits 0
+        self.zips = [make_zip(os.path.join(self.t, "Needs-1.0.zip"), {"Needs.esm": ("plugin", ("Framework.esm",))})]
+        self.cj["lost"] = []
+        j = self.go(prog=self.fake.write(conflicts=self.cj))
+        rec = j["candidate"]["records"]
+        self.assertEqual(rec["not_loaded"], ["Needs.esm"])
+        texts = [f["text"] for f in j["findings"]]
+        self.assertTrue(any("didn't load Needs.esm (its master(s) Framework.esm aren't installed)" in t
+                            for t in texts))
+        self.assertFalse(any("share no changed records" in t for t in texts))
+
+    def test_disabled_mod_not_named(self):
+        # code review round 2: the mod named is the enabled one that supplies the plugin
+        mo2 = os.path.join(self.t, "mo2")
+        fixtures.mo2(mo2, "Default", [("OldOther", False, {"Other.esm": {}}), ("OtherMod", True, {"Other.esm": {}}),
+                                      ("ThirdMod", True, {"Third.esm": {}})])
+        data = os.path.join(self.t, "mo2game", "Data")
+        for n in ("Starfield.esm", "Other.esm", "Third.esm"):
+            fixtures.plugin(os.path.join(data, n))
+        j = self.go(prog=self.fake.write(conflicts=self.cj), args=["--mo2", mo2, "--data", data])
+        self.assertEqual([f["data"]["mod"] for f in self.shared(j)], ["OtherMod", "ThirdMod"])
 
     def test_build_loses_records(self):
         # code review round 1: an installed mod that wins over the build gets the reverse wording
