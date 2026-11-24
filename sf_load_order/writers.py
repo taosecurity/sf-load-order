@@ -152,6 +152,12 @@ def how_to(lo, same, files, estimate=False):
                       "so copy both.",
                       "4. Open MO2 and check the Plugins tab on the right shows the new order.",
                       "5. To go back, close MO2 and copy your backed-up plugins.txt and loadorder.txt back."]
+            off = inputs.mo2_unpinned_officials(lo)
+            if off:
+                lines += ["6. Check that " + ", ".join(off) + " " + ("is" if len(off) == 1 else "are") + " still "
+                          "ticked in MO2's Plugins tab, and tick " + ("it" if len(off) == 1 else "them") + " again if "
+                          "not. MO2 2.5.2 treats official plugins that it doesn't pin as ordinary plugins, so a "
+                          "plugins.txt that doesn't list them can untick them (the 2.5.3 betas pin them at the top)."]
         else:
             lines += [f"You use Mod Organizer 2 (profile {prof}), but loadorder.txt couldn't be written (the "
                       "report's Rating findings say why). MO2 takes the order from loadorder.txt, so plugins.txt "
@@ -167,7 +173,19 @@ def how_to(lo, same, files, estimate=False):
                   "4. Start the game and check your mods load.",
                   "5. To go back, copy your backup over the file again.", "",
                   "If a mod manager (Vortex or MO2) manages your mods, use its own load order instead: it rewrites "
-                  "Plugins.txt."]
+                  "Plugins.txt.", "",
+                  "If you use only the game's Creations menu (no mod manager):",
+                  "The game rewrites Plugins.txt every time it starts and whenever you change the order in the "
+                  "Creations menu. In a test of Starfield 1.16.244 the start-up rewrite kept every plugin line and "
+                  "its order (https://taosecurity.github.io/starfield-load-order-facts/), so copying plugins.txt in "
+                  "with the game closed (steps 1 to 3) works, and the game then shows that order in Creations. "
+                  "If you would rather not copy a file over it:",
+                  "a. Start the game and open Creations, then Load Order.",
+                  "b. Move each Creation until the list matches the mod lines of plugins.txt in this folder, top to "
+                  "bottom (the official files stay where the game puts them).",
+                  "c. Back out, then quit and start the game.",
+                  "To go back, put the Creations in the order your backup lists, or copy the backup over the file.",
+                  "Pick one place to manage the order: a later change in the Creations menu replaces what you copied."]
     lines += ["", "Files in this folder:"] + [f"  {os.path.basename(p)}" for p in files.values()]
     return lines
 

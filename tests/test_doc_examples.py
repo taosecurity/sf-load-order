@@ -1,4 +1,5 @@
-"""The `candidate` Example in README.md and CHANGELOG.md must print the RESULT line a real run prints.
+"""The `candidate` Example in README.md and in CHANGELOG.md's newest release must print the RESULT line a real run
+prints (older CHANGELOG entries show what their release printed: 0.2.3's record check added a caution).
 
 It rebuilds the made-up files the Example describes (ShipMod 0.3.0 built on the installed CoreTools, an older
 ShipMod installed as a mod of its own), runs `candidate`, and compares the RESULT line (without the report path)
@@ -22,6 +23,9 @@ def doc_results(name):
     """Every candidate Example RESULT line in a document (the Example is the block that runs `candidate ShipMod`)."""
     with open(os.path.join(ROOT, name), encoding="utf-8") as f:
         text = f.read()
+    if name == "CHANGELOG.md":  # only the newest release: an older entry shows what that release printed
+        parts = re.split(r"^## ", text, flags=re.M)
+        text = parts[1] if len(parts) > 1 else text
     found = []
     for m in re.finditer(r"candidate ShipMod-0\.3\.0\.zip.*\n.*\n(.*)\n", text):
         r = RESULT_RE.match(m.group(1))
@@ -29,6 +33,21 @@ def doc_results(name):
             raise AssertionError(f"a candidate Example in {name} has no RESULT line two lines below the command")
         found.append(r.group(1))
     return found
+
+
+class VersionStrings(unittest.TestCase):
+    """The example bylines in README.md and AGENTS.md, and the README's download line, name the version in use."""
+
+    def test_bylines_match_version(self):
+        import sf_load_order
+        for name in ("README.md", "AGENTS.md"):
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                text = f.read()
+            for m in re.finditer(r"^sf-load-order (\d+\.\d+\.\d+) by ", text, re.M):
+                self.assertEqual(m.group(1), sf_load_order.__version__, name)
+            self.assertIn(f"sf-load-order {sf_load_order.__version__} by", text, name)
+        with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
+            self.assertIn(f"sf-load-order-{sf_load_order.__version__}.zip", f.read())
 
 
 class DocExamples(unittest.TestCase):

@@ -174,6 +174,67 @@ class Vortex(unittest.TestCase):
         self.assertEqual([e["name"] for e in new], ["b.esm", "Starfield.esm", "a.esm"])
 
 
+class CreationsAndMo2Officials(unittest.TestCase):
+    """G06 (the Creations-only part of HOW-TO-APPLY) and A5 (MO2 and the official plugins)."""
+
+    def setUp(self):
+        self.t = tempfile.mkdtemp()
+
+    def how(self, lo):
+        ctx = ctx_for(self.t, lo)
+        ctx.results["recommend"] = {"order": lo.enabled(), "same_as_current": True}
+        return read(writers.write(ctx)["how_to"]).decode("utf-8")
+
+    def test_creations_part_for_a_plain_source_only(self):
+        plain = self.how(make_lo(["A.esm"]))
+        self.assertIn("If you use only the game's Creations menu", plain)
+        self.assertIn("then Load Order", plain)
+        self.assertIn("https://taosecurity.github.io/starfield-load-order-facts/", plain)
+        self.assertNotIn("Creations menu", self.how(make_lo(["A.esm"], source="mo2")))
+
+    def mo2_lo(self, extra):
+        lo = make_lo(["A.esm"], source="mo2")
+        lo.profile = "Default"
+        for n in ["Starfield.esm"] + extra:
+            for p in lo.plugins:
+                if p.name == n:
+                    p.path = "x"
+            if n not in [p.name for p in lo.plugins]:
+                lo.plugins.append(model.Plugin(n, True, official=True, path="x", masters=[]))
+        return lo
+
+    def test_mo2_officials_step_and_caution(self):
+        lo = self.mo2_lo(["ShatteredSpace.esm", "SFBGS004.esm"])
+        found = inputs.mo2_unpinned_officials(lo)
+        self.assertIn("ShatteredSpace.esm", found)
+        self.assertIn("SFBGS004.esm", found)
+        self.assertIn("still ticked", self.how(lo))
+        ctx = ctx_for(self.t, lo)
+        ctx.results["records"] = None
+        recommend.run(ctx)
+        got = [f for f in ctx.report.findings if f.data.get("kind") == "mo2-officials"]
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0].level, "caution")
+        self.assertEqual(got[0].data["plugins"], found)
+
+    def test_only_pinned_officials_say_nothing(self):
+        lo = self.mo2_lo(["SFBGS003.esm", "SFBGS006.esm"])
+        for p in lo.plugins:
+            if p.official and p.name not in ("Starfield.esm", "SFBGS003.esm", "SFBGS006.esm"):
+                p.path = None  # not installed
+        self.assertEqual(inputs.mo2_unpinned_officials(lo), [])
+        self.assertNotIn("still ticked", self.how(lo))
+        ctx = ctx_for(self.t, lo)
+        ctx.results["records"] = None
+        recommend.run(ctx)
+        self.assertFalse([f for f in ctx.report.findings if f.data.get("kind") == "mo2-officials"])
+
+    def test_other_sources_say_nothing(self):
+        lo = self.mo2_lo(["ShatteredSpace.esm"])
+        lo.source = "vortex"
+        self.assertEqual(inputs.mo2_unpinned_officials(lo), [])
+
+
 class Mo2RoundTrip(unittest.TestCase):
     """loadorder.txt + plugins.txt written for MO2 read back through inputs.from_mo2 give the recommended order."""
 

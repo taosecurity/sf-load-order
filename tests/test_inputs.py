@@ -411,6 +411,49 @@ class MO2(Base):
         self.assertIn("modlist.txt", lo.mods_note)
 
 
+class TestFile(Base):
+    """sTestFile lines in StarfieldCustom.ini: the game (and MO2) skip Plugins.txt (G18)."""
+
+    def setUp(self):
+        super().setUp()
+        self.data, _ = fixtures.game(os.path.join(self.t, "Game"), {"ModA.esm": {}})
+        self.pt = write(os.path.join(self.t, "Plugins.txt"), "*ModA.esm\n")
+        self.env["USERPROFILE"] = os.path.join(self.t, "User")
+        self.ini = os.path.join(self.t, "User", "Documents", "My Games", "Starfield", "StarfieldCustom.ini")
+
+    def caution(self, lo):
+        return [f for f in inputs.findings(lo) if f.data.get("kind") == "stestfile"]
+
+    def test_lines_give_one_caution(self):
+        write(self.ini, "[General]\nsTestFile1=Mine.esm\nsTestFile2 = Other.esp\nsTestFile3=\n[Other]\nsTestFile4=No.esm\n")
+        got = self.caution(self.ok("--plugins-txt", self.pt, "--data", self.data))
+        self.assertEqual(len(got), 1)
+        f = got[0]
+        self.assertEqual(f.level, "caution")
+        self.assertEqual(f.data["plugins"], ["Mine.esm", "Other.esp"])
+        self.assertEqual(f.data["ini"], self.ini)
+        self.assertIn("skip Plugins.txt", f.text)
+        self.assertIn("Remove the sTestFile lines", f.fix)
+
+    def test_no_lines_or_no_ini_give_nothing(self):
+        self.assertEqual(self.caution(self.ok("--plugins-txt", self.pt, "--data", self.data)), [])
+        write(self.ini, "[General]\nsStartingConsoleCommand=x\nsTestFile1=\n")
+        self.assertEqual(self.caution(self.ok("--plugins-txt", self.pt, "--data", self.data)), [])
+
+    def test_mo2_local_ini(self):
+        inst = fixtures.mo2(os.path.join(self.t, "MO2"), "Default", [("M", True, {"ModA.esm": {}})])
+        prof = os.path.join(inst, "profiles", "Default")
+        write(self.ini, "[General]\nsTestFile1=Global.esm\n")
+        write(os.path.join(prof, "StarfieldCustom.ini"), "[General]\nsTestFile1=Local.esm\n")
+        # the profile doesn't use local INIs: the one in Documents counts
+        got = self.caution(self.ok("--mo2", inst, "--data", self.data))
+        self.assertEqual(got[0].data["plugins"], ["Global.esm"])
+        write(os.path.join(prof, "settings.ini"), "[General]\nLocalSettings=true\n")
+        got = self.caution(self.ok("--mo2", inst, "--data", self.data))
+        self.assertEqual(got[0].data["plugins"], ["Local.esm"])
+        self.assertEqual(got[0].data["ini"], os.path.join(prof, "StarfieldCustom.ini"))
+
+
 class DataDetection(Base):
     def steam_data(self, lib):
         d = os.path.join(lib, "steamapps", "common", "Starfield", "Data")

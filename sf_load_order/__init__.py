@@ -4,7 +4,7 @@ Reads a load order (the game's Plugins.txt, an MO2 profile, or a load order file
 page), reports what is wrong with it, rates it, suggests a better order and writes files the player can apply.
 It only reads the game, Vortex and MO2; it writes only to its own output folder.
 """
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 AUTHOR = "Richard Bejtlich"
 LICENSE = "GPL-3.0"
 URL = "https://github.com/taosecurity/sf-load-order"

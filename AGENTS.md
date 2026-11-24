@@ -52,7 +52,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -124,11 +124,15 @@ there changes what "changed since the last run" reports.
   `.\sf-load-order.cmd candidate "<build zip>" --mo2 "<MO2 instance folder>"`
   The report has the inputs and one section, "The new build against the installed mods". A shared script (`.pex`)
   or a file with different content is a problem; a build part clashing with another part of the same build is a
-  problem for scripts and a caution for other files; one archive name in two zips is a problem. `--depth heavy` adds
+  problem for scripts and a caution for other files; one archive name in two zips is a problem. At the default
+  depth it also runs `sf-mod-check conflict` with the build's plugins loading last and reports, per installed mod, the
+  records the build also changes (kind `shared-records`: a caution when any is Forwardable or Choice, else a note;
+  report.json `candidate.records`). Without sf-mod-check, or under MO2 run from outside MO2, one caution says the
+  record check was skipped. `--depth heavy` adds
   `sf-mod-check check` on the build's plugins (a plugin whose master is another part of the build is skipped with a
   caution). A note names the installed mods left out as the build's older copy. With a plain Plugins.txt and that
   older copy installed, Data's loose files aren't compared, and one caution (kind `data-unsorted`) says so.
-  Exit 2 for a missing file, a `.7z` or `.rar` (ask for the zip), or a file that isn't a zip. In report.json the key
+  A `.7z` or `.rar` is read through 7-Zip's `7z.exe` (on PATH or in Program Files\7-Zip), and each `candidate.zips[]` entry has `format` (`zip`, `7z` or `rar`). Exit 2 for a missing file, a `.7z` or `.rar` with no 7-Zip, an unsafe member path, or a file that isn't an archive. In report.json the key
   `candidate` has the counts; the findings are in `findings` with section `candidate`.
 - The options `candidate` takes: `.\sf-load-order.cmd candidate --help`
 - Record conflicts with an sf-mod-check that isn't on PATH:
@@ -207,7 +211,7 @@ credits and writes nothing. Screen output keeps the console's character set and 
 
 - 0: the report was written, whatever it found, or `--help` or `--version` printed what it shows (writing nothing).
 - 1: the report was written, `--strict` was given, and it lists at least one problem.
-- 2: it couldn't run (for `candidate`: a zip that is missing, a `.7z` or `.rar`, or not a zip; otherwise a bad or shortened option, no Python found by the launcher, no load order found, an output or
+- 2: it couldn't run (for `candidate`: a zip that is missing, a `.7z` or `.rar` with no 7-Zip, or not an archive; otherwise a bad or shortened option, no Python found by the launcher, no load order found, an output or
   log folder it can't write, or none of the three report files could be written). The `RESULT: CANNOT CHECK:` line
   says why and what to do.
 
@@ -225,8 +229,8 @@ credits and writes nothing. Screen output keeps the console's character set and 
   `--log` file. Applying a suggestion is the person's own step (HOW-TO-APPLY.txt).
 - It never uploads anything and makes no network connections. It runs sf-mod-check only when one is found or given.
 - It never ships or copies LOOT's masterlist; it reads the person's own copy.
-- Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate` doesn't compare records the build shares with
-  other mods yet (only files). Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
+- Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
+  and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
   names who won; it says so. Install extension 0.6.2 or later for the rules.
 - Record conflicts need sf-mod-check 0.8.0 or newer. Under MO2, sf-mod-check sees the mods only when started from MO2;
   otherwise use `--conflicts`.

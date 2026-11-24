@@ -327,7 +327,13 @@ class Runs(Base):
         exe = self.fake()
         c = self.ctx(self.lo(), sf_mod_check=exe, patch_sources=[os.path.dirname(old)])
         value, st = merged.run(c)
-        self.assertEqual((value, st["manifests"]), ([], 0))
+        self.assertEqual(st["manifests"], 0)
+        # 0.2.3: the patches list isn't empty when every manifest is old: one "cannot check" entry
+        self.assertEqual(len(value), 1)
+        self.assertEqual((value[0]["state"], value[0]["patch"], value[0]["checked"]),
+                         ("cannot check", "ConflictPatch - Old.esm", False))
+        self.assertEqual(value[0]["manifest"], os.path.abspath(old))
+        self.assertIn("old patch_sources.py", value[0]["reasons"][0])
         f = self.mine(c)
         self.assertEqual([x.level for x in f], ["note"])
         self.assertEqual(f[0].data["old_manifests"], [os.path.abspath(old)])

@@ -263,14 +263,20 @@ def _num(x):
     return format(float(x), "g")
 
 
-def run_conflict(prog, plugins_txt, data, out_dir, max_memory=None, timeout=CONFLICT_TIMEOUT):
+def run_conflict(prog, plugins_txt, data, out_dir, max_memory=None, timeout=CONFLICT_TIMEOUT, extra=None,
+                 no_assets=False):
     """Run `conflict` into out_dir. An old conflicts.json there is removed first, so a failed run is never mistaken
-    for a finished one."""
+    for a finished one. extra: an --extra-data folder (plugins read before Data; `candidate` puts the build's plugins
+    there). no_assets: pass --no-assets (records only)."""
     os.makedirs(out_dir, exist_ok=True)
     cj = os.path.join(out_dir, "conflicts.json")
     if os.path.exists(cj):
         os.remove(cj)
     cmd = [prog.path, "conflict", "--plugins", plugins_txt, "--data", data, "--out", out_dir]
+    if extra:
+        cmd += ["--extra-data", extra]
+    if no_assets:
+        cmd.append("--no-assets")
     if max_memory is not None:
         cmd += ["--max-memory", _num(max_memory)]
     r = _run(cmd, timeout)

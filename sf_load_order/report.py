@@ -170,7 +170,8 @@ def _summary_lines(ctx, section):
                     else ""
                 out.append(f"{label[:1].upper() + label[1:]} was read{extra}.")
             else:
-                out.append(f"{label[:1].upper() + label[1:]} was {p.get('status', 'not read')}: "
+                verb = "couldn't be used" if p.get("status") == "failed" else f"was {p.get('status', 'not read')}"
+                out.append(f"{label[:1].upper() + label[1:]} {verb}: "
                            f"{_sentence(p.get('why') or 'no reason given')}")
     elif section == "archives" and st.get("status") == "done":
         out.append(f"{_plural(st.get('archives', 0), 'archive')} load with mod plugins; "
@@ -213,6 +214,19 @@ def _summary_lines(ctx, section):
                    f"{_n(cand.get('shared', 0))} also shipped by the {_plural(cand.get('mods_checked', 0), 'enabled mod')} checked.")
         if cand.get("replaced"):
             out.append(f"Left out as the installed copy of this build: {', '.join(cand['replaced'])}.")
+        rec = cand.get("records")
+        if isinstance(rec, dict):
+            if rec.get("status") == "done":
+                mods = rec.get("mods") or []
+                out.append(f"Record check (sf-mod-check conflict): {_plural(rec.get('shared_records', 0), 'record')} "
+                           f"shared with {_plural(len(mods), 'installed plugin')}.")
+                if rec.get("result_line"):
+                    out.append(f"sf-mod-check said: {rec['result_line']}")
+            elif rec.get("why"):
+                out.append(f"Record check {'failed' if rec.get('status') == 'failed' else 'skipped'}: "
+                           f"{str(rec['why']).rstrip('.')}.")
+        elif cand.get("depth") == "light":
+            out.append("Record check: not run at depth light.")
     if st.get("note"):
         out.append(_sentence(st["note"]))
     return out

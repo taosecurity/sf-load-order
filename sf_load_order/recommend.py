@@ -276,6 +276,14 @@ def run(ctx):
     applied, not_applied = _picks(ctx, movable, edges)
     log.info(SECTION, f"{len(movable)} movable plugins, {len(edges)} constraint edges, {len(applied)} pick(s) applied, "
                       f"records data {'yes' if rated else 'no'}")
+    off = inputs.mo2_unpinned_officials(lo)
+    if off:  # A5: a suspicion from MO2's source (2.5.2 pins eight plugins), so a caution, not extra lines
+        _add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so the plugins.txt this tool writes (it leaves "
+             f"official plugins out) can leave {', '.join(off)} unticked in MO2.",
+             f"After you copy the files, check in MO2's Plugins tab that {', '.join(off)} "
+             f"{'is' if len(off) == 1 else 'are'} still ticked, and tick {'it' if len(off) == 1 else 'them'} if not "
+             "(the 2.5.3 betas pin them at the top).", off)
+        ctx.report.findings[-1].data = {"kind": "mo2-officials", "plugins": off}
     order = arrange(movable, edges, applied)
     if order is None:  # a master loop in the plugins themselves: leave the order alone
         order = list(movable)

@@ -30,6 +30,7 @@ import os
 import re
 import shutil
 import struct
+import subprocess
 import zipfile
 import zlib
 from collections import defaultdict
@@ -103,29 +104,103 @@ def _hash_member(zf, info, path):
     return h.hexdigest()
 
 
+def find_7z():
+    """The 7-Zip command line program: 7z.exe (or 7z) on PATH, else in the 7-Zip folder of Program Files. None when not found."""
+    for name in ("7z.exe", "7z"):
+        found = shutil.which(name)
+        if found:
+            return found
+    for var in ("ProgramFiles", "ProgramFiles(x86)"):
+        base = os.environ.get(var)
+        if base:
+            cand = os.path.join(base, "7-Zip", "7z.exe")
+            if os.path.isfile(cand):
+                return cand
+    return None
+
+
+def _run_7z(exe, args):
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    return subprocess.run([exe] + args, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                          errors="replace", timeout=600, creationflags=flags)
+
+
+def _unsafe_member(name):
+    p = name.replace("\\", "/")
+    return p.startswith("/") or re.match(r"^[A-Za-z]:", p) is not None or ".." in p.split("/")
+
+
+def _unpack(path, work, n):
+    """Unpacks a .7z or .rar through 7-Zip into <work>/unpacked/<n> and packs the files as a stored zip, whose path it
+    returns. Raises CandidateError when 7-Zip is missing, the archive has an unsafe member path or the unpack fails."""
+    base = os.path.basename(path)
+    ext = os.path.splitext(path)[1]
+    exe = find_7z()
+    if not exe:
+        raise CandidateError(f"{base} is a {ext} file, and reading one needs 7-Zip (7z.exe), which wasn't found on PATH "
+                             "or in the 7-Zip folder of Program Files. Fix: install 7-Zip from https://www.7-zip.org, or unpack the "
+                             "file and pack it again as a .zip.")
+    again = "Fix: download it again, or unpack it yourself and pack it again as a .zip."
+    try:
+        r = _run_7z(exe, ["l", "-slt", "-ba", "-p", "--", path])
+    except (OSError, subprocess.SubprocessError) as e:
+        raise CandidateError(f"{base} couldn't be listed with 7-Zip ({type(e).__name__}: {e}). {again}")
+    if r.returncode != 0:
+        last = ((r.stderr or r.stdout).strip().splitlines() or ["no message"])[-1]
+        raise CandidateError(f"7-Zip couldn't list {base}: {last}. {again}")
+    for line in r.stdout.splitlines():
+        if line.startswith("Path = ") and _unsafe_member(line[7:]):
+            raise CandidateError(f"{base} holds a file with an unsafe path ({line[7:]}), so it wasn't unpacked. "
+                                 "Fix: get the mod from its author again, or unpack it yourself and pack it as a .zip.")
+    dest = os.path.join(work, "unpacked", str(n))
+    os.makedirs(dest, exist_ok=True)
+    try:
+        r = _run_7z(exe, ["x", "-y", "-p", "-o" + dest, "--", path])
+    except (OSError, subprocess.SubprocessError) as e:
+        raise CandidateError(f"{base} couldn't be unpacked with 7-Zip ({type(e).__name__}: {e}). {again}")
+    if r.returncode != 0:
+        last = ((r.stderr or r.stdout).strip().splitlines() or ["no message"])[-1]
+        raise CandidateError(f"7-Zip couldn't unpack {base}: {last}. {again}")
+    root = os.path.realpath(dest)
+    out = os.path.join(work, "unpacked", f"{n}.zip")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as zf:
+        for folder, _dirs, files in os.walk(dest):
+            for f in files:
+                full = os.path.join(folder, f)
+                if os.path.islink(full):
+                    continue
+                if not os.path.realpath(full).startswith(root + os.sep):
+                    raise CandidateError(f"{base} unpacked a file outside its folder ({full}). {again}")
+                zf.write(full, os.path.relpath(full, dest).replace("\\", "/"))
+    return out
+
+
 def read_zips(zips, work, deep):
     """What the build ships. Returns a dict:
     zips: [{path, files, loose, archives, plugins, fomod}]
     loose: {path: [(zip name, digest or None)]}
     archives: [{zip, name, copy}]   (each .ba2 copied to work\\<n>.ba2)
     plugins: [{zip, name, copy, masters}]
-    Raises CandidateError for a missing file, a .7z/.rar, or a file that isn't a readable zip."""
+    A .7z or .rar is unpacked through 7-Zip first (_unpack) and read as a stored zip; it keeps its own name.
+    Raises CandidateError for a missing file, a .7z/.rar 7-Zip can't read, or a file that isn't a readable zip."""
     out = {"zips": [], "loose": defaultdict(list), "archives": [], "plugins": []}
     os.makedirs(work, exist_ok=True)
     for z in zips:
         if not os.path.isfile(z):
             raise CandidateError(f"{z} doesn't exist. Fix: give the path of the mod's .zip file.")
+        fmt = "zip"
+        src = z
         if z.lower().endswith(NOT_ZIP):
-            raise CandidateError(f"{os.path.basename(z)} is a {os.path.splitext(z)[1]} file, and candidate reads "
-                                 ".zip files only. Fix: unpack it and pack the files again as a .zip.")
-        if not zipfile.is_zipfile(z):
+            fmt = os.path.splitext(z)[1].lower().lstrip(".")
+            src = _unpack(z, work, len(out["zips"]))
+        elif not zipfile.is_zipfile(z):
             raise CandidateError(f"{z} isn't a readable .zip file. Fix: download it again, or pack the mod's files "
                                  "as a .zip.")
         zname = os.path.basename(z)
-        info_out = {"path": os.path.abspath(z), "files": 0, "loose": 0, "archives": [], "plugins": [],
+        info_out = {"path": os.path.abspath(z), "format": fmt, "files": 0, "loose": 0, "archives": [], "plugins": [],
                     "fomod": False, "not_compared": 0}
         try:
-            with zipfile.ZipFile(z) as zf:
+            with zipfile.ZipFile(src) as zf:
                 wrapper = wrapper_folder([i.filename for i in zf.infolist() if not i.is_dir()])
                 if wrapper:
                     log.info(SECTION, f"{zname}: every file sits in the folder {wrapper}, read as the Data folder")
@@ -470,6 +545,208 @@ def _heavy(ctx, build, report):
     return out
 
 
+REC_SKIPPED = "Records the build shares with installed mods weren't checked: "
+REC_FIX_CONFLICT = ("Run it with --log to see why: sf-mod-check conflict --plugins <file> --data <folder> --extra-data "
+                    "<folder> --log sf-mod-check-log.txt.")
+
+
+def _rec_skip(report, why, fix=None, level="caution", **kw):
+    """One finding saying the record check didn't run, and the report.json "records" dict for it."""
+    report.add(Finding(level, SECTION, REC_SKIPPED + why.rstrip(".") + ".", fix=fix))
+    log.info(SECTION, f"record check skipped: {why}")
+    return dict({"status": "skipped", "why": why, "program": None, "exit": None, "result_line": None, "file": None,
+                 "shared_records": 0, "mods": []}, **kw)
+
+
+def _split_fix(err):
+    return (err.split(" Fix: ")[0], err.split(" Fix: ")[1]) if " Fix: " in err else (err, None)
+
+
+def _rec_plugins_txt(lo, build, replaced):
+    """The Plugins.txt the record check runs: the load order without the installed copy of the build, then the
+    build's plugins as active lines at the end (where a new mod lands)."""
+    drop = {p["name"].lower() for p in build["plugins"]}
+    gone = set(replaced or ())
+    for m in (lo.mods or []):
+        if m.name in gone:
+            drop |= {p.lower() for p in (m.plugins or [])}
+    drop |= {n.lower() for n in gone}  # a plain Plugins.txt: replaced holds plugin names
+    lines = [ln for ln in sfmodcheck.plugins_txt_lines(lo) if ln.startswith("#") or ln.lstrip("*").lower() not in drop]
+    seen = set()
+    for p in build["plugins"]:
+        if p["copy"] and p["name"].lower() not in seen:
+            seen.add(p["name"].lower())
+            lines.append("*" + p["name"])
+    return lines, drop
+
+
+def _shared_records(cj, lo, build_names):
+    """[{mod, plugin, records, forwardable, choice, no_effect, examples}] from conflicts.json's lost entries between a
+    build plugin and an installed mod plugin (official files, other build plugins and the navmesh info map left out),
+    most records first."""
+    from . import inputs, records
+    official = {(e.get("FileName") or "").lower() for e in cj.get("loadOrder") or [] if e.get("Official")}
+
+    def is_off(name, flag=False):
+        n = name.lower()
+        return bool(flag) or n in official or inputs.is_official(name) or inputs.modcheck_official(n)
+    modof = {}
+    for m in (lo.mods or []):
+        for p in (m.plugins or []):
+            modof.setdefault(p.lower(), m.name)
+    per = {}  # installed plugin (lower) -> {fk: {"labels": set, "edid", "type"}}
+    names = {}
+    for e in cj.get("lost") or []:
+        loser, winner = e.get("Loser") or "", e.get("Winner") or ""
+        lb, wb = loser.lower() in build_names, winner.lower() in build_names
+        if lb == wb or records.is_navi(e.get("RecordType")):
+            continue
+        other, other_flag = (winner, e.get("WinnerOfficial")) if lb else (loser, e.get("LoserOfficial"))
+        if is_off(other, other_flag):
+            continue
+        key = other.lower()
+        names.setdefault(key, other)
+        fk = e.get("formKey") or ""
+        rec = per.setdefault(key, {}).setdefault(fk, {"labels": set(), "edid": e.get("EditorID"),
+                                                       "type": e.get("RecordType") or ""})
+        rec["labels"] |= {records.label(f) for f in e.get("Fields") or []}
+    out = []
+    for key, recs in per.items():
+        n = {"forwardable": 0, "choice": 0, "no_effect": 0}
+        for r in recs.values():
+            if records.FORWARDABLE in r["labels"]:
+                n["forwardable"] += 1
+            elif records.CHOICE in r["labels"]:
+                n["choice"] += 1
+            else:
+                n["no_effect"] += 1
+        ex = [{"fk": fk, "edid": r["edid"], "type": r["type"]} for fk, r in sorted(recs.items())]
+        out.append(dict({"mod": modof.get(key, names[key]), "plugin": names[key], "records": len(recs),
+                         "examples": ex[:SAMPLES]}, **n))
+    out.sort(key=lambda x: (-x["records"], x["mod"].lower(), x["plugin"].lower()))
+    return out
+
+
+def _records(ctx, build, replaced):
+    """The record check (G02): sf-mod-check conflict with the build's plugins loading last (--extra-data), and the
+    records they share with installed mods as findings. Returns the report.json candidate "records" dict, or None
+    at --depth light."""
+    from . import records
+    args, lo, report = ctx.args, ctx.load_order, ctx.report
+    add = report.add
+    depth = getattr(args, "depth", None) or "medium"
+    if depth == "light":
+        add(Finding("note", SECTION, "--depth light compares file names only, so records the build shares with "
+                    "installed mods weren't checked.", fix="Run without --depth light to compare records too."))
+        return None
+    plugs = [p for p in build["plugins"]]
+    if not plugs:
+        log.info(SECTION, "record check: the build has no plugin, so it has no records")
+        return {"status": "skipped", "why": "the build has no plugin", "program": None, "exit": None,
+                "result_line": None, "file": None, "shared_records": 0, "mods": []}
+    for p in plugs:
+        if not p["copy"]:
+            add(Finding("caution", SECTION, f"The record check left out {p['name']}: its name isn't a plain file name.",
+                        plugins=[p["name"]]))
+    if not any(p["copy"] for p in plugs):
+        return _rec_skip(report, "no plugin of the build has a plain file name")
+    vp = getattr(report, "vortex_profile", None) or {}
+    if vp.get("deployed") is False:
+        return _rec_skip(report, f"Data holds another profile, not {vp.get('name')}, and the check reads the "
+                         "installed mods' plugins there", fix=f"Deploy {vp.get('name')} in Vortex and run again.")
+    prog, err = sfmodcheck.find(args)
+    if not err and prog is None:
+        err = (f"sf-mod-check wasn't found on PATH. Fix: give --sf-mod-check the path of sf-mod-check.exe "
+               f"(download it from {sfmodcheck.RELEASES}).")
+    if not err:
+        err = sfmodcheck.version(prog) or sfmodcheck.too_old(prog)
+    if err:
+        why, fix = _split_fix(err)
+        return _rec_skip(report, why, fix=fix, program=prog.to_dict() if prog else None)
+    pd = prog.to_dict()
+    if not (lo.data and os.path.isdir(lo.data)):
+        return _rec_skip(report, "no Data folder was found, and the check reads the installed mods' plugins there",
+                         fix="Pass --data.", program=pd)
+    _lines, drop = _rec_plugins_txt(lo, build, replaced)
+    hidden = [n for n in records._not_visible(lo) if n.lower() not in drop]
+    if hidden and lo.source == "mo2":
+        return _rec_skip(report, f"{len(hidden)} enabled plugin(s) aren't in {lo.data} (MO2 keeps mods in their own "
+                         "folders, and only programs started from MO2 see them in Data)",
+                         fix="Start sf-load-order from MO2 (add it as an executable) and run candidate there.",
+                         program=pd)
+    work = os.path.join(ctx.work, "candidate")
+    extra = os.path.join(work, "extra")
+    os.makedirs(extra, exist_ok=True)
+    done = set()
+    for p in plugs:
+        if p["copy"] and p["name"].lower() not in done:  # two zips with one plugin name: the first (the archive-name
+            done.add(p["name"].lower())                   # problem already covers the clash)
+            shutil.copyfile(p["copy"], os.path.join(extra, p["name"]))
+    ptxt = os.path.join(work, "plugins.txt")
+    with open(ptxt, "w", encoding="utf-8", newline="\r\n") as f:
+        f.write("\n".join(_lines) + "\n")
+    r = sfmodcheck.run_conflict(prog, ptxt, lo.data, os.path.join(work, "conflict"), getattr(args, "max_memory", None),
+                                timeout=getattr(args, "sf_mod_check_timeout", None) or sfmodcheck.CONFLICT_TIMEOUT,
+                                extra=extra, no_assets=True)
+    kw = {"program": pd, "exit": r.exit, "result_line": r.result}
+    failed = None
+    if getattr(r, "refused", False):
+        failed = (f"sf-mod-check wasn't run: {r.start_error}",
+                  "Give --sf-mod-check the sf-mod-check.exe itself (not the .cmd), or use folders whose names hold "
+                  "none of & | < > ^ % ! \" for the output (--out) and the game.")
+    elif r.start_error:
+        failed = (f"sf-mod-check couldn't be started ({r.start_error})",
+                  "Check the --sf-mod-check path, or reinstall sf-mod-check.")
+    elif r.timed_out:
+        failed = (f"sf-mod-check conflict didn't finish within {int(r.seconds)} seconds and was stopped",
+                  "Run again with --depth light, or install the build and run sf-load-order on the load order.")
+    elif r.exit == 3:
+        failed = (f"sf-mod-check conflict stopped at the memory limit ({r.result or 'RESULT: STOPPED'})",
+                  "Close other programs and run again with a higher --max-memory (or none).")
+    elif r.exit == 2:
+        failed = (f"sf-mod-check conflict couldn't run ({r.result or 'no RESULT line'})", REC_FIX_CONFLICT)
+    elif r.exit != 0:
+        failed = (f"sf-mod-check conflict ended with exit code {r.exit} ({r.result or 'no RESULT line'})",
+                  REC_FIX_CONFLICT)
+    elif not r.conflicts:
+        failed = ("sf-mod-check conflict said it finished but wrote no conflicts.json", REC_FIX_CONFLICT)
+    cj = None
+    if not failed:
+        cj, err = records.load(r.conflicts)
+        if err:
+            failed = _split_fix(err)
+    if failed:
+        add(Finding("caution", SECTION, REC_SKIPPED + failed[0].rstrip(".") + ".", fix=failed[1]))
+        log.info(SECTION, f"record check failed: {failed[0]}")
+        return dict({"status": "failed", "why": failed[0], "file": None, "shared_records": 0, "mods": []}, **kw)
+    names = {p["name"].lower() for p in plugs if p["copy"]}
+    mods = _shared_records(cj, lo, names)
+    loaded = sum(1 for e in cj.get("loadOrder") or [] if not e.get("Official")
+                 and (e.get("FileName") or "").lower() not in names)
+    for m in mods:
+        who = m["mod"] if m["mod"].lower() == m["plugin"].lower() else f"{m['mod']} ({m['plugin']})"
+        ex = ", ".join(f"{x['edid'] or x['fk']} ({x['type']})" for x in m["examples"])
+        data = dict({"kind": "shared-records"}, **m)
+        if m["forwardable"] or m["choice"]:
+            add(Finding("caution", SECTION, f"This build changes {m['records']} record(s) that {who} also changes. "
+                        f"Loading after it, the build wins them, so {m['mod']}'s changes to them are lost: "
+                        f"{m['forwardable']} with fields a conflict patch can forward (Forwardable), {m['choice']} "
+                        f"where both mods changed the same field (Choice). Examples: {ex}.",
+                        fix="For Forwardable fields, build a conflict patch (sf-mod-check patch) after installing the "
+                            "build; for Choice fields, decide which mod should win and order the plugins so it loads "
+                            "last.", plugins=[m["plugin"]], data=data))
+        else:
+            add(Finding("note", SECTION, f"This build changes {m['records']} record(s) that {who} also changes, with "
+                        f"no difference that matters (No effect). Examples: {ex}.", plugins=[m["plugin"]], data=data))
+    if not mods:
+        add(Finding("note", SECTION, "The build's plugins share no changed records with the installed mods "
+                    f"(sf-mod-check conflict, {loaded} mod plugin(s) loaded)."))
+    total = sum(m["records"] for m in mods)
+    log.info(SECTION, f"record check: {total} shared record(s) with {len(mods)} installed plugin(s), {loaded} mod "
+                      f"plugin(s) loaded")
+    return dict({"status": "done", "why": None, "file": r.conflicts, "shared_records": total, "mods": mods}, **kw)
+
+
 def run(ctx, zips):
     """Fills ctx.report (findings in section "candidate") and returns the report.json "candidate" dict.
     Raises CandidateError when a zip can't be read."""
@@ -569,6 +846,7 @@ def run(ctx, zips):
                     "mod, so a master's loose file counts as shared with the Data folder unless one of the master's "
                     "archives ships the same path.",
                     fix="Use --mo2 or --vortex-profile to compare mod by mod."))
+    rec = _records(ctx, build, replaced)
     heavy = None
     if depth == "heavy":
         heavy = _heavy(ctx, build, report)
@@ -581,4 +859,4 @@ def run(ctx, zips):
             "build_paths": len(build_paths), "shared": len(shared),
             "findings": {lv: sum(1 for f in report.findings if f.section == SECTION and f.level == lv)
                          for lv in ("problem", "caution", "note")},
-            "heavy": heavy}
+            "heavy": heavy, "records": rec}

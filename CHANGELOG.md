@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.2.3 (not released yet)
+
+### What's new
+
+`candidate` now checks the records a new build shares with the installed mods, not only its files. No option or report.json key was renamed or removed; new keys were added.
+
+- At `--depth medium` (the default) and `heavy`, `candidate` runs `sf-mod-check conflict` with the build's plugins loading last, where a new mod lands, and the installed copy of the build left out. The build's plugins are read from a copy in `<out>\work\candidate\extra` (`--extra-data`), and the run checks records only (`--no-assets`), since the file comparison already covers the build's files.
+- For each installed mod whose records the build also changes, one finding says how many records, and how many of them have fields a conflict patch can forward (Forwardable) or fields both mods changed (Choice). That is a caution; a mod whose shared records differ in nothing that matters (No effect) gets a note. Up to five records are named as examples. Bethesda's records that the build overrides, and the navmesh info map, aren't reported.
+- When the check can't run, one caution says why and names the fix: sf-mod-check not found or older than 0.8.0, no Data folder, a Vortex profile that isn't deployed, or an MO2 source run from outside MO2 (sf-mod-check then can't see MO2's mods). A run that fails is one caution with sf-mod-check's RESULT line. At `--depth light` a note says the record check didn't run.
+- `candidate` takes `--max-memory <GB>`, passed to `sf-mod-check conflict`.
+- report.json: `candidate.records` (null at `--depth light`) with `status` (`done`, `skipped` or `failed`), `why`, `program`, `exit`, `result_line`, `file`, `shared_records` and `mods` (each with `mod`, `plugin`, `records`, `forwardable`, `choice`, `no_effect` and `examples`). The findings have kind `shared-records`.
+- `candidate` reads `.7z` and `.rar` builds through 7-Zip's `7z.exe` (found on PATH or in Program Files-Zip). Python stays standard library only; without 7-Zip the run stops with exit 2 and names the fix. A member path that is absolute or holds `..` stops the run. report.json: each `candidate.zips[]` entry has `format` (`zip`, `7z` or `rar`).
+- A load order whose `StarfieldCustom.ini` has `sTestFile` lines gets one caution: the game (and MO2) load those files and skip Plugins.txt, so the reported order may not be what the game loads. For an MO2 profile that uses local INIs, the profile's own copy is read.
+- HOW-TO-APPLY.txt for a plain Plugins.txt now has a part for players who use only the game's Creations menu, and the README explains it.
+- For an MO2 source with official plugins MO2 2.5.2 doesn't pin (Shattered Space, Terran Armada and so on), one caution and one HOW-TO-APPLY step say to check they are still ticked in MO2's Plugins tab.
+- When every merged-patch manifest found is from the old patch_sources.py, the `patches` list in report.json has one `cannot check` entry per manifest instead of being empty.
+- A failed `--clashes` file now reads "couldn't be used" in the report, not "was failed".
+- README: the line about who writes Plugins.txt is exact for MO2, and a Traps entry says MO2's view also holds the real `Documents\My Games\Starfield\Data` folder, which this tool doesn't read.
+
+### Behavior change
+
+- At `--depth medium` a `candidate` run now takes as long as one `sf-mod-check conflict` run (about 2 minutes on a 150-plugin load order), not seconds. `--depth light` keeps the old speed and compares file names only.
+- A `candidate` run without sf-mod-check, or under MO2 started from outside MO2, now has one more caution, saying the record check didn't run.
+
+### Example
+
+The `candidate` Example from the README, rebuilt from its made-up files. Its second caution says the record check didn't run, because sf-mod-check can't see MO2's mods unless sf-load-order is started from MO2:
+
+    > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
+    sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
+
+### Docs
+
+- `tests\test_doc_examples.py` checks the `candidate` Example in the README and in the newest CHANGELOG entry only; older entries show what their release printed.
+
 ## 0.2.2 (2026-11-23)
 
 ### What's new

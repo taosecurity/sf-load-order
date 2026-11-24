@@ -507,7 +507,7 @@ def from_vortex_profile(args, env, drives, registry):
         n = len(vp["extra_plugins"]) + len(vp["extra_mods"])
         if getattr(args, "zips", None) is not None:  # candidate: it compares the build with the staging folders
             what = (". So the build is compared with this profile's mods in their staging folders, not with Data, "
-                    "and the cleaning check (--depth heavy) doesn't run.")
+                    "and the record check and the cleaning check (--depth heavy) don't run.")
         else:
             what = (". So only the plugin names and the known clashes were checked: the order, patch, archive, "
                     "loose-file, mod-rule, record and recommended-order checks were skipped, since they read the "
@@ -708,8 +708,84 @@ def read(args, env=None, drives=None, registry=None):
     vp = getattr(lo, "_vortex_profile", None) or {}
     # Data holds another profile: no check reads the mod plugins (cli.NEEDS_DEPLOYED), so their headers aren't read
     plugin_header.fill(lo, official_only=vp.get("deployed") is False)
+    extra = list(extra) + test_files(lo, env)
     lo._inputs_extra = extra  # not a dataclass field, so report.json never sees it; findings() returns it
     return lo, None
+
+
+def _ini_test_files(path):
+    """The sTestFile1..10 values in the [General] section of an INI file, in order; [] when none or unreadable."""
+    try:
+        with open(path, encoding="utf-8-sig", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError as e:
+        log.info(SECTION, f"can't read {path}: {e}")
+        return []
+    found = {}
+    section = None
+    for line in lines:
+        t = line.strip()
+        if t.startswith("[") and t.endswith("]"):
+            section = t[1:-1].strip().lower()
+        elif section == "general" and "=" in t and not t.startswith((";", "#")):
+            key, _eq, val = t.partition("=")
+            m = re.match(r"^stestfile(\d+)$", key.strip().lower())
+            if m and val.strip():
+                found[int(m.group(1))] = val.strip()
+    return [found[k] for k in sorted(found) if 1 <= k <= 10]
+
+
+def test_files(lo, env=None):
+    """One caution when StarfieldCustom.ini has sTestFile lines: the game (and MO2) load those files and skip
+    Plugins.txt. The INI is the MO2 profile's own copy when the profile uses local INIs, else the one in
+    Documents\\My Games\\Starfield (also under OneDrive). [] when there is none."""
+    env = os.environ if env is None else env
+    name = "StarfieldCustom.ini"
+    candidates = []
+    pt = lo.files.get("plugins_txt")
+    if lo.source == "mo2" and pt:
+        pdir = os.path.dirname(pt)
+        local = False
+        try:
+            with open(os.path.join(pdir, "settings.ini"), encoding="utf-8-sig", errors="replace") as f:
+                local = re.search(r"^\s*LocalSettings\s*=\s*true\s*$", f.read(), re.I | re.M) is not None
+        except OSError:
+            pass
+        if local:
+            candidates.append(os.path.join(pdir, name))
+    if not candidates:
+        for var in ("USERPROFILE", "OneDrive"):
+            base = env.get(var)
+            if base:
+                docs = base if var == "OneDrive" else os.path.join(base, "Documents")
+                if var == "OneDrive":
+                    docs = os.path.join(base, "Documents")
+                candidates.append(os.path.join(docs, "My Games", "Starfield", name))
+    out = []
+    for ini in candidates:
+        if not os.path.isfile(ini):
+            continue
+        plugins = _ini_test_files(ini)
+        if plugins:
+            out.append(Finding(
+                "caution", SECTION, f"{ini} has sTestFile lines ({', '.join(plugins)}), so the game (and MO2) load "
+                "those files and skip Plugins.txt: the order this report checks may not be what the game loads.",
+                fix=f"Remove the sTestFile lines from {ini} and use Plugins.txt (or your mod manager) for the load "
+                "order.", plugins=plugins, data={"kind": "stestfile", "ini": ini, "plugins": plugins}))
+            break
+    return out
+
+
+MO2_PINNED = {"starfield.esm", "constellation.esm", "oldmars.esm", "blueprintships-starfield.esm", "sfbgs007.esm",
+              "sfbgs008.esm", "sfbgs006.esm", "sfbgs003.esm"}  # the official plugins MO2 2.5.2 pins
+
+
+def mo2_unpinned_officials(lo):
+    """For an MO2 source: the installed official plugins (names as on disk) that MO2 2.5.2 doesn't pin, so a plugins.txt
+    that leaves them out can untick them. [] for any other source."""
+    if lo.source != "mo2":
+        return []
+    return [p.name for p in lo.plugins if p.official and p.enabled and p.path and p.name.lower() not in MO2_PINNED]
 
 
 def findings(lo):

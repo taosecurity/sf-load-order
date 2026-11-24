@@ -279,5 +279,21 @@ class LooseWording(unittest.TestCase):
         self.assertIn("0 pairs of mods ship the same paths", text)
 
 
+class ClashesWording(unittest.TestCase):
+    """0.2.3: a failed --clashes file "couldn't be used", not "was failed"."""
+
+    def lines(self, status):
+        parts = {"clashes": {"status": status, "why": "bad json"}}
+        ctx = types.SimpleNamespace(
+            report=types.SimpleNamespace(sections={"clashes": {"status": "done", "parts": parts}}),
+            results={}, load_order=None)
+        return " ".join(report._summary_lines(ctx, "clashes"))
+
+    def test_failed_and_skipped(self):
+        self.assertIn("Your --clashes file couldn't be used: Bad json.", self.lines("failed"))
+        self.assertNotIn("was failed", self.lines("failed"))
+        self.assertIn("Your --clashes file was skipped: Bad json.", self.lines("skipped"))
+
+
 if __name__ == "__main__":
     unittest.main()

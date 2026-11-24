@@ -217,6 +217,10 @@ def run(ctx):
         manifests = [x for x in manifests if x[0] != man]
     log.info(SECTION, f"merged patches: {len(manifests)} manifest(s) found, {len(old)} old")
     if not manifests:
+        if old:  # every manifest found is old: say so in the patches list too, not just in a finding
+            why = ("its manifest was written by the old patch_sources.py, which sf-mod-check patch check can't read "
+                   "(rebuild the patch with sf-mod-check 0.15.0 or later)")
+            return [_entry(_load(m)["patch"], m, 2, [], why=why) for m in old], {"status": "done", "manifests": 0}
         return [], {"status": "done", "manifests": 0}
     if not lo.data:
         return _not_checked("no Data folder was found, so sf-mod-check has nothing to read (pass --data)")

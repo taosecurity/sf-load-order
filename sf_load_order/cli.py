@@ -99,15 +99,19 @@ def candidate_parser():
                     "order before installing it: script paths other mods also ship, shared files with different "
                     "content, and paths two parts of the build both ship. Reads only; writes only to --out.",
         allow_abbrev=False)
-    p.add_argument("zips", metavar="ZIP", nargs="+", help="the build's .zip file(s); several are the parts of one "
+    p.add_argument("zips", metavar="ZIP", nargs="+", help="the build's .zip file(s) (or .7z or .rar, read "
+                                                          "through 7-Zip's 7z.exe); several are the parts of one "
                                                           "build (one plugin each)")
     _source_options(p)
     chk = p.add_argument_group("checks")
     chk.add_argument("--depth", choices=DEPTHS, default=None,
-                     help="light: names only. medium (default): compares the contents of shared files. heavy: adds "
-                          "the cleaning check (sf-mod-check check on each build plugin; its masters must be in Data)")
+                     help="light: names only. medium (default): compares the contents of shared files, and the "
+                          "records the build shares with installed mods (sf-mod-check conflict). heavy: adds the "
+                          "cleaning check (sf-mod-check check on each build plugin; its masters must be in Data)")
     chk.add_argument("--sf-mod-check", metavar="EXE",
-                     help="the sf-mod-check program, for --depth heavy (default: found on PATH)")
+                     help="the sf-mod-check program, for the record check and --depth heavy (default: found on PATH)")
+    chk.add_argument("--max-memory", metavar="GB", type=float, default=None,
+                     help="passed to sf-mod-check conflict (the record check)")
     _state_options(chk)
     _output_options(p, "the report files")
     return p

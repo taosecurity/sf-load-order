@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -82,7 +82,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -108,12 +108,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.2.2.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.2.2.zip SHA256`.
+2. Download `sf-load-order-0.2.3.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.2.3.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.2.2 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.2.3 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -466,6 +466,19 @@ Files written to the report folder:
 
 The files are written even when nothing moves; they then equal your current order, and HOW-TO-APPLY.txt says so.
 
+**If you use only the game's Creations menu** (no mod manager), the game itself writes Plugins.txt: at every start
+and whenever you change the order in Creations. In the test on the
+[facts page](https://taosecurity.github.io/starfield-load-order-facts/) the start-up rewrite kept every plugin line in
+its place, so copying `plugins.txt` in with the game closed works. If you would rather not copy a file over it,
+HOW-TO-APPLY.txt also gives the in-game route: open Creations, then Load Order, and move each Creation until the list
+matches the mod lines of `plugins.txt`. Pick one place to manage the order, because a later change in Creations
+replaces what you copied.
+
+**If you use MO2**, the `plugins.txt` the tool writes leaves the official plugins out. MO2 2.5.2 pins only eight of
+them, so after you copy the files, check in MO2's Plugins tab that Shattered Space, Terran Armada and the other
+official plugins are still ticked. The report has a caution and HOW-TO-APPLY.txt a step when your load order has such
+a plugin. (This comes from reading MO2's source, not from a run.)
+
 ## Checking a new mod build
 
 `sf-load-order candidate <zip> [<zip> ...]` checks a new build before you install it: the zips are the parts of one
@@ -481,12 +494,14 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.2.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
-RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
-The note names OldShipMod as the older copy left out. The caution says the build overrides two files of CoreTools
-with different content; it is a caution, not a problem, because overriding the mod a build is built on is usual.
+The note names OldShipMod as the older copy left out. One caution says the build overrides two files of CoreTools
+with different content; it is a caution, not a problem, because overriding the mod a build is built on is usual. The
+other caution says the records weren't checked: run from the command line, sf-mod-check can't see MO2's mods
+(start sf-load-order from MO2 for that check).
 
 | Finding | Level |
 |---|---|
@@ -499,12 +514,29 @@ with different content; it is a caution, not a problem, because overriding the m
 | Files that can't be compared, or `--depth light` (names only) | caution |
 | Build archives no plugin of the build loads, a fomod installer, an installed archive that can't be read | caution |
 | Files in a fomod installer's option folders (such as `00 Core\`): not compared, since where they land depends on the installer's choices | caution (counted in `not_compared`) |
+| Records the build changes that an installed mod also changes, with fields a conflict patch can forward (Forwardable) or fields both changed (Choice) | caution, one per installed mod (kind `shared-records`) |
+| Records shared with an installed mod that differ in nothing that matters (No effect) | note (kind `shared-records`) |
+| The record check couldn't run (no sf-mod-check, no Data folder, a Vortex profile that isn't deployed, MO2 started from outside MO2) or failed | caution |
+| No shared records, or `--depth light` (the record check doesn't run) | note |
+
+At `--depth medium` (the default) and `heavy` it also checks records: it runs `sf-mod-check conflict` (0.8.0 or
+newer) on the load order with the build's plugins added at the end, where a new mod lands, and the installed
+copy of the build left out. The build's plugins are read from `<out>\work\candidate\extra` (`--extra-data`), and
+only records are compared (`--no-assets`). For each installed mod whose records the build also changes, one
+finding gives the count, how many are Forwardable or Choice, and up to five examples. Bethesda's records the
+build overrides aren't reported. Under MO2, sf-mod-check sees the mods only when sf-load-order is started from
+MO2; otherwise the record check is skipped with a caution. `--max-memory <GB>` is passed to `conflict`.
 
 At `--depth heavy` it also runs `sf-mod-check check` on each plugin of the build: deleted references are a problem,
 ITMs and errors are cautions. It reads each plugin's masters from the Data folder, so a plugin whose master is
 another part of the same build is skipped with a caution (install the build and run `sf-mod-check check` on it).
-Output it can't read is a caution, never "nothing to clean". A `.7z` or `.rar`, a missing file or a file that isn't a zip stops the run with exit 2.
-`--strict` exits 1 when there is a problem. Records the build shares with other mods aren't checked yet.
+Output it can't read is a caution, never "nothing to clean".
+
+A `.7z` or `.rar` is read through 7-Zip's `7z.exe` when it is installed (on PATH or in Program Files\7-Zip); the
+files are unpacked into `<out>\work\candidate\unpacked` and `report.json` names the format of each zip (`zip`,
+`7z` or `rar`). A member path that is absolute or holds `..` stops the run. Without 7-Zip, or with a missing file or
+a file that isn't an archive, the run stops with exit 2 and the message names the fix.
+`--strict` exits 1 when there is a problem.
 `report.json` has a `candidate` key (see below) and shows only the inputs and candidate sections.
 
 ## Depth
@@ -515,6 +547,10 @@ Output it can't read is a caution, never "nothing to clean". A `.7z` or `.rar`, 
 | `medium` | Adds record conflicts through `sf-mod-check conflict`. This is the default. Without sf-mod-check the record section is skipped with how to get it, which is the same as light. | A few minutes on a big load order (it reads every plugin). |
 | `heavy` | Adds `sf-mod-check check` on each enabled mod plugin, for identical-to-master records (ITMs) and deleted references. | Several seconds per plugin. |
 
+For `candidate`, `light` compares file names only (seconds), `medium` compares file contents and runs one
+`sf-mod-check conflict` for the records the build shares (the same few minutes as a normal medium run), and `heavy`
+adds `sf-mod-check check` on each plugin of the build.
+
 `--max-memory <GB>` is passed to `sf-mod-check conflict`, which stops cleanly at that limit. sf-mod-check is
 stopped if `conflict` runs longer than 30 minutes; for a very large load order, run it yourself and give its
 `conflicts.json` with `--conflicts`.
@@ -523,7 +559,7 @@ stopped if `conflict` runs longer than 30 minutes; for a very large load order, 
 
 These are the options `.\sf-load-order.cmd --help` lists. `.\sf-load-order.cmd candidate --help` lists the ones
 `candidate` takes: the zips, the load order and `--vortex-*` options, `--data`, `--depth`, `--sf-mod-check`,
-`--state`, `--no-state` and the output options, with the same meanings.
+`--max-memory`, `--state`, `--no-state` and the output options, with the same meanings.
 
 | Option | Meaning |
 |---|---|
@@ -599,7 +635,7 @@ New in 0.2.0 (nothing was renamed):
 | `vortex_profile` | With `--vortex-profile`: `name`, `stamp`, `files` (modlist, loadorder, plugins) and the deployed check (`deployed`, `extra_plugins`, `extra_mods`, `missing_plugins`, `plugins_txt_matches`). `null` for other sources. |
 | `patches` | Merged patches: a list of `{patch, manifest, state, level, rebuild, reasons, checked, result, findings}` (`state` is `up to date`, `rebuild`, `not enabled` or `cannot check`; `smc_state` is sf-mod-check's own word), `[]` when no manifest was found, or `{"not_checked": why}`. |
 | `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, differ, unknown, winner, deployed, deployed_from, rule, overrides, sample}`; `deployed_from` is `record`, `data` or null), `no_shared`, `unmatched` and `findings` (counts). |
-| `candidate` | `candidate` runs: `zips` (each with `path`, `files`, `loose`, `archives`, `plugins`, `fomod` and `not_compared`), `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`) and `heavy`. `null` in a normal run. |
+| `candidate` | `candidate` runs: `zips` (each with `path`, `files`, `loose`, `archives`, `plugins`, `fomod` and `not_compared`), `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`), `heavy` and `records` (0.2.3; `null` at `--depth light`: `status` `done`, `skipped` or `failed`, `why`, `program`, `exit`, `result_line`, `file` (the conflicts.json), `shared_records`, and `mods`, each with `mod`, `plugin`, `records`, `forwardable`, `choice`, `no_effect` and up to five `examples` with `fk`, `edid` and `type`). `null` in a normal run. |
 
 The "files its records use aren't installed" findings count the files by kind (script, model, mesh, material,
 texture, sound) in their text, and their `data` has a `kinds` count.
@@ -632,10 +668,16 @@ before you post it.
 - **Vortex keeps the archive's file date.** When Vortex installs an update, the plugin keeps the date stored in the
   mod's download, which can be older than the file it replaced. So a date alone doesn't show which copy is newer:
   sf-load-order compares size and date together.
-- **Plugins.txt is what the game reads.** Vortex and MO2 write it for you when they deploy or start the game. A
-  Vortex export made before you deployed, or an old MO2 profile, can differ from what the game loads. Export again
+- **Plugins.txt is what the game reads.** Vortex writes the game's Plugins.txt when it deploys. MO2 keeps its own
+  `plugins.txt` in the profile, rewrites it whenever you change the plugin list, and shows it to the game in place
+  of the real file when you start the game from MO2. A Vortex export made before you deployed, or an old MO2
+  profile, can differ from what the game loads. Export again
   after each change, and don't copy a plugins.txt into the game folder while a mod manager manages it (it rewrites
   the file).
+- **MO2's view also holds one folder this tool doesn't read.** MO2 builds the Data folder it shows the game from
+  the real Data folder, each enabled mod and Overwrite, and also the real `Documents\My Games\Starfield\Data`
+  folder. sf-load-order doesn't read that last one (most setups keep nothing in it), so a file kept only there is
+  missing from its loose-file and record checks.
 - **MO2 record checks need sf-mod-check started from MO2.** MO2 keeps each mod in its own folder and shows them to
   the programs it starts through a virtual Data folder. Run from outside MO2, sf-mod-check can't see your mods, and
   the record section says so. Either add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and start it
