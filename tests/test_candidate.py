@@ -655,7 +655,7 @@ class Records(unittest.TestCase):
         rec = j["candidate"]["records"]
         self.assertEqual(rec["not_loaded"], ["Needs.esm"])
         texts = [f["text"] for f in j["findings"]]
-        self.assertTrue(any("didn't load Needs.esm (its master(s) Framework.esm aren't installed)" in t
+        self.assertTrue(any("didn't load Needs.esm (its master(s) Framework.esm aren't installed or aren't enabled)" in t
                             for t in texts))
         self.assertFalse(any("share no changed records" in t for t in texts))
 

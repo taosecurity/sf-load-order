@@ -440,6 +440,15 @@ class TestFile(Base):
         write(self.ini, "[General]\nsStartingConsoleCommand=x\nsTestFile1=\n")
         self.assertEqual(self.caution(self.ok("--plugins-txt", self.pt, "--data", self.data)), [])
 
+    def test_moved_documents_folder(self):
+        # code review round 4: Windows's Documents folder can be moved to another drive
+        moved = os.path.join(self.t, "D", "Docs")
+        ini = write(os.path.join(moved, "My Games", "Starfield", "StarfieldCustom.ini"), "[General]\nsTestFile1=M.esm\n")
+        lo = self.ok("--plugins-txt", self.pt, "--data", self.data)
+        self.assertEqual(inputs.test_files(lo, self.env), [])
+        got = inputs.test_files(lo, self.env, documents=moved)
+        self.assertEqual([f.data["ini"] for f in got], [ini])
+
     def test_mo2_local_ini(self):
         inst = fixtures.mo2(os.path.join(self.t, "MO2"), "Default", [("M", True, {"ModA.esm": {}})])
         prof = os.path.join(inst, "profiles", "Default")

@@ -757,11 +757,12 @@ def _records(ctx, build, replaced):
         if p["copy"] and p["name"].lower() not in in_lo and p["name"] not in not_loaded:
             not_loaded.append(p["name"])
             absent = [m for m in p["masters"] if m.lower() not in in_lo and m.lower() not in names]
-            why = (f"its master(s) {', '.join(absent)} aren't installed" if absent
+            why = (f"its master(s) {', '.join(absent)} aren't installed or aren't enabled" if absent
                    else "sf-mod-check skipped it")
             add(Finding("caution", SECTION, f"The record check didn't load {p['name']} ({why}), so its records "
                         "weren't compared with the installed mods.",
-                        fix=f"Install {', '.join(absent)} first, then run again." if absent else REC_FIX_CONFLICT,
+                        fix=f"Install and enable {', '.join(absent)} first, then run again." if absent
+                        else REC_FIX_CONFLICT,
                         plugins=[p["name"]]))
     kw["not_loaded"] = not_loaded
     mods = _shared_records(cj, lo, names)

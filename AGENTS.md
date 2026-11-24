@@ -171,8 +171,8 @@ copied in alone leaves the old order in place. The two files the tool writes lis
   (with `--profile`), `--vortex-loadorder` (with `--vortex-staging`, default `%APPDATA%\Vortex\starfield\mods`, and
   optionally `--vortex-modlist`), or `--vortex-profile` (with `--vortex-exports`, `--vortex-stamp`, `--vortex-staging`).
 - For `candidate`: one or more build `.zip` files, and the same source and `--data` options.
-- Read without an option: `StarfieldCustom.ini` in `%USERPROFILE%\Documents\My Games\Starfield` (or under
-  `%OneDrive%\Documents`), or the MO2 profile's own copy when the profile uses local INI files. When it has
+- Read without an option: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (Windows's own Documents
+  folder, even when it's moved to another drive, then `%USERPROFILE%\Documents` and `%OneDrive%\Documents`), or the MO2 profile's own copy when the profile uses local INI files. When it has
   `sTestFile` lines, the game loads those files instead of Plugins.txt, and the report gives one caution (kind
   `stestfile`).
 - The game's Data folder: `--data`, else MO2's gamePath, else Steam (registry and `libraryfolders.vdf`), else Game

@@ -735,11 +735,14 @@ def _ini_test_files(path):
     return [found[k] for k in sorted(found) if 1 <= k <= 10]
 
 
-def test_files(lo, env=None):
+def test_files(lo, env=None, documents=None):
     """One caution when StarfieldCustom.ini has sTestFile lines: the game (and MO2) load those files and skip
     Plugins.txt. The INI is the MO2 profile's own copy when the profile uses local INIs, else the one in
-    Documents\\My Games\\Starfield (also under OneDrive). [] when there is none."""
-    env = os.environ if env is None else env
+    Documents\\My Games\\Starfield: Windows's own Documents folder (documents; looked up in a real run, when env
+    is None), then the one under the user profile and under OneDrive. [] when there is none."""
+    if env is None:
+        env = os.environ
+        documents = paths.shell_documents() if documents is None else documents
     name = "StarfieldCustom.ini"
     candidates = []
     pt = lo.files.get("plugins_txt")
@@ -754,10 +757,12 @@ def test_files(lo, env=None):
         if local:
             candidates.append(os.path.join(pdir, name))
     if not candidates:
-        for var in ("USERPROFILE", "OneDrive"):
-            base = env.get(var)
-            if base:
-                candidates.append(os.path.join(base, "Documents", "My Games", "Starfield", name))
+        docs = [documents] if documents else []
+        docs += [os.path.join(env[v], "Documents") for v in ("USERPROFILE", "OneDrive") if env.get(v)]
+        for d in docs:
+            ini = os.path.join(d, "My Games", "Starfield", name)
+            if os.path.normcase(ini) not in {os.path.normcase(c) for c in candidates}:
+                candidates.append(ini)
     out = []
     for ini in candidates:
         if not os.path.isfile(ini):

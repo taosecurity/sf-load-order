@@ -170,6 +170,19 @@ def _registry_steam():
         return None
 
 
+def shell_documents():
+    """The user's Documents folder as Windows has it (HKCU User Shell Folders "Personal"; it can be moved to
+    another drive), or None (no Windows, no value, no access)."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+            v = winreg.QueryValueEx(k, "Personal")[0]
+        return os.path.normpath(os.path.expandvars(v)) if v else None
+    except (ImportError, OSError):
+        return None
+
+
 def _vdf_tokens(text):
     """Quoted strings (with \\\\ and \\" escapes) and braces from a Valve KeyValues (.vdf) file."""
     i, n = 0, len(text)
