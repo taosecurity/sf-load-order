@@ -150,14 +150,16 @@ def how_to(lo, same, files, estimate=False):
                       "3. Copy both plugins.txt and loadorder.txt from this folder into the profile folder, replacing "
                       "the ones there. MO2 takes the order from loadorder.txt and the on/off marks from plugins.txt, "
                       "so copy both.",
-                      "4. Open MO2 and check the Plugins tab on the right shows the new order.",
-                      "5. To go back, close MO2 and copy your backed-up plugins.txt and loadorder.txt back."]
+                      "4. Open MO2 and check the Plugins tab on the right shows the new order."]
             off = inputs.mo2_unpinned_officials(lo)
+            step = 5
             if off:
-                lines += ["6. Check that " + ", ".join(off) + " " + ("is" if len(off) == 1 else "are") + " still "
+                step = 6
+                lines += ["5. Check that " + ", ".join(off) + " " + ("is" if len(off) == 1 else "are") + " still "
                           "ticked in MO2's Plugins tab, and tick " + ("it" if len(off) == 1 else "them") + " again if "
                           "not. MO2 2.5.2 treats official plugins that it doesn't pin as ordinary plugins, so a "
                           "plugins.txt that doesn't list them can untick them (the 2.5.3 betas pin them at the top)."]
+            lines += [f"{step}. To go back, close MO2 and copy your backed-up plugins.txt and loadorder.txt back."]
         else:
             lines += [f"You use Mod Organizer 2 (profile {prof}), but loadorder.txt couldn't be written (the "
                       "report's Rating findings say why). MO2 takes the order from loadorder.txt, so plugins.txt "

@@ -595,6 +595,26 @@ class Records(unittest.TestCase):
         with open(os.path.join(self.out, "report.txt"), encoding="utf-8") as f:
             self.assertIn("Record check (sf-mod-check conflict): 3 records shared with 2 installed plugins.", f.read())
 
+    def test_dependent_part_given_first(self):
+        # code review round 1: NewPart.esm masters New.esm, so it loads after it whatever order the zips come in
+        self.zips.reverse()
+        self.go(prog=self.fake.write(conflicts=self.cj))
+        self.assertEqual(self.fake.plugins_seen(), ["*Other.esm", "*Third.esm", "*New.esm", "*NewPart.esm"])
+
+    def test_build_loses_records(self):
+        # code review round 1: an installed mod that wins over the build gets the reverse wording
+        self.cj["lost"] = [_lost("000801:Other.esm", "New.esm", "Other.esm", [_field("Name")], edid="OtherNpc"),
+                           _lost("000802:Other.esm", "Other.esm", "New.esm", [_field("Name")], edid="OtherTwo"),
+                           _lost("000803:Third.esm", "New.esm", "Third.esm", [_field("Name")], edid="ThirdThing")]
+        j = self.go(prog=self.fake.write(conflicts=self.cj))
+        fs = {f["data"]["plugin"]: f for f in self.shared(j)}
+        self.assertEqual((fs["Third.esm"]["data"]["build_wins"], fs["Third.esm"]["data"]["build_loses"]), (0, 1))
+        self.assertIn("Third.esm loads after the build and wins them, so the build's changes to them are lost",
+                      fs["Third.esm"]["text"])
+        self.assertNotIn("the build wins them", fs["Third.esm"]["text"])
+        self.assertIn("The build wins 1 of them (Other.esm's changes are lost) and Other.esm wins 1",
+                      fs["Other.esm"]["text"])
+
     def test_nothing_shared(self):
         self.cj["lost"] = []
         j = self.go(prog=self.fake.write(conflicts=self.cj))

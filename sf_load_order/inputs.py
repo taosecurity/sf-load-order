@@ -757,10 +757,7 @@ def test_files(lo, env=None):
         for var in ("USERPROFILE", "OneDrive"):
             base = env.get(var)
             if base:
-                docs = base if var == "OneDrive" else os.path.join(base, "Documents")
-                if var == "OneDrive":
-                    docs = os.path.join(base, "Documents")
-                candidates.append(os.path.join(docs, "My Games", "Starfield", name))
+                candidates.append(os.path.join(base, "Documents", "My Games", "Starfield", name))
     out = []
     for ini in candidates:
         if not os.path.isfile(ini):

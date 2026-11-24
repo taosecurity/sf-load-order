@@ -572,11 +572,18 @@ def _rec_plugins_txt(lo, build, replaced):
             drop |= {p.lower() for p in (m.plugins or [])}
     drop |= {n.lower() for n in gone}  # a plain Plugins.txt: replaced holds plugin names
     lines = [ln for ln in sfmodcheck.plugins_txt_lines(lo) if ln.startswith("#") or ln.lstrip("*").lower() not in drop]
-    seen = set()
+    todo, seen = [], set()
     for p in build["plugins"]:
         if p["copy"] and p["name"].lower() not in seen:
             seen.add(p["name"].lower())
-            lines.append("*" + p["name"])
+            todo.append(p)
+    placed = set()
+    while todo:  # each build plugin after the build plugins it masters, else in the order given
+        ready = [p for p in todo if not ({m.lower() for m in p["masters"]} & seen) - placed] or todo[:1]
+        p = ready[0]
+        todo.remove(p)
+        placed.add(p["name"].lower())
+        lines.append("*" + p["name"])
     return lines, drop
 
 
@@ -608,11 +615,13 @@ def _shared_records(cj, lo, build_names):
         names.setdefault(key, other)
         fk = e.get("formKey") or ""
         rec = per.setdefault(key, {}).setdefault(fk, {"labels": set(), "edid": e.get("EditorID"),
-                                                       "type": e.get("RecordType") or ""})
+                                                       "type": e.get("RecordType") or "", "build_won": wb})
         rec["labels"] |= {records.label(f) for f in e.get("Fields") or []}
     out = []
     for key, recs in per.items():
-        n = {"forwardable": 0, "choice": 0, "no_effect": 0}
+        n = {"forwardable": 0, "choice": 0, "no_effect": 0,
+             "build_wins": sum(1 for r in recs.values() if r["build_won"])}
+        n["build_loses"] = len(recs) - n["build_wins"]
         for r in recs.values():
             if records.FORWARDABLE in r["labels"]:
                 n["forwardable"] += 1
@@ -727,9 +736,16 @@ def _records(ctx, build, replaced):
         who = m["mod"] if m["mod"].lower() == m["plugin"].lower() else f"{m['mod']} ({m['plugin']})"
         ex = ", ".join(f"{x['edid'] or x['fk']} ({x['type']})" for x in m["examples"])
         data = dict({"kind": "shared-records"}, **m)
+        if not m["build_loses"]:
+            side = f"Loading after it, the build wins them, so {m['mod']}'s changes to them are lost"
+        elif not m["build_wins"]:
+            side = f"{m['mod']} loads after the build and wins them, so the build's changes to them are lost"
+        else:
+            side = (f"The build wins {m['build_wins']} of them ({m['mod']}'s changes are lost) and {m['mod']} wins "
+                    f"{m['build_loses']} (the build's changes are lost)")
         if m["forwardable"] or m["choice"]:
             add(Finding("caution", SECTION, f"This build changes {m['records']} record(s) that {who} also changes. "
-                        f"Loading after it, the build wins them, so {m['mod']}'s changes to them are lost: "
+                        f"{side}: "
                         f"{m['forwardable']} with fields a conflict patch can forward (Forwardable), {m['choice']} "
                         f"where both mods changed the same field (Choice). Examples: {ex}.",
                         fix="For Forwardable fields, build a conflict patch (sf-mod-check patch) after installing the "

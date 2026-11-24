@@ -278,8 +278,8 @@ def run(ctx):
                       f"records data {'yes' if rated else 'no'}")
     off = inputs.mo2_unpinned_officials(lo)
     if off:  # A5: a suspicion from MO2's source (2.5.2 pins eight plugins), so a caution, not extra lines
-        _add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so the plugins.txt this tool writes (it leaves "
-             f"official plugins out) can leave {', '.join(off)} unticked in MO2.",
+        _add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so copying in a plugins.txt this tool writes (it "
+             f"leaves official plugins out) can leave {', '.join(off)} unticked in MO2.",
              f"After you copy the files, check in MO2's Plugins tab that {', '.join(off)} "
              f"{'is' if len(off) == 1 else 'are'} still ticked, and tick {'it' if len(off) == 1 else 'them'} if not "
              "(the 2.5.3 betas pin them at the top).", off)
