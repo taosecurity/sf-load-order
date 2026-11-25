@@ -55,37 +55,43 @@ class Guard(unittest.TestCase):
         self.assertTrue(clashes.rx_match(rx, "sfta01.esm"))
         self.assertFalse(clashes.rx_match(rx, "sfta07.esm"))
 
-    def test_nested_repeats_are_refused(self):
+    def test_repeated_groups_are_refused(self):
+        # code review round 4 simplified the guard: only ? may follow a group
         for p in (r"(a+)+", r"(a+)+$", r"(a*)*", r"(x+){2,}", r"((ab)+)*", r"(?:a+)+", r"(a{1,3})+", r"([a-z]+)*",
-                  r"(a|a)*\.esm", r"(a|ab)*c", r"(\w|\d)+\.esm", r"((a|b)c)+"):
-            self.assertIn("repeat", clashes.regex_refusal(p), p)
+                  r"(a|a)*\.esm", r"(a|ab)*c", r"(\w|\d)+\.esm", r"((a|b)c)+", r"(ab)+", r"(a?a?)+b", r"(a{0,2})*b"):
+            self.assertIn("repeated group", clashes.regex_refusal(p), p)
 
     def test_many_open_ended_repeats_are_refused(self):
-        for p in (r"a*a*a*a*a*a*a*a*\.esm", r".*.*.*.*.*.*\.esm", r"a+b+c{2,}", r"x*y*z*"):
+        for p in (r"a*a*a*a*a*a*a*a*\.esm", r".*.*.*.*.*.*\.esm", r"a+b+c{2,}", r"x*y*z*",
+                  r".{0,40}.{0,40}.{0,40}.{0,40}.{0,40}.{0,40}x"):
             self.assertIn("open-ended", clashes.regex_refusal(p), p)
-        for p in (r"a*b*", r".*\.esm", r"a{2,5}b{3}c{1,}"):
+        for p in (r"a*b*", r".*\.esm", r"a{2,5}b{3}c{1,}", r".{0,10}.{0,10}.{0,10}x"):
             self.assertIsNone(clashes.regex_refusal(p), p)
 
-    def test_optional_repeats_count_too(self):
-        # code review round 3: ? and {n,m} are repeats as well (each one doubles the work of a long chain)
-        self.assertIn("repeat", clashes.regex_refusal(r"(a?a?)+b"))
-        self.assertIn("repeat", clashes.regex_refusal(r"(a{0,2})*b"))
-        self.assertIn("repeats", clashes.regex_refusal("a?" * 26 + "a" * 26))
-        self.assertIn("repeats", clashes.regex_refusal("a{0,1}" * 8))
+    def test_too_many_choices_are_refused(self):
+        # ?, {n,m} and | count as choices too: a?a?a?..., a{0,1}... and (a|a)(a|a)... double the work per term
+        self.assertIn("choices", clashes.regex_refusal("a?" * 26 + "a" * 26))
+        self.assertIn("choices", clashes.regex_refusal("a{0,1}" * 8))
+        self.assertIn("choices", clashes.regex_refusal("(a|a)" * 51))
         for p in (r"(?:blueprintships-)?sfta0[1-6]\.esm", r"(?i)abc\.esm", r"(foo|bar)?\.esm", r"a?b?c?\.es[mp]"):
             self.assertIsNone(clashes.regex_refusal(p), p)
 
-    def test_long_backrefs_and_lookbehinds_are_refused(self):
+    def test_long_backrefs_lookbehinds_and_flags_are_refused(self):
         self.assertIn("256", clashes.regex_refusal("a" * 300))
         self.assertIn("back-reference", clashes.regex_refusal(r"(a)\1"))
-        self.assertIn("back-reference", clashes.regex_refusal(r"(?P<x>a)(?P=x)"))
-        self.assertIn("look-behind", clashes.regex_refusal(r"(?<=a)b"))
-        self.assertIn("look-behind", clashes.regex_refusal(r"(?<!a)b"))
+        for p in (r"(?P<x>a)(?P=x)", r"(?<=a)b", r"(?<!a)b", "(?x)(a+#)\n)+b", r"(?s)a"):
+            self.assertIn("(? form", clashes.regex_refusal(p), p)
 
     def test_fine_patterns_pass(self):
-        for p in (r"(a+)?", r"(ab)+", r"a+b*", r"[(]+", r"\(a+\)+", r"foo\.es[mp]", r"(x|y)?z{2}", r"\d+\.esm",
+        for p in (r"(a+)?", r"a+b*", r"[(]+", r"\(a+\)+", r"foo\.es[mp]", r"(x|y)?z{2}", r"\d+\.esm",
                   r"a|b+", r"(foo|bar)\.esm"):
             self.assertIsNone(clashes.regex_refusal(p), p)
+
+    def test_refused_patterns_would_be_slow(self):
+        # the three patterns code review round 4 found would hang; each is refused before it is compiled
+        for p in ("(a|a)" * 51, r".{0,40}" * 6 + "x", "(?x)(a+#)\n)+b"):
+            rx, why = clashes.safe_regex(p)
+            self.assertIsNone(rx, p)
 
     def test_bad_regex_is_refused_not_raised(self):
         rx, why = clashes.safe_regex("(unclosed")

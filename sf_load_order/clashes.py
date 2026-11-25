@@ -550,30 +550,32 @@ def _is_regex(s):
 
 
 # The regex guard (DESIGN-0.3.0.md 2.6). LOOT's entry names and active() arguments may be regular expressions; a
-# slow one (a repeated group that itself repeats, like (a+)+) can take very long on a short name, so every pattern
-# goes through safe_regex() first, and every match through rx_match() (names of at most MAX_MATCH characters).
+# slow one (like (a+)+) can take very long on a short name, so every pattern goes through safe_regex() first, and
+# every match through rx_match() (names of at most MAX_MATCH characters). The guard is deliberately strict and simple
+# (code review round 4 simplified it): LOOT's real Starfield patterns are short names with a [..] class, a \. and at
+# most one optional group, so anything beyond a small budget of choices is refused rather than analysed.
 MAX_PATTERN = 256
 MAX_MATCH = 260
 MAX_REGEX_ENTRIES = 2000      # regex entry names read per LOOT file; the rest are skipped
 MAX_LOOT_BYTES = 20 * 1024 * 1024
-MAX_UNBOUNDED = 2             # open-ended repeats per pattern: two match a 260-character name quickly, more may not
-MAX_REPEATS = 6               # repeats of any kind (*, +, ?, {..}) per pattern: a?a?a?... doubles the work per term
-_QUANT = re.compile(r"\{\d*(,\d*)?\}")
+MAX_CHOICES = 6               # *, +, ?, {..} and | per pattern: each one can double the work of a failed match
+MAX_UNBOUNDED = 2             # of those, open-ended repeats (*, +, {n,} or {n,m} with m over MAX_BOUND)
+MAX_BOUND = 10
+_QUANT = re.compile(r"\{(\d*)(,(\d*))?\}")
+_GROUP_OPEN = ("(?:", "(?i)")  # the only (? forms allowed; any other (look-behind, inline flags such as (?x),
+                               # named groups and their back-references) is refused
 
 
 def regex_refusal(text):
     """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
-    back-reference or look-behind, a group holding a repeat (*, +, ? or {..}) or a | that is itself repeated with
-    *, + or {..} (like (a+)+, (a?a?)+ or (a|ab)*; a group followed by ? is fine), more than MAX_UNBOUNDED open-ended
-    repeats (*, + or {n,}), or more than MAX_REPEATS repeats of any kind, since a*a*a*... and a?a?a?... backtrack
-    for a very long time too."""
+    back-reference, a (? form other than (?: and (?i), a group followed by *, + or {..} (only ? may follow a group),
+    more than MAX_CHOICES choices (*, +, ?, {..} and | together) or more than MAX_UNBOUNDED open-ended repeats."""
     if not isinstance(text, str):
         return "not text"
     if len(text) > MAX_PATTERN:
         return f"longer than {MAX_PATTERN} characters"
-    unbounded = repeats = 0
-    stack = [False]  # per open group: does it hold a repeat (*, +, ? or {..}) or a | anywhere inside?
-    last = None      # what the next quantifier applies to: None, "atom" or ("group", holds_a_repeat)
+    choices = unbounded = 0
+    after_group = False
     i, n = 0, len(text)
     while i < n:
         c = text[i]
@@ -581,7 +583,7 @@ def regex_refusal(text):
             nxt = text[i + 1:i + 2]
             if nxt.isdigit() and nxt != "0":
                 return "a back-reference"
-            i, last = i + 2, "atom"
+            i, after_group = i + 2, False
             continue
         if c == "[":
             j = i + 1
@@ -591,46 +593,39 @@ def regex_refusal(text):
                 j += 1
             while j < n and text[j] != "]":
                 j += 2 if text[j] == "\\" else 1
-            i, last = j + 1, "atom"
+            i, after_group = j + 1, False
             continue
         if c == "(":
-            if text.startswith(("(?<=", "(?<!"), i):
-                return "a look-behind"
-            if text.startswith("(?P=", i):
-                return "a back-reference"
-            stack.append(False)
-            i, last = i + 1, None
+            if text.startswith("(?", i):
+                form = next((f for f in _GROUP_OPEN if text.startswith(f, i)), None)
+                if form is None:
+                    return "a (? form other than (?: or (?i) (look-behinds, inline flags and named groups aren't allowed)"
+                i, after_group = i + len(form), False
+                continue
+            i, after_group = i + 1, False
             continue
         if c == ")":
-            inner = stack.pop() if len(stack) > 1 else False
-            if inner:
-                stack[-1] = True
-            i, last = i + 1, ("group", inner)
+            i, after_group = i + 1, True
             continue
         q = _QUANT.match(text, i) if c == "{" else None
-        if c in "*+?" or q:
-            if last is None:  # ? right after ( is group syntax, like (?: or (?i)
-                i += 1
-                continue
-            repeats += 1
-            if repeats > MAX_REPEATS:
-                return f"more than {MAX_REPEATS} repeats (*, +, ? or {{..}}; it can take very long to match)"
-            if c != "?" and isinstance(last, tuple) and last[1]:
-                return "a repeated group that itself repeats or holds a | (it can take very long to match)"
-            if c in "*+" or (q and q.group(1) == ","):
+        if c in "*+?|" or q:
+            choices += 1
+            if choices > MAX_CHOICES:
+                return f"more than {MAX_CHOICES} choices (*, +, ?, {{..}} and | together; it can take very long to match)"
+            if after_group and c != "?" and c != "|":
+                return "a repeated group (only ? may follow a group; it can take very long to match)"
+            open_ended = c in "*+" or (q and q.group(2) is not None and (not q.group(3) or int(q.group(3)) > MAX_BOUND))
+            if open_ended:
                 unbounded += 1
                 if unbounded > MAX_UNBOUNDED:
-                    return (f"more than {MAX_UNBOUNDED} open-ended repeats (*, + or {{n,}}; it can take very long "
-                            "to match)")
-            stack[-1] = True
+                    return (f"more than {MAX_UNBOUNDED} open-ended repeats (*, +, {{n,}} or {{n,m}} with m over "
+                            f"{MAX_BOUND}; it can take very long to match)")
             i = q.end() if q else i + 1
-            if i < n and text[i] in "?+":
-                i += 1
-            last = "atom"
+            if c != "|" and i < n and text[i] in "?+":
+                i += 1  # lazy or possessive form of the same repeat
+            after_group = False
             continue
-        if c == "|":
-            stack[-1] = True
-        i, last = i + 1, "atom"  # a plain character, |, ^ or $
+        i, after_group = i + 1, False  # a plain character, ^, $ or .
     return None
 
 

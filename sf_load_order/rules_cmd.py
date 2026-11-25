@@ -539,8 +539,13 @@ def cmd_accept(args, env=None):
 def _own_graph(rf, source):
     """A file's rules alone in a graph (every plugin it names enabled, no game rules): its rejected edges are the
     rules the file's earlier rules make impossible."""
+    from .inputs import OFFICIAL_ORDER
     from .model import LoadOrder, Plugin
-    names = sorted({n for r in rf.rules for n in rulesfile.names_in(r)}, key=str.lower)
+
+    def game_first(n):  # official plugins in the game's own order (code review round 4), the rest by name
+        low = n.lower()
+        return (0, OFFICIAL_ORDER.index(low), low) if low in OFFICIAL_ORDER else (1, 0, low)
+    names = sorted({n for r in rf.rules for n in rulesfile.names_in(r)}, key=game_first)
     lo = LoadOrder(source="plugins.txt", plugins=[Plugin(n, True, masters=[]) for n in names])
     bl = sortgraph._Builder(lo, names, "name")
     bl.rules(rf, source, 4 if source == "user" else 6)

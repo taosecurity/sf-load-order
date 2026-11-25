@@ -856,9 +856,10 @@ before you post it.
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
   run sf-load-order on Windows, or such a mod shows no folder and its loose files aren't checked.
 - **LOOT's regular-expression names are checked before use.** A pattern over 256 characters, a back-reference, a
-  look-behind, a repeat of a group that holds a repeat or a `|` (`(a+)+`, `(a?a?)+`, `(a|ab)*`), more than two
-  open-ended repeats (`*`, `+` or `{n,}`, as in `.*.*.*\.esm`) or more than six repeats of any kind (`?` and
-  `{n,m}` included) is refused with one caution, because it could make the match run for hours. A masterlist's real patterns all pass. Our own rules files take no pattern at all.
+  `(?` form other than `(?:` and `(?i)` (look-behinds, inline flags, named groups), a group followed by `*`, `+` or
+  `{..}` (`(a+)+`, `(ab)+`; only `?` may follow a group), more than six choices in all (`*`, `+`, `?`, `{..}` and
+  `|` together) or more than two open-ended repeats (`*`, `+`, `{n,}` or `{n,m}` with m over 10, as in
+  `.*.*.*\.esm`) is refused with one caution, because it could make the match run for hours. A masterlist's real patterns all pass. Our own rules files take no pattern at all.
 - **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
   after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an
   update of the mod made for that file does. The report says so instead of suggesting a patch (see

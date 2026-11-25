@@ -225,6 +225,15 @@ class CheckCmd(Base):
         self.assertIn("entry 2 about ExampleB.esm is stale", out)
         self.assertIn("Starfield.esm is an official plugin", out)
 
+    def test_a_true_rule_between_official_plugins_is_fine(self):
+        # code review round 4: the file's own graph places official plugins in the game's order, not by name
+        r = self.rules([{"plugin": "ShatteredSpace.esm", "after": ["Starfield.esm"]}])
+        code, out = run("rules", "check", "--rules", r)
+        self.assertEqual(code, 0, out)
+        self.assertIn("OK: nothing to fix", out)
+        r = self.rules([{"plugin": "Starfield.esm", "after": ["ShatteredSpace.esm"]}])
+        self.assertEqual(run("rules", "check", "--rules", r)[0], 1)
+
     def test_a_path_with_spaces(self):
         folder = os.path.join(self.tmp, "my rules folder")
         os.makedirs(folder)
