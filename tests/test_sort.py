@@ -271,6 +271,14 @@ plugins:
         self.assertEqual(j["sort"]["moved"], ["ExampleB.esm"])
         self.assertEqual(j["sort"]["moves"][0]["source"], "patch")
 
+    def test_a_manifest_with_bad_records_is_skipped(self):
+        man = self.write("patch-sources.json", {
+            "schema": 1, "patch": {"name": "ExampleB.esm"}, "loadOrder": {"plugins": ["Starfield.esm"]}, "records": 3})
+        code, _out, j = self.sort("--patch-sources", man)
+        self.assertEqual(code, 0)
+        self.assertEqual(j["sort"]["sources"].get("patch", 0), 0)
+        self.assertIsNotNone(j["sort"]["order"])
+
 
 class TypeRuleAndLoop(Base):
     PLUGINS = {"ExampleE.esp": {}, "ExampleA.esm": {}, "ExampleB.esm": {}}
@@ -324,7 +332,11 @@ class Mo2AndVortex(unittest.TestCase):
         lo = lines(os.path.join(self.out, "loadorder.txt"))
         self.assertLess(lo.index("ExampleB.esm"), lo.index("ExampleA.esm"))
         with open(os.path.join(self.out, "report.json"), encoding="utf-8") as f:
-            self.assertEqual(len(json.load(f)["sort"]["moved"]), 1)
+            j = json.load(f)
+        self.assertEqual(len(j["sort"]["moved"]), 1)
+        # code review round 1: the MO2 official-plugins caution was missing from a sort run
+        got = [x for x in j["findings"] if (x.get("data") or {}).get("kind") == "mo2-officials"]
+        self.assertEqual([(x["section"], x["level"]) for x in got], [("sort", "caution")])
 
     def test_vortex_writes_the_import_file(self):
         data = os.path.join(self.tmp, "Data")

@@ -56,7 +56,8 @@ class Guard(unittest.TestCase):
         self.assertFalse(clashes.rx_match(rx, "sfta07.esm"))
 
     def test_nested_repeats_are_refused(self):
-        for p in (r"(a+)+", r"(a+)+$", r"(a*)*", r"(x+){2,}", r"((ab)+)*", r"(?:a+)+", r"(a{1,3})+", r"([a-z]+)*"):
+        for p in (r"(a+)+", r"(a+)+$", r"(a*)*", r"(x+){2,}", r"((ab)+)*", r"(?:a+)+", r"(a{1,3})+", r"([a-z]+)*",
+                  r"(a|a)*\.esm", r"(a|ab)*c", r"(\w|\d)+\.esm", r"((a|b)c)+"):
             self.assertIn("repeat", clashes.regex_refusal(p), p)
 
     def test_long_backrefs_and_lookbehinds_are_refused(self):
@@ -67,7 +68,8 @@ class Guard(unittest.TestCase):
         self.assertIn("look-behind", clashes.regex_refusal(r"(?<!a)b"))
 
     def test_fine_patterns_pass(self):
-        for p in (r"(a+)?", r"(ab)+", r"a+b*", r"[(]+", r"\(a+\)+", r"foo\.es[mp]", r"(x|y)?z{2}", r"\d+\.esm"):
+        for p in (r"(a+)?", r"(ab)+", r"a+b*", r"[(]+", r"\(a+\)+", r"foo\.es[mp]", r"(x|y)?z{2}", r"\d+\.esm",
+                  r"a|b+", r"(foo|bar)\.esm"):
             self.assertIsNone(clashes.regex_refusal(p), p)
 
     def test_bad_regex_is_refused_not_raised(self):

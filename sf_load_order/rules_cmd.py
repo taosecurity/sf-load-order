@@ -195,6 +195,14 @@ def sources(args, lo, files, ctx=None, env=None):
             raise Stop(st["why"])
     s.loot = loot_rules.read(ctx, env, groups=getattr(args, "loot_groups", False), lo=lo)
     ctx.results["picks"] = s.picks
+    if lo is not None:  # the patch edges, as sort reads them (--clashes fixed_by and each patch-sources.json)
+        from . import sort
+        if getattr(args, "clashes", None) and "clashes" not in ctx.results:
+            known, st = clashes.read_clashes(ctx, args.clashes, [], {})
+            if st.get("status") == "failed":
+                raise Stop(st["why"])
+            ctx.results["clashes"] = {"known": known}
+        s.patches = sort.patch_targets(ctx, lo)
     return s, ctx
 
 
@@ -219,6 +227,8 @@ def _left_out(args, lo, files, env):
     left = {}
     for r in b.rejected:
         e = r["edge"]
+        if e.before.startswith("<group:") and e.after.startswith("<group:"):
+            continue  # a group entry's edge (group after group), not a rule entry's: they share entry numbers
         if e.source in ("user", "community"):
             left.setdefault((e.source, str(e.entry)), []).append(r["why"])
         elif e.source in ("loot_userlist", "loot_masterlist"):

@@ -561,13 +561,13 @@ _QUANT = re.compile(r"\{\d*(,\d*)?\}")
 
 def regex_refusal(text):
     """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
-    back-reference or look-behind, or a quantified group that is itself quantified with *, + or {..} (a group
-    followed by ? is fine)."""
+    back-reference or look-behind, or a group holding a repeat or a | that is itself repeated with *, + or {..}
+    (like (a+)+ or (a|ab)*; a group followed by ? is fine)."""
     if not isinstance(text, str):
         return "not text"
     if len(text) > MAX_PATTERN:
         return f"longer than {MAX_PATTERN} characters"
-    stack = [False]  # per open group: does it hold a repeat (*, + or {..}) anywhere inside?
+    stack = [False]  # per open group: does it hold a repeat (*, + or {..}) or a | anywhere inside?
     last = None      # what the next quantifier applies to: None, "atom" or ("group", holds_a_repeat)
     i, n = 0, len(text)
     while i < n:
@@ -605,13 +605,15 @@ def regex_refusal(text):
         q = _QUANT.match(text, i) if c == "{" else None
         if c in "*+" or q:
             if isinstance(last, tuple) and last[1]:
-                return "a repeated group that itself repeats (it can take very long to match)"
+                return "a repeated group that itself repeats or holds a | (it can take very long to match)"
             stack[-1] = True
             i = q.end() if q else i + 1
             if i < n and text[i] in "?+":
                 i += 1
             last = "atom"
             continue
+        if c == "|":
+            stack[-1] = True
         i, last = i + 1, "atom"  # a plain character, |, ^, $, or ? (a group followed by ? is fine)
     return None
 

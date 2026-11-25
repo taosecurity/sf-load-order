@@ -356,6 +356,18 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
             "flipped0": flipped0, "rejected": rejected, "estimate": estimate, "candidates": cands}
 
 
+def mo2_officials_caution(ctx, lo, add):
+    """The MO2 official-plugins caution (shared with sort.run); add is the section's own _add."""
+    off = inputs.mo2_unpinned_officials(lo)
+    if off:  # A5: a suspicion from MO2's source (2.5.2 pins eight plugins), so a caution, not extra lines
+        add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so copying in a plugins.txt this tool writes (it "
+            f"leaves official plugins out) can leave {', '.join(off)} unticked in MO2.",
+            f"After you copy the files, check in MO2's Plugins tab that {', '.join(off)} "
+            f"{'is' if len(off) == 1 else 'are'} still ticked, and tick {'it' if len(off) == 1 else 'them'} if not "
+            "(the 2.5.3 betas pin them at the top).", off)
+        ctx.report.findings[-1].data = {"kind": "mo2-officials", "plugins": off}
+
+
 def run(ctx):
     lo = ctx.load_order
     rec = ctx.results.get("records")
@@ -367,14 +379,7 @@ def run(ctx):
     applied, not_applied = _picks(ctx, movable, edges)
     log.info(SECTION, f"{len(movable)} movable plugins, {len(edges)} constraint edges, {len(applied)} pick(s) applied, "
                       f"records data {'yes' if rated else 'no'}")
-    off = inputs.mo2_unpinned_officials(lo)
-    if off:  # A5: a suspicion from MO2's source (2.5.2 pins eight plugins), so a caution, not extra lines
-        _add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so copying in a plugins.txt this tool writes (it "
-             f"leaves official plugins out) can leave {', '.join(off)} unticked in MO2.",
-             f"After you copy the files, check in MO2's Plugins tab that {', '.join(off)} "
-             f"{'is' if len(off) == 1 else 'are'} still ticked, and tick {'it' if len(off) == 1 else 'them'} if not "
-             "(the 2.5.3 betas pin them at the top).", off)
-        ctx.report.findings[-1].data = {"kind": "mo2-officials", "plugins": off}
+    mo2_officials_caution(ctx, lo, _add)
     pl = plan(current, movable, fixed, edges, applied, rec if rated else None)
     order, score_cur, score_rec = pl["order"], pl["score_current"], pl["score_recommended"]
     flipped, flipped0, rejected, estimate = pl["flipped"], pl["flipped0"], pl["rejected"], pl["estimate"]

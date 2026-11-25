@@ -65,7 +65,10 @@ def patch_targets(ctx, lo):
         name = (d.get("patch") or {}).get("name")
         if not isinstance(name, str) or not rulesfile.is_name(name):
             continue
-        for k, r in enumerate(d.get("records") or []):
+        records = d.get("records")
+        if not isinstance(records, list):
+            continue
+        for k, r in enumerate(records):
             for ed in (r.get("editors") if isinstance(r, dict) else None) or []:
                 p = ed.get("plugin") if isinstance(ed, dict) else None
                 if isinstance(p, str) and rulesfile.is_name(p):
@@ -219,6 +222,7 @@ def soft(ctx, b, rec=None):
     if score is not None:
         pl["score_recommended"], flipped = score(full)
         newly = [k for k in flipped if k not in pl["flipped0"]]
+        pl["estimate"] = any(not pairs[k].get("cost_complete") for k in newly)
     flips = []
     for k in newly:
         p = pairs[k]
@@ -457,6 +461,7 @@ def run(ctx, env=None):
         if b.graph.tie_break == "name":
             _add(ctx, "note", "--tie-break name orders the plugins by file name wherever the rules allow, so the "
                               "same plugins and rules give the same order on any PC. It moves many plugins.")
+        recommend.mo2_officials_caution(ctx, lo, _add)
         ctx.report.recommended = res["order"]
         files_w = writers.write(ctx, res=dict(res, same_as_current=res["same_as_current"]), section=SECTION,
                                 intro=[f"Sorting moves {len(res['moves'])} plugin(s). Back up your current order "

@@ -83,6 +83,16 @@ class ListCmd(Base):
             rows = json.load(f)["rules"]
         self.assertEqual([bool(x["not_used"]) for x in rows], [True, False])
 
+    def test_a_left_out_group_entry_doesnt_flag_the_rule_with_its_number(self):
+        # code review round 1: group entry N and rule entry N shared a key
+        r = self.rules([{"plugin": "ExampleA.esm", "after": ["ExampleD.esm"]},
+                        {"plugin": "ExampleB.esm", "after": ["ExampleD.esm"]}],
+                       groups=[{"name": "Late", "after": ["Early"]}, {"name": "Early", "after": ["Late"]}])
+        code, out = run("rules", "list", "--rules", r, "--no-loot", *self.src)
+        self.assertEqual(code, 0, out)
+        self.assertIn("entry 1: ExampleA.esm loads after ExampleD.esm [active]", out)
+        self.assertIn("entry 2: ExampleB.esm loads after ExampleD.esm [active]", out)
+
     def test_list_without_a_file_or_source(self):
         code, out = run("rules", "list", "--state", self.state, "--no-loot")
         self.assertEqual(code, 0)
@@ -121,6 +131,17 @@ class ExplainCmd(Base):
         self.assertTrue(x["moved"])
         self.assertEqual(x["position"], x["was"] + 2)  # moved down past ExampleB.esm and ExampleC.esm
         self.assertEqual(x["anchor"], "ExampleC.esm")
+
+    def test_explain_uses_the_patch_edges_sort_uses(self):
+        # code review round 1: the rules commands left out sort's patch edges (a patch-sources.json beside the patch)
+        self.write(os.path.join(self.data, "patch-sources.json"), {
+            "schema": 1, "patch": {"name": "ExampleA.esm"}, "loadOrder": {"plugins": ["Starfield.esm"]},
+            "records": [{"formKey": "000800:ExampleD.esm", "type": "MiscItem",
+                         "editors": [{"plugin": "ExampleD.esm", "hash": None}]}]})
+        code, out = run("rules", "explain", "ExampleA.esm", "--no-rules", "--no-loot", *self.src)
+        self.assertEqual(code, 0, out)
+        self.assertIn("the sort moves it", out)
+        self.assertIn("the patch ExampleA.esm was built from ExampleD.esm", out)
 
     def test_explain_a_rule_that_wasnt_used(self):
         r = self.rules([{"plugin": "ExampleA.esm", "after": ["ExamplePatch.esm"]}])
