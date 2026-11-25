@@ -942,18 +942,36 @@ class Program(unittest.TestCase):
         self.assertEqual(conflict[conflict.index("--profile") + 1], "Default")
         self.assertNotIn("--plugins", conflict)
 
-    def test_mo2_dropped_plugin_caution(self):
-        """0.3.2 review: under --mo2 sf-mod-check reads plugins.txt as it is, dropped names included: a caution says
-        so (the written --plugins file used to leave them out)."""
-        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
-        lo = make_lo(["A.esm", "Foo-ShatteredSpace.esm"], data=self.data, source="mo2")
+    def test_mo2_dropped_plugin_left_out(self):
+        """0.3.2 review: under --mo2 sf-mod-check reads plugins.txt as it is, dropped names included. Their results
+        are left out of the analysis (the written --plugins file used to leave them out), with a caution."""
+        cj = dict(self.cj)
+        cj["loadOrder"] = cj["loadOrder"] + [{"Index": 99, "FileName": "Foo-ShatteredSpace.esm", "Official": False,
+                                              "Masters": []}]
+        cj["lost"] = cj["lost"] + [lost("000900:Starfield.esm", "A.esm", "Foo-ShatteredSpace.esm", [field("Name")])]
+        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0", conflicts=cj)
+        lo = make_lo(["A.esm", "B.esm", "C.esm", "D.esm", "E.esm", "OnlyInMO2.esm", "Foo-ShatteredSpace.esm"],
+                     data=self.data, source="mo2")
         lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
-        bad = [p for p in lo.plugins if p.name == "Foo-ShatteredSpace.esm"][0]
-        bad.dropped = True
+        [p for p in lo.plugins if p.name == "Foo-ShatteredSpace.esm"][0].dropped = True
         ctx = ctx_for(self.t, lo, sf_mod_check=exe)
         self.assertEqual(records.run(ctx)["status"], "done")
-        hits = [f for f in ctx.report.findings if "the game drops" in f.text]
+        hits = [f for f in ctx.report.findings if "that don't load" in f.text]
         self.assertEqual([f.plugins for f in hits], [["Foo-ShatteredSpace.esm"]])
+        res = ctx.results["records"]
+        self.assertFalse([x for x in res["lost"] if "Foo-ShatteredSpace.esm" in (x["loser"], x["winner"])])
+        self.assertNotIn("Foo-ShatteredSpace.esm", res["load_order"])
+
+    def test_mo2_all_in_data_keeps_plugins_file(self):
+        """0.3.2 review: started from MO2 (every plugin in Data), conflict still gets the written --plugins file,
+        which leaves out the names the game drops, as in 0.3.1."""
+        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
+        lo = make_lo(["A.esm"], data=self.data, source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        self.assertEqual(records.run(ctx_for(self.t, lo, sf_mod_check=exe))["status"], "done")
+        conflict = [c for c in self.calls() if c[0] == "conflict"][0]
+        self.assertIn("--plugins", conflict)
+        self.assertNotIn("--mo2", conflict)
 
     def test_mo2_heavy_skips_mod_folder_plugins(self):
         """0.3.2 review: conflict reads MO2 itself, but check has no --mo2, so --depth heavy still skips (once, with

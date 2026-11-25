@@ -683,6 +683,36 @@ def _mo2_run(lo, prog):
                 and prog.version >= sfmodcheck.MO2_VERSION)
 
 
+def _mo2_why(lo, prog):
+    """Why the MO2 record check skips (plugins aren't in Data and --mo2 can't be used): the reason and its fix."""
+    if not lo.mo2_instance:
+        return ("sf-mod-check can't read this MO2 instance itself (its ModOrganizer.ini uses Windows backslashes "
+                "on this system)", "start sf-load-order from MO2 (add it as an executable), or run sf-mod-check "
+                "conflict from MO2 and pass its conflicts.json with --conflicts.")
+    return ("this sf-mod-check is older than 0.16.0, so it can't read MO2's mod folders itself",
+            "update sf-mod-check to 0.16.0 or later, start sf-load-order from MO2 (add it as an executable), or "
+            f"run sf-mod-check conflict --mo2 \"{lo.mo2_instance}\" --profile \"{lo.profile}\" from MO2 and pass "
+            "its conflicts.json with --conflicts.")
+
+
+def _only_loaded(cj, lo):
+    """Under --mo2 sf-mod-check reads MO2's plugins.txt itself, so it may read plugins sf-load-order leaves out
+    (names the game drops, names it can't use). Their entries are taken out of cj (in place); returns their names."""
+    keep = {n.lower() for n in lo.enabled()}
+    extra = [e.get("FileName") or "" for e in (cj.get("loadOrder") or [])
+             if not e.get("Official") and (e.get("FileName") or "").lower() not in keep]
+    if not extra:
+        return []
+    out = {n.lower() for n in extra}
+    cj["loadOrder"] = [e for e in cj.get("loadOrder") or [] if (e.get("FileName") or "").lower() not in out]
+    cj["lost"] = [e for e in cj.get("lost") or [] if (e.get("Loser") or "").lower() not in out
+                  and (e.get("Winner") or "").lower() not in out]
+    for k in ("itms", "typeChanges"):
+        if cj.get(k):
+            cj[k] = [e for e in cj[k] if (e.get("Plugin") or "").lower() not in out]
+    return extra
+
+
 def _not_visible(lo):
     return [p.name for p in _mod_plugins(lo) if not os.path.isfile(os.path.join(lo.data, p.name))]
 
@@ -715,19 +745,19 @@ def run(ctx):
         if not lo.data:
             return _skip("no Data folder was found, so sf-mod-check has nothing to read. Fix: pass --data.")
         hidden = _not_visible(lo)
-        # under MO2 sf-mod-check reads the instance itself (--mo2 --profile, 0.16.0), so the mod folders are seen
-        mo2 = _mo2_run(lo, prog)
+        # Under MO2 with mods outside Data, sf-mod-check reads the instance itself (--mo2 --profile, 0.16.0) so the
+        # mod folders are seen. With every plugin in Data (started from MO2) the written --plugins file stays, as in
+        # 0.3.1: it leaves out the names the game drops.
+        mo2 = bool(hidden) and _mo2_run(lo, prog)
         if mo2:
             log.info(SECTION, f"MO2 instance {lo.mo2_instance}, profile {lo.profile}: sf-mod-check conflict gets "
                               "--mo2 and --profile")
         if hidden and lo.source == "mo2" and not mo2:
+            cause, fix = _mo2_why(lo, prog)
             why = (f"{len(hidden)} enabled plugin(s) aren't in {lo.data} (MO2 keeps mods in their own folders, and "
-                   "only programs started from MO2 see them in Data). Fix: update sf-mod-check to 0.16.0 or later "
-                   "(it reads the MO2 folder itself), start sf-load-order from MO2 (add it as an executable), or "
-                   f"run sf-mod-check conflict with --mo2 and --profile {lo.profile} and pass its conflicts.json "
-                   "with --conflicts.")
+                   f"only programs started from MO2 see them in Data), and {cause}. Fix: {fix}")
             ctx.report.add(Finding("note", SECTION, "Record conflicts weren't checked: " + why.split(" Fix: ")[0] + ".",
-                                   fix=why.split(" Fix: ")[1], plugins=hidden[:20]))
+                                   fix=fix, plugins=hidden[:20]))
             return _skip(why, program=prog.to_dict())
         os.makedirs(ctx.work, exist_ok=True)
         ptxt = None if mo2 else sfmodcheck.write_plugins_txt(os.path.join(ctx.work, "sf-mod-check-plugins.txt"), lo)
@@ -755,8 +785,9 @@ def run(ctx):
         elif r.exit == 2:
             failed = (f"sf-mod-check conflict couldn't run ({r.result or 'no RESULT line'}).",
                       "Run it with --log to see why: sf-mod-check conflict "
-                      + ("--mo2 <MO2 folder> --profile <name>" if mo2 else "--plugins <file>")
-                      + " --data <folder> --log sf-mod-check-log.txt.")
+                      + (f"--mo2 \"{lo.mo2_instance}\" --profile \"{lo.profile}\" --data \"{lo.data}\"" if mo2
+                         else "--plugins <file> --data <folder>")
+                      + " --log sf-mod-check-log.txt.")
         elif r.exit != 0:
             failed = (f"sf-mod-check conflict ended with exit code {r.exit} ({r.result or 'no RESULT line'}).",
                       "Run it yourself with --log to see why.")
@@ -771,14 +802,16 @@ def run(ctx):
             ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + err))
             return _skip(err, program=prog.to_dict(), exit=r.exit, result_line=r.result)
         source, path = "run", r.conflicts
-        dropped = [p.name for p in lo.plugins if p.enabled and p.dropped] if mo2 else []
-        if dropped:
-            # sf-mod-check reads MO2's plugins.txt as it is; the written --plugins file used to leave these out
-            log.info(SECTION, f"MO2 run: {len(dropped)} plugin(s) the game drops were read by sf-mod-check")
-            ctx.report.add(Finding("caution", SECTION, f"sf-mod-check read {len(dropped)} plugin(s) the game drops "
-                                   "from its load order, so record results that name them don't happen in the game.",
-                                   fix="Rename those plugins (see the problem about their names) and run again.",
-                                   plugins=dropped[:20]))
+        extra = _only_loaded(cj, lo) if mo2 else []
+        if extra:
+            # the written --plugins file leaves these out; under --mo2 sf-mod-check read them, so they're taken out
+            log.info(SECTION, f"MO2 run: left out the results of {len(extra)} plugin(s) that don't load: "
+                              + ", ".join(extra[:10]))
+            ctx.report.add(Finding("caution", SECTION, f"sf-mod-check read {len(extra)} plugin(s) that don't load "
+                                   "(names the game drops or sf-load-order can't use). Their record results were left "
+                                   "out, so a conflict hidden behind one of them may be missing.",
+                                   fix="Rename or remove those plugins (see the finding about their names) and run "
+                                       "again.", plugins=extra[:20]))
 
     res = analyse(cj, lo)
     res.update({"source": source, "file": path, "program": prog.to_dict() if prog else None,

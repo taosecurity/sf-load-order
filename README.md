@@ -787,7 +787,7 @@ Schema 1. Top-level keys:
 | `author`, `license`, `url` | Who made the tool, its license (`GPL-3.0`) and its project page. |
 | `generated` | When, as local time (`2026-11-19T21:30:00`). |
 | `counts` | `{"problem": n, "caution": n, "note": n}`. |
-| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `mo2_instance` (0.3.2: the MO2 instance folder the record check hands to sf-mod-check with `--mo2`, else `null`), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `master` (0.3.0: true when the plugin counts as a master, see [Sorting](#sorting-a-load-order-sort)), `masters`; `kind` and `masters` are `null` for a file that wasn't read, such as a mod plugin of a Vortex profile that isn't deployed), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
+| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `mo2_instance` (0.3.2: the MO2 instance folder, which the record check may hand to sf-mod-check with `--mo2`; `null` for other sources, and on Linux for an ini whose folder values use backslashes), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `master` (0.3.0: true when the plugin counts as a master, see [Sorting](#sorting-a-load-order-sort)), `masters`; `kind` and `masters` are `null` for a file that wasn't read, such as a mod plugin of a Vortex profile that isn't deployed), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
 | `findings` | Worst first. Each: `level` (`problem`, `caution`, `note`), `section`, `text` (what is wrong), `fix` (what to do, or `null`), `plugins` (names it is about) and `data` (extra detail: counts, FormIDs, paths, a ready `accept_entry`). |
 | `sections` | Per section (`inputs`, `order`, `patches`, `clashes`, `archives`, `loose`, `rules`, `records`, `recommend`; a `candidate` run has `inputs` and `candidate`): `status` (`done`, `skipped`, `failed` or `missing`), `why` when it didn't run, and a few counts (for example `patches.built_for_old`, the plugins still built for an older kind of a master). |
 | `recommended` | The suggested order as plugin names, or `null` when none was worked out. |
@@ -857,6 +857,7 @@ before you post it.
   nothing has to be started from MO2 and `--conflicts` isn't needed. With an older sf-mod-check the record section
   says it can't see your mods: update it, or add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and
   start it from there, or run `sf-mod-check conflict` yourself and give its `conflicts.json` with `--conflicts`.
+  The `--depth heavy` plugin checks, the merged-patch check and `candidate` still need sf-load-order started from MO2.
 - **A Vortex staging folder copied off Windows.** Windows drops trailing spaces and dots from folder names, so on
   Windows a mod id like `Mod9.` finds the folder `Mod9`. On Linux and macOS, `Mod9.` and `Mod9` can be two
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
