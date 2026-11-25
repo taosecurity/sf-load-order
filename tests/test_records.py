@@ -929,12 +929,22 @@ class Program(unittest.TestCase):
         self.assertTrue(any("OnlyInMO2.esm" in f.plugins for f in ctx.report.findings))
         self.assertEqual(self.calls(), [["--version"]])
 
+    def mo2_case(self, more_cj=(), more_lo=()):
+        """An MO2 load order (A..E in Data, OnlyInMO2.esm in a mod folder) and a fake sf-mod-check 0.17.0 whose
+        conflicts.json has the same order, plus more_cj; more_lo: plugins only sf-load-order lists."""
+        cj = dict(self.cj)
+        cj["loadOrder"] = cj["loadOrder"] + [{"Index": 90 + i, "FileName": n, "Official": False, "Masters": []}
+                                             for i, n in enumerate(("OnlyInMO2.esm",) + tuple(more_cj))]
+        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0", conflicts=cj)
+        lo = make_lo(["A.esm", "B.esm", "C.esm", "D.esm", "E.esm", "OnlyInMO2.esm"] + list(more_lo), data=self.data,
+                     source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        return exe, lo
+
     def test_mo2_passes_instance_and_profile(self):
         """0.3.2: with sf-mod-check 0.16.0 or later, an MO2 load order runs conflict with --mo2 and --profile (no
         --plugins), so plugins in MO2's mod folders are read and --conflicts isn't needed."""
-        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
-        lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
-        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        exe, lo = self.mo2_case()
         st = records.run(ctx_for(self.t, lo, sf_mod_check=exe))
         self.assertEqual(st["status"], "done")
         conflict = [c for c in self.calls() if c[0] == "conflict"][0]
@@ -942,25 +952,18 @@ class Program(unittest.TestCase):
         self.assertEqual(conflict[conflict.index("--profile") + 1], "Default")
         self.assertNotIn("--plugins", conflict)
 
-    def test_mo2_dropped_plugin_left_out(self):
-        """0.3.2 review: under --mo2 sf-mod-check reads plugins.txt as it is, dropped names included. Their results
-        are left out of the analysis (the written --plugins file used to leave them out), with a caution."""
-        cj = dict(self.cj)
-        cj["loadOrder"] = cj["loadOrder"] + [{"Index": 99, "FileName": "Foo-ShatteredSpace.esm", "Official": False,
-                                              "Masters": []}]
-        cj["lost"] = cj["lost"] + [lost("000900:Starfield.esm", "A.esm", "Foo-ShatteredSpace.esm", [field("Name")])]
-        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0", conflicts=cj)
-        lo = make_lo(["A.esm", "B.esm", "C.esm", "D.esm", "E.esm", "OnlyInMO2.esm", "Foo-ShatteredSpace.esm"],
-                     data=self.data, source="mo2")
-        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+    def test_mo2_other_load_order_skips(self):
+        """0.3.2 review: under --mo2 sf-mod-check reads plugins.txt as it is, dropped names included. When its load
+        order isn't the one sf-load-order reads, the results aren't used: the check skips with a caution."""
+        exe, lo = self.mo2_case(more_cj=["Foo-ShatteredSpace.esm"], more_lo=["Foo-ShatteredSpace.esm"])
         [p for p in lo.plugins if p.name == "Foo-ShatteredSpace.esm"][0].dropped = True
         ctx = ctx_for(self.t, lo, sf_mod_check=exe)
-        self.assertEqual(records.run(ctx)["status"], "done")
-        hits = [f for f in ctx.report.findings if "that don't load" in f.text]
+        st = records.run(ctx)
+        self.assertEqual(st["status"], "skipped")
+        self.assertIn("another load order", st["why"])
+        hits = [f for f in ctx.report.findings if "another load order" in f.text]
         self.assertEqual([f.plugins for f in hits], [["Foo-ShatteredSpace.esm"]])
-        res = ctx.results["records"]
-        self.assertFalse([x for x in res["lost"] if "Foo-ShatteredSpace.esm" in (x["loser"], x["winner"])])
-        self.assertNotIn("Foo-ShatteredSpace.esm", res["load_order"])
+        self.assertNotIn("records", ctx.results)
 
     def test_mo2_all_in_data_keeps_plugins_file(self):
         """0.3.2 review: started from MO2 (every plugin in Data), conflict still gets the written --plugins file,
@@ -976,9 +979,7 @@ class Program(unittest.TestCase):
     def test_mo2_heavy_skips_mod_folder_plugins(self):
         """0.3.2 review: conflict reads MO2 itself, but check has no --mo2, so --depth heavy still skips (once, with
         a reason) instead of listing every MO2 plugin as not checked."""
-        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
-        lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
-        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        exe, lo = self.mo2_case()
         st = records.run(ctx_for(self.t, lo, sf_mod_check=exe, depth="heavy"))
         self.assertEqual(st["status"], "done")
         self.assertIn("start sf-load-order from MO2", st["heavy"])

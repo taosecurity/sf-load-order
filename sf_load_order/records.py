@@ -449,6 +449,18 @@ def _differs(lo, cj):
             "order": common_o != common_t}
 
 
+def _differs_text(d):
+    """_differs' result in words: "2 enabled plugin(s) aren't in it; the order differs"."""
+    bits = []
+    if d["missing"]:
+        bits.append(f"{len(d['missing'])} enabled plugin(s) aren't in it")
+    if d["extra"]:
+        bits.append(f"it has {len(d['extra'])} plugin(s) that aren't enabled now")
+    if d["order"]:
+        bits.append("the order differs")
+    return "; ".join(bits)
+
+
 # ---------- findings ----------
 def _names(fields, n=6):
     """Field names in plain words with the raw name after it, e.g. "script settings (VirtualMachineAdapter)"."""
@@ -607,14 +619,7 @@ def add_findings(ctx, res, source):
 
     d = res["differs"]
     if d and source == "file":
-        bits = []
-        if d["missing"]:
-            bits.append(f"{len(d['missing'])} enabled plugin(s) aren't in it")
-        if d["extra"]:
-            bits.append(f"it has {len(d['extra'])} plugin(s) that aren't enabled now")
-        if d["order"]:
-            bits.append("the order differs")
-        add(Finding("caution", SECTION, f"The --conflicts file was made for another load order ({'; '.join(bits)}), "
+        add(Finding("caution", SECTION, f"The --conflicts file was made for another load order ({_differs_text(d)}), "
                     "so its record results may be out of date.",
                     fix="Run sf-mod-check conflict again on this load order, or leave out --conflicts.",
                     data=d))
@@ -690,27 +695,7 @@ def _mo2_why(lo, prog):
                 "on this system)", "start sf-load-order from MO2 (add it as an executable), or run sf-mod-check "
                 "conflict from MO2 and pass its conflicts.json with --conflicts.")
     return ("this sf-mod-check is older than 0.16.0, so it can't read MO2's mod folders itself",
-            "update sf-mod-check to 0.16.0 or later, start sf-load-order from MO2 (add it as an executable), or "
-            f"run sf-mod-check conflict --mo2 \"{lo.mo2_instance}\" --profile \"{lo.profile}\" from MO2 and pass "
-            "its conflicts.json with --conflicts.")
-
-
-def _only_loaded(cj, lo):
-    """Under --mo2 sf-mod-check reads MO2's plugins.txt itself, so it may read plugins sf-load-order leaves out
-    (names the game drops, names it can't use). Their entries are taken out of cj (in place); returns their names."""
-    keep = {n.lower() for n in lo.enabled()}
-    extra = [e.get("FileName") or "" for e in (cj.get("loadOrder") or [])
-             if not e.get("Official") and (e.get("FileName") or "").lower() not in keep]
-    if not extra:
-        return []
-    out = {n.lower() for n in extra}
-    cj["loadOrder"] = [e for e in cj.get("loadOrder") or [] if (e.get("FileName") or "").lower() not in out]
-    cj["lost"] = [e for e in cj.get("lost") or [] if (e.get("Loser") or "").lower() not in out
-                  and (e.get("Winner") or "").lower() not in out]
-    for k in ("itms", "typeChanges"):
-        if cj.get(k):
-            cj[k] = [e for e in cj[k] if (e.get("Plugin") or "").lower() not in out]
-    return extra
+            "update sf-mod-check to 0.16.0 or later, or start sf-load-order from MO2 (add it as an executable).")
 
 
 def _not_visible(lo):
@@ -802,16 +787,19 @@ def run(ctx):
             ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + err))
             return _skip(err, program=prog.to_dict(), exit=r.exit, result_line=r.result)
         source, path = "run", r.conflicts
-        extra = _only_loaded(cj, lo) if mo2 else []
-        if extra:
-            # the written --plugins file leaves these out; under --mo2 sf-mod-check read them, so they're taken out
-            log.info(SECTION, f"MO2 run: left out the results of {len(extra)} plugin(s) that don't load: "
-                              + ", ".join(extra[:10]))
-            ctx.report.add(Finding("caution", SECTION, f"sf-mod-check read {len(extra)} plugin(s) that don't load "
-                                   "(names the game drops or sf-load-order can't use). Their record results were left "
-                                   "out, so a conflict hidden behind one of them may be missing.",
-                                   fix="Rename or remove those plugins (see the finding about their names) and run "
-                                       "again.", plugins=extra[:20]))
+        # under --mo2 sf-mod-check builds the load order from the MO2 profile itself (dropped names included): its
+        # results are used only when that order is the one sf-load-order reads
+        d = _differs(lo, cj) if mo2 else None
+        if d:
+            case = {(e.get("FileName") or "").lower(): e.get("FileName") for e in cj.get("loadOrder") or []}
+            case.update({p.name.lower(): p.name for p in lo.plugins})
+            why = (f"sf-mod-check read another load order from the MO2 profile ({_differs_text(d)}), for example a "
+                   "plugin whose name the game drops.")
+            ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + why,
+                                   fix="Rename or turn off the plugins named here (see the finding about their names), "
+                                       "or start sf-load-order from MO2, and run again.",
+                                   plugins=[case.get(n, n) for n in (d["extra"] + d["missing"])[:20]], data=d))
+            return _skip(why, program=prog.to_dict(), exit=r.exit, result_line=r.result)
 
     res = analyse(cj, lo)
     res.update({"source": source, "file": path, "program": prog.to_dict() if prog else None,
