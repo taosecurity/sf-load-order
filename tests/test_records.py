@@ -960,10 +960,16 @@ class Program(unittest.TestCase):
         ctx = ctx_for(self.t, lo, sf_mod_check=exe)
         st = records.run(ctx)
         self.assertEqual(st["status"], "skipped")
-        self.assertIn("another load order", st["why"])
-        hits = [f for f in ctx.report.findings if "another load order" in f.text]
+        self.assertIn("don't load in the game", st["why"])
+        hits = [f for f in ctx.report.findings if "don't load in the game" in f.text]
         self.assertEqual([f.plugins for f in hits], [["Foo-ShatteredSpace.esm"]])
         self.assertNotIn("records", ctx.results)
+
+    def test_mo2_plugin_sf_mod_check_left_out_still_checks(self):
+        """0.3.2 review round 5: a plugin sf-mod-check leaves out itself (a missing master) doesn't cancel the MO2
+        record check; only plugins it loads that sf-load-order doesn't do."""
+        exe, lo = self.mo2_case(more_lo=["NeedsOffMaster.esm"])
+        self.assertEqual(records.run(ctx_for(self.t, lo, sf_mod_check=exe))["status"], "done")
 
     def test_mo2_all_in_data_keeps_plugins_file(self):
         """0.3.2 review: started from MO2 (every plugin in Data), conflict still gets the written --plugins file,

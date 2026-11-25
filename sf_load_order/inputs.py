@@ -602,7 +602,8 @@ def from_mo2(instance, args, env, drives, registry):
     mods_dir = _mo2_dir(ini, "mod_directory", instance, "mods")
     game = ini.get("gamepath")
     if game and os.name != "nt":
-        game = game.replace("\\", "/")  # an ini copied from Windows (0.3.2 review)
+        # an ini copied from Windows (0.3.2 review): a Windows drive path means nothing here, so it isn't used
+        game = None if re.match(r"[A-Za-z]:", game) else game.replace("\\", "/")
     data, extra = _find_data(args, env, drives, registry, os.path.join(game, "Data") if game else None,
                              "MO2's gamePath")
     log.info(SECTION, f"mo2 {instance} profile {profile}; mods {mods_dir}")
@@ -614,7 +615,7 @@ def from_mo2(instance, args, env, drives, registry):
         log.info(SECTION, "mo2: the ini's folder values use backslashes, so sf-mod-check isn't given --mo2 on this "
                           "system")
     lo = LoadOrder("mo2", profile=profile, files={"plugins_txt": ptxt}, data=data,
-                   mo2_instance=instance if shareable else None)
+                   mo2_instance=os.path.abspath(instance) if shareable else None)
     if os.path.isfile(ini_path):
         lo.files["modorganizer_ini"] = ini_path
     mlpath = os.path.join(pdir, "modlist.txt")

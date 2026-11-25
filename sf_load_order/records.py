@@ -787,18 +787,18 @@ def run(ctx):
             ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + err))
             return _skip(err, program=prog.to_dict(), exit=r.exit, result_line=r.result)
         source, path = "run", r.conflicts
-        # under --mo2 sf-mod-check builds the load order from the MO2 profile itself (dropped names included): its
-        # results are used only when that order is the one sf-load-order reads
+        # under --mo2 sf-mod-check builds the load order from the MO2 profile itself, so it may load a plugin that
+        # sf-load-order leaves out (a name the game drops); then its results aren't this load order's. Plugins it
+        # left out itself (a missing master, an unreadable file) are its load order problems, as with --plugins.
         d = _differs(lo, cj) if mo2 else None
-        if d:
+        if d and d["extra"]:
             case = {(e.get("FileName") or "").lower(): e.get("FileName") for e in cj.get("loadOrder") or []}
-            case.update({p.name.lower(): p.name for p in lo.plugins})
-            why = (f"sf-mod-check read another load order from the MO2 profile ({_differs_text(d)}), for example a "
-                   "plugin whose name the game drops.")
+            names = [case.get(n, n) for n in d["extra"]]
+            why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that don't load in the game "
+                   "(names the game drops).")
             ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + why,
-                                   fix="Rename or turn off the plugins named here (see the finding about their names), "
-                                       "or start sf-load-order from MO2, and run again.",
-                                   plugins=[case.get(n, n) for n in (d["extra"] + d["missing"])[:20]], data=d))
+                                   fix="Rename or turn off those plugins (see the finding about their names), or "
+                                       "start sf-load-order from MO2, and run again.", plugins=names[:20], data=d))
             return _skip(why, program=prog.to_dict(), exit=r.exit, result_line=r.result)
 
     res = analyse(cj, lo)

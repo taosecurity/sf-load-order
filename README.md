@@ -858,9 +858,9 @@ before you post it.
   says it can't see your mods: update it, or add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and
   start it from there, or run `sf-mod-check conflict` yourself and give its `conflicts.json` with `--conflicts`.
   The `--depth heavy` plugin checks, the merged-patch check and `candidate` still need sf-load-order started from MO2,
-  and so does the record check on Linux when ModOrganizer.ini (copied from Windows) uses backslashes. When the order
-  sf-mod-check reads from the profile isn't the one sf-load-order reads (for example a plugin whose name the game
-  drops), the record check skips with a caution naming the difference.
+  and so does the record check on Linux when ModOrganizer.ini (copied from Windows) uses backslashes. When
+  sf-mod-check loads a plugin from the profile that doesn't load in the game (a name the game drops), the record
+  check skips with a caution naming those plugins.
 - **A Vortex staging folder copied off Windows.** Windows drops trailing spaces and dots from folder names, so on
   Windows a mod id like `Mod9.` finds the folder `Mod9`. On Linux and macOS, `Mod9.` and `Mod9` can be two
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
