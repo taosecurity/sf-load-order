@@ -415,9 +415,10 @@ class MO2(Base):
         lo = self.ok("--mo2", inst, "--data", self.data)
         self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
         self.assertEqual(self.by_name(lo, "Extra.esm").path, os.path.join(self.inst, "overwrite", "Extra.esm"))
-        # a relative value is read from the instance folder
+        # a relative value is read from the instance folder (MO2 writes doubled backslashes; Linux CI needs slashes)
+        sep = "\\\\" if os.name == "nt" else "/"
         write(os.path.join(inst, "ModOrganizer.ini"), "[General]\nselected_profile=@ByteArray(Default)\n[Settings]\n"
-              "mod_directory=..\\\\MO2\\\\mods\nprofiles_directory=../MO2/profiles\n")
+              f"mod_directory=..{sep}MO2{sep}mods\nprofiles_directory=../MO2/profiles\n")
         lo = self.ok("--mo2", inst, "--data", self.data)
         self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
 
