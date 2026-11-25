@@ -42,7 +42,7 @@ The game's rules, your picks and rules, the patches' targets, the community file
 ### Options
 
 - `sort` takes every load order, check and output option of the main run, plus `--rules FILE`, `--no-rules`, `--community-rules FILE`, `--tie-break {current,name}`, `--no-loot` and `--loot-groups`.
-- `rules <command>` takes `--rules`, `--no-rules`, `--community-rules`, `--state`, the LOOT options and the load order options, and `--json FILE`; `explain` and `propose` also take `--picks`, `--tie-break` and `--conflicts`; `propose` takes `--kind {choice,patch,all}`, `--clashes` and `--out`; `accept` takes `--id` or `--all`.
+- Every `rules` command takes `--rules`, `--no-rules`, `--community-rules`, `--state`, `--json FILE`, `--verbose` and `--log`. `list`, `explain` and `propose` also take the LOOT options, the load order options and sort's `--picks`, `--tie-break`, `--conflicts`, `--clashes` and `--patch-sources`; `list` takes `--derived`; `propose` takes `--kind {choice,patch,all}` and `--out`. `check` takes the load order options but not the LOOT options. `accept PROPOSED.json` takes `--id` or `--all` and no load order options.
 - A missing default rules file is fine; a missing file given with `--rules` or `--community-rules` is exit 2.
 
 ### Not yet
