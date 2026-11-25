@@ -29,7 +29,7 @@ SECTION = "sort"
 DEFAULT_GROUP = "default"
 REPORT_SOURCE = {"masters": "game", "type": "game", "mod": "mod", "picks": "picks", "user": "user",
                  "patch": "patch", "community": "community", "loot_userlist": "loot_userlist",
-                 "loot_masterlist": "loot_masterlist", "loot_groups": "loot_groups", "groups": "user"}
+                 "loot_masterlist": "loot_masterlist", "loot_groups": "loot_groups", "groups": "default_group"}
 SOURCE_KEYS = ("game", "mod", "picks", "user", "patch", "community", "loot_userlist", "loot_masterlist",
                "loot_groups", "vortex")
 OWN = {"user", "picks"}  # the player's own: a rule of theirs that isn't used is a caution; others are notes
@@ -235,8 +235,8 @@ def build(lo, current, sources=None, tie_break="current"):
     b.rejected = sorted(rej, key=lambda r: (r["edge"].rank, r["edge"].file or "", str(r["edge"].entry)))
     b.counts = dict.fromkeys(SOURCE_KEYS, 0)
     for e in g.edges.values():
-        if e.before.endswith(":start>") and e.after.endswith(":end>"):  # a group's own start-before-end edge
-            continue
+        if e.source == "groups" or (e.before.endswith(":start>") and e.after.endswith(":end>")):
+            continue  # the default group (implied, not a rule anyone wrote) and a group's own start-before-end edge
         key = REPORT_SOURCE.get(e.source, e.source)
         b.counts[key] = b.counts.get(key, 0) + 1
     log.info(SECTION, f"graph: {len(b.movable)} movable, {len(g.edges)} edges, {len(b.rejected)} rejected, "

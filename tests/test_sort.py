@@ -130,6 +130,16 @@ class PluginsTxt(Base):
         with open(os.path.join(self.out, "report.html"), encoding="utf-8") as f:
             self.assertIn('<section id="sorted"><h2>Sorted order</h2>', f.read())
 
+    def test_the_default_group_isnt_counted_as_your_rules(self):
+        r = self.rules([{"plugin": "ExampleA.esm", "group": "Late"}],
+                       groups=[{"name": "Late", "after": ["default"]}])
+        _code, _out, j = self.sort("--rules", r)
+        s = j["sort"]
+        self.assertNotIn("default_group", s["sources"])
+        self.assertLessEqual(s["sources"]["user"], 3)  # the group's edge and A's two member edges, not 2 per plugin
+        with open(os.path.join(self.out, "report.txt"), encoding="utf-8") as f:
+            self.assertNotIn("default group", f.read().split("Rules used, by source:")[1].split(".")[0])
+
     def test_rule_against_a_master_is_not_used(self):
         # ExamplePatch has ExampleA as a master, so "ExampleA after ExamplePatch" can't be met
         r = self.rules([{"plugin": "ExampleA.esm", "after": ["ExamplePatch.esm"]}])

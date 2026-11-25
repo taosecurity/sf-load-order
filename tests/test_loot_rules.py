@@ -60,6 +60,12 @@ class Guard(unittest.TestCase):
                   r"(a|a)*\.esm", r"(a|ab)*c", r"(\w|\d)+\.esm", r"((a|b)c)+"):
             self.assertIn("repeat", clashes.regex_refusal(p), p)
 
+    def test_many_open_ended_repeats_are_refused(self):
+        for p in (r"a*a*a*a*a*a*a*a*\.esm", r".*.*.*.*.*.*\.esm", r"a+b+c{2,}", r"x*y*z*"):
+            self.assertIn("open-ended", clashes.regex_refusal(p), p)
+        for p in (r"a*b*", r".*\.esm", r"a{2,5}b{3}c{1,}"):
+            self.assertIsNone(clashes.regex_refusal(p), p)
+
     def test_long_backrefs_and_lookbehinds_are_refused(self):
         self.assertIn("256", clashes.regex_refusal("a" * 300))
         self.assertIn("back-reference", clashes.regex_refusal(r"(a)\1"))

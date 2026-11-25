@@ -179,7 +179,7 @@ def _reaches(g, a, b):
 def soft(ctx, b, rec=None):
     """The soft climb and the Vortex tie-break on a built graph (b.order not None). Returns {"order" (movable),
     "full", "pl" (recommend.plan's result), "flips": [pair info], "decided": n, "vortex": {"kept", "broken"},
-    "applied": picks applied, "proposals": [rules-proposed entries], "soft_edges": [(a, b)]}."""
+    "applied": picks applied, "proposals": [rules-proposed entries]}."""
     lo, g = ctx.load_order, b.graph
     rated = bool(rec and rec.get("lost") is not None)
     applied = [p for p in (ctx.results.get("picks") or []) if g.has(p["plugin"]) and g.has(p["after"])

@@ -668,7 +668,8 @@ names. Schema 1:
 }
 ```
 
-- Each rule names one `plugin` (an exact file name; no pattern, no wildcard) and at least one of `after`, `before`,
+- Each rule names one `plugin` (an exact file name; no pattern, no wildcard: `*`, `?`, `|`, `:`, `<`, `>` and `"`
+  are refused, and `( ) [ ] +` are plain characters of the name) and at least one of `after`, `before`,
   `requires`, `incompatible` and `group`. `note` and `evidence` are optional. `evidence.kind` is `master`, `patch`,
   `choice`, `clash`, `manual` or `link`; `evidence.files` pins the plugins' SHA-256 hashes.
 - `kind` is `user` for your file and `community` for a file you got from someone else (given with
@@ -855,7 +856,8 @@ before you post it.
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
   run sf-load-order on Windows, or such a mod shows no folder and its loose files aren't checked.
 - **LOOT's regular-expression names are checked before use.** A pattern over 256 characters, a back-reference, a
-  look-behind or a repeat of a group that holds a repeat or a `|` (`(a+)+`, `(a|ab)*`) is refused with one caution, because it could make
+  look-behind, a repeat of a group that holds a repeat or a `|` (`(a+)+`, `(a|ab)*`) or more than two open-ended
+  repeats (`*`, `+` or `{n,}`, as in `.*.*.*\.esm`) is refused with one caution, because it could make
   the match run for hours. A masterlist's real patterns all pass. Our own rules files take no pattern at all.
 - **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
   after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an

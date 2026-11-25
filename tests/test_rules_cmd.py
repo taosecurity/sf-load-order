@@ -132,6 +132,19 @@ class ExplainCmd(Base):
         self.assertEqual(x["position"], x["was"] + 2)  # moved down past ExampleB.esm and ExampleC.esm
         self.assertEqual(x["anchor"], "ExampleC.esm")
 
+    def test_explain_refuses_a_vortex_profile_that_isnt_deployed(self):
+        from unittest import mock
+        real = cli.read_load_order
+
+        def fake(args):
+            lo, err = real(args)
+            lo._vortex_profile = {"name": "Other", "deployed": False}
+            return lo, err
+        with mock.patch.object(cli, "read_load_order", fake):
+            code, out = run("rules", "explain", "ExamplePatch.esm", "--no-rules", "--no-loot", *self.src)
+        self.assertEqual(code, 2, out)
+        self.assertIn("Data holds another profile, not Other", out)
+
     def test_explain_uses_the_patch_edges_sort_uses(self):
         # code review round 1: the rules commands left out sort's patch edges (a patch-sources.json beside the patch)
         self.write(os.path.join(self.data, "patch-sources.json"), {

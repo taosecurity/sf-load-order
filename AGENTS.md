@@ -270,8 +270,8 @@ credits and writes nothing. Screen output keeps the console's character set and 
   master flag or an `.esm` or `.esl` name (esplugin 6.1.4, which libloot uses); light and medium never change a
   plugin's place. Vortex mod rules are only a tie-break. A rule that breaks the game's own rules is left out, with one
   caution that says why. LOOT's regular-expression names are checked before use: a pattern over 256 characters, a
-  back-reference, a look-behind or a nested repeat is refused with a caution.
-- Our own rules files take exact plugin file names only: no regex, no wildcard.
+  back-reference, a look-behind, a nested repeat or more than two open-ended repeats is refused with a caution.
+- Our own rules files take exact plugin file names only: no regex, no wildcard (`( ) [ ] +` are plain name characters).
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
   and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
   names who won; it says so. Install extension 0.6.2 or later for the rules.

@@ -90,9 +90,14 @@ class EntryRefusals(Base):
         self.assertIn("own plugin", self.skipped({"plugin": "A.esm", "after": ["a.ESM"]}))
 
     def test_patterns_and_wildcards_are_refused(self):
-        for name in ("Mod*.esm", "Mod?.esm", "Mod[12].esm", "(Mod).esm", "Mod.es[mp]", "A|B.esm"):
+        for name in ("Mod*.esm", "Mod?.esm", "Mod.es[mp]", "A|B.esm", "A<B.esm"):
             self.assertIn("no pattern", self.skipped({"plugin": "A.esm", "after": [name]}), name)
         self.assertIn("no pattern", self.skipped({"plugin": "Mod.*\\.esm", "after": ["B.esm"]}))
+
+    def test_legal_file_name_characters_are_plain_names(self):
+        # Windows allows ( ) [ ] + { } ^ $ in file names; a rule names files exactly, so they are plain text
+        for name in ("Mod (Fixed).esm", "[SFBGS] X.esm", "Mod+Patch.esp", "A{1}^$.esm"):
+            self.assertTrue(rulesfile.is_name(name), name)
 
     def test_a_rule_must_say_something(self):
         self.assertIn("says nothing", self.skipped({"plugin": "A.esm", "note": "hi"}))

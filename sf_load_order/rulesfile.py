@@ -46,7 +46,7 @@ RULE_FIELDS = ("id", "plugin", "after", "before", "requires", "incompatible", "g
 LISTS = ("after", "before", "requires", "incompatible")
 EVIDENCE_FIELDS = ("kind", "text", "link", "records", "files", "tool", "date", "proposal")
 EVIDENCE_KINDS = ("master", "patch", "choice", "clash", "manual", "link")
-PATTERN_CHARS = set('*?[]()|^$:{}<>"+')
+PATTERN_CHARS = set('*?|:<>"')  # wildcards and characters Windows file names can't hold; ( ) [ ] + are plain
 SHA = re.compile(r"[0-9a-fA-F]{64}")
 DEFAULT_GROUP = "default"
 

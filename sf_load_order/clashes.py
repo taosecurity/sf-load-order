@@ -556,17 +556,20 @@ MAX_PATTERN = 256
 MAX_MATCH = 260
 MAX_REGEX_ENTRIES = 2000      # regex entry names read per LOOT file; the rest are skipped
 MAX_LOOT_BYTES = 20 * 1024 * 1024
+MAX_UNBOUNDED = 2             # open-ended repeats per pattern: two match a 260-character name quickly, more may not
 _QUANT = re.compile(r"\{\d*(,\d*)?\}")
 
 
 def regex_refusal(text):
     """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
     back-reference or look-behind, or a group holding a repeat or a | that is itself repeated with *, + or {..}
-    (like (a+)+ or (a|ab)*; a group followed by ? is fine)."""
+    (like (a+)+ or (a|ab)*; a group followed by ? is fine), or more than MAX_UNBOUNDED open-ended repeats (*, + or
+    {n,}) in all, since a*a*a*a*... backtracks for a very long time too."""
     if not isinstance(text, str):
         return "not text"
     if len(text) > MAX_PATTERN:
         return f"longer than {MAX_PATTERN} characters"
+    unbounded = 0
     stack = [False]  # per open group: does it hold a repeat (*, + or {..}) or a | anywhere inside?
     last = None      # what the next quantifier applies to: None, "atom" or ("group", holds_a_repeat)
     i, n = 0, len(text)
@@ -606,6 +609,11 @@ def regex_refusal(text):
         if c in "*+" or q:
             if isinstance(last, tuple) and last[1]:
                 return "a repeated group that itself repeats or holds a | (it can take very long to match)"
+            if c in "*+" or q.group(1) == ",":
+                unbounded += 1
+                if unbounded > MAX_UNBOUNDED:
+                    return (f"more than {MAX_UNBOUNDED} open-ended repeats (*, + or {{n,}}; it can take very long "
+                            "to match)")
             stack[-1] = True
             i = q.end() if q else i + 1
             if i < n and text[i] in "?+":

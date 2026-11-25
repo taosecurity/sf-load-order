@@ -414,7 +414,8 @@ def _suggested(ctx):
 SOURCE_LABEL = {"game": "the game (masters, master plugins first)", "mod": "mods' own plugin order",
                 "picks": "your picks", "user": "your rules file", "patch": "patch targets",
                 "community": "the community rules file", "loot_userlist": "LOOT's userlist",
-                "loot_masterlist": "LOOT's masterlist", "loot_groups": "LOOT's groups", "vortex": "Vortex's mod rules"}
+                "loot_masterlist": "LOOT's masterlist", "loot_groups": "LOOT's groups", "vortex": "Vortex's mod rules",
+                "default_group": "the default group (plugins given no group)"}
 
 
 def _sorted(ctx):

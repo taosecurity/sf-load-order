@@ -181,7 +181,16 @@ def read_lo(args):
     lo, err = read_load_order(args)
     if lo is None:
         raise Stop(f"can't read the load order: {err}")
+    vp = getattr(lo, "_vortex_profile", None)
+    if vp and vp.get("deployed") is False:  # Data's plugins are another profile's: no masters to read (as sort)
+        raise Stop(f"Data holds another profile, not {vp['name']} (deploy {vp['name']} in Vortex and run again)")
     return lo
+
+
+def current(lo):
+    """The order the game loads (enabled, not dropped), the order sort starts from."""
+    from .order import effective_order
+    return [p.name for p in effective_order(lo)]
 
 
 def sources(args, lo, files, ctx=None, env=None):
@@ -208,8 +217,8 @@ def sources(args, lo, files, ctx=None, env=None):
 
 def build(args, lo, files, env=None):
     s, ctx = sources(args, lo, files, env=env)
-    from .recommend import _current
-    return sortgraph.build(lo, _current(ctx), s, getattr(args, "tie_break", "current")), s, ctx
+    eff = (ctx.results.get("order") or {}).get("effective")
+    return sortgraph.build(lo, list(eff) if eff else current(lo), s, getattr(args, "tie_break", "current")), s, ctx
 
 
 # ---------- list ----------
@@ -238,7 +247,7 @@ def _left_out(args, lo, files, env):
 
 def cmd_list(args, env=None):
     lo = read_lo(args) if (_source_given(args) or args.derived) else None
-    on = {n.lower() for n in lo.enabled()} if lo else None
+    on = {n.lower() for n in current(lo)} if lo else None
     files = read_files(args, env)
     left = _left_out(args, lo, files, env) if lo else {}
     lines, rows = [], []
@@ -305,7 +314,7 @@ def cmd_list(args, env=None):
         if loot["unsafe"]:
             lines.append(f"  {loot['unsafe']} LOOT entries skipped: unsafe pattern")
     if args.derived:
-        b = sortgraph.build(lo, lo.enabled(), sortgraph.Sources())
+        b = sortgraph.build(lo, current(lo), sortgraph.Sources())
         game = [e for e in b.graph.edges.values() if e.source in ("masters", "type", "mod")
                 and not (e.before.startswith("<") and e.after.startswith("<"))]
         lines.append(f"The game's rules (read from the plugins): {len(game)}")
@@ -409,7 +418,7 @@ def cmd_check(args, env=None):
             item["loops"].append(t)
             lines.append(f"  Fix: {t}")
         if lo is not None:
-            b = sortgraph.build(lo, lo.enabled(), sortgraph.Sources(**{source: rf}))
+            b = sortgraph.build(lo, current(lo), sortgraph.Sources(**{source: rf}))
             for r in b.rejected:
                 if r["edge"].source == source and r["edge"].file == rf.path:
                     t = sortgraph.rejected_text(r)
@@ -550,7 +559,7 @@ def patch_proposals(ctx, lo):
     known, st = clashes.read_clashes(ctx, ctx.args.clashes, [], {})
     if st.get("status") == "failed":
         raise Stop(st["why"])
-    on = {n.lower() for n in lo.enabled()}
+    on = {n.lower() for n in current(lo)}
     out = []
     for k in known:
         fb = k.get("fixed_by")
