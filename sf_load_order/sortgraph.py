@@ -122,6 +122,8 @@ class _Builder:
         keeps it."""
         p = plugin.lower()
         e1 = Edge(group_start(group), plugin, source, rank, text, file, entry, {"group": group})
+        if p in self.b.fixed:  # an official or BlueprintShips plugin: the game places it, so its group is moot
+            return "exists"
         if not self.g.has(p):
             self.g.inactive.append(e1)
             return "inactive"

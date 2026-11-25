@@ -582,8 +582,8 @@ rule won and why; nothing is silently dropped.
 3. **Record conflicts** (at `--depth medium`, with sf-mod-check): where the rules leave a choice, the plugin that
    loses fields loads after the one that wins them, when that lowers the loss score. The order stays as it is when
    the gain is small.
-4. **Vortex mod rules** are only a tie-break: a Vortex rule the sort breaks is kept when the order stays valid, and
-   otherwise gets one note.
+4. **Vortex mod rules** are only a tie-break: a Vortex rule the sort breaks is kept when the order stays valid (and, with
+   record data, the loss score doesn't rise), and otherwise gets one note.
 5. **Your current order** breaks every tie (`--tie-break name` orders by file name instead, the same on any PC; it
    moves many plugins).
 
@@ -674,8 +674,9 @@ names. Schema 1:
   `choice`, `clash`, `manual` or `link`; `evidence.files` pins the plugins' SHA-256 hashes.
 - `kind` is `user` for your file and `community` for a file you got from someone else (given with
   `--community-rules`; nothing is downloaded, and a community rule ranks below yours).
-- A rule with an unknown field, a bad name or a list that is too long is skipped with a caution naming it. A file
-  over 5 MB or with more than 10,000 rules is refused. Keys that start with `_` are comments.
+- A rule with an unknown field or a bad name is skipped with a caution naming it. A file over 5 MB, with more
+  than 10,000 rules, or with a list of over 500 items or a text of over 2,000 characters anywhere is refused as a
+  whole (`sort` and the `rules` commands stop with exit 2 and name the limit). Keys that start with `_` are comments.
 - A rule whose pinned hashes no longer match the installed plugins is **stale**: it is still applied, and one caution
   says to run `sort` again and accept or delete the old rule.
 
@@ -683,8 +684,8 @@ names. Schema 1:
 
 | Command | What it does |
 |---|---|
-| `rules list` | Every rule from your file, the community file and LOOT, and whether it is active in this load order (given a source option); an active rule that `sort` leaves out, because a stronger rule contradicts it, says why. `--derived` adds the game's own rules. |
-| `rules explain PLUGIN` | Why the plugin is where it is in the sorted order: every rule into and out of it, and any rule about it that wasn't used. |
+| `rules list` | Every rule from your file, the community file and LOOT, and whether it is active in this load order (given a source option); an active rule that `sort` leaves out, because a stronger rule contradicts it, says why. `--derived` adds the game's own rules. Takes sort's `--picks`, `--clashes` and `--patch-sources` too, so it sees the rules they override. |
+| `rules explain PLUGIN` | Why the plugin is where it is in the sorted order: every rule into and out of it, and any rule about it that wasn't used. Give it the same options you gave `sort` (`--picks`, `--clashes`, `--patch-sources`, `--conflicts`, `--tie-break`) to get the same position. |
 | `rules check` | Checks the files: schema, names, limits and loops among a file's own rules; with a source option also rules the game contradicts and stale rules. Exit 0 clean, 1 something to fix, 2 a file couldn't be read. |
 | `rules propose` | Writes `rules-proposed.json` into `--out`, as `sort` does, without the order files. `--kind patch` proposes each patch's targets from `--clashes`, for sharing. |
 | `rules accept PROPOSED.json` | Copies proposals (`--id ID`, or `--all`) into your rules file. |
@@ -859,7 +860,7 @@ before you post it.
   `(?` form other than `(?:` and `(?i)` (look-behinds, inline flags, named groups), a group followed by `*`, `+` or
   `{..}` (`(a+)+`, `(ab)+`; only `?` may follow a group), more than six choices in all (`*`, `+`, `?`, `{..}` and
   `|` together) or more than two open-ended repeats (`*`, `+`, `{n,}` or `{n,m}` with m over 10, as in
-  `.*.*.*\.esm`) is refused with one caution, because it could make the match run for hours. A masterlist's real patterns all pass. Our own rules files take no pattern at all.
+  `.*.*.*\.esm`) is refused and its entry skipped, because it could make the match run for hours (the log, `rules list` and report.json's clashes `loot` part, as `unsafe_patterns`, say how many). A masterlist's real patterns all pass. Our own rules files take no pattern at all.
 - **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
   after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an
   update of the mod made for that file does. The report says so instead of suggesting a patch (see

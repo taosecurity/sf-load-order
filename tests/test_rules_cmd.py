@@ -170,6 +170,19 @@ class ExplainCmd(Base):
         self.assertIn("the sort moves it", out)
         self.assertIn("the patch ExampleA.esm was built from ExampleD.esm", out)
 
+    def test_explain_takes_sorts_clashes_option(self):
+        # code review round 5: explain had no --clashes, so a fixed_by patch edge sort uses was missing
+        cl = self.write("clashes.json", [{"plugins": ["ExampleB.esm", "ExampleC.esm"], "level": "caution",
+                                          "note": "Both change the same weapons.", "fixed_by": "ExampleA.esm"}])
+        code, out = run("rules", "explain", "ExampleA.esm", "--clashes", cl, "--no-rules", "--no-loot", *self.src)
+        self.assertEqual(code, 0, out)
+        self.assertIn("the sort moves it", out)
+
+    def test_list_takes_sorts_picks_option(self):
+        code, out = run("rules", "list", "--picks", self.write("picks.json", []), "--no-rules", "--no-loot",
+                        *self.src)
+        self.assertEqual(code, 0, out)
+
     def test_explain_a_rule_that_wasnt_used(self):
         r = self.rules([{"plugin": "ExampleA.esm", "after": ["ExamplePatch.esm"]}])
         code, out = run("rules", "explain", "ExampleA.esm", "--rules", r, "--no-loot", *self.src)

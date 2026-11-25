@@ -1,10 +1,11 @@
 """The `rules` command (DESIGN-0.3.0.md 2.7): list, explain, check, accept and propose PMT ordering rules.
 
     sf-load-order rules list    [--rules FILE | --no-rules] [--community-rules FILE] [LOOT options] [source] [--derived]
-    sf-load-order rules explain PLUGIN [the same, plus --picks FILE and --tie-break current|name]
+                                [sort's options: --picks, --tie-break, --conflicts, --clashes, --patch-sources]
+    sf-load-order rules explain PLUGIN [the same as list]
     sf-load-order rules check   [--rules FILE] [--community-rules FILE] [source options]
     sf-load-order rules accept  PROPOSED.json (--id ID ... | --all) [--rules FILE]
-    sf-load-order rules propose [the same as explain, plus --clashes FILE] [--kind choice|patch|all] [--out FOLDER]
+    sf-load-order rules propose [the same as explain] [--kind choice|patch|all] [--out FOLDER]
 
 Everything prints plain text; --json FILE writes the same as JSON (for agents). `list` and `check` read a load order
 only when a source option is given; `explain` and `propose` always do (the game's own Plugins.txt by default).
@@ -61,6 +62,7 @@ def parser():
     sp.add_argument("--derived", action="store_true",
                     help="also list the game's rules read from the plugins (masters, master plugins first, a mod's "
                          "own plugin order); needs a load order")
+    _sort_options(sp)
     common(sp)
     sp = sub.add_parser("explain", help="why a plugin is where it is in the sorted order",
                         description="Sort the load order quietly (nothing is written but the log) and say why PLUGIN "
@@ -94,7 +96,6 @@ def parser():
     sp.add_argument("--kind", choices=KINDS, default="choice",
                     help="choice: the record-conflict choices the sort makes (default); patch: the plugins each patch "
                          "in --clashes fixes (fixed_by), for sharing in a community file; all: both")
-    sp.add_argument("--clashes", metavar="FILE", help="your own known-clashes file (its fixed_by entries)")
     sp.add_argument("--out", metavar="FOLDER", default="sf-load-order-report",
                     help="where rules-proposed.json goes (default: .\\sf-load-order-report)")
     _sort_options(sp)
@@ -130,6 +131,10 @@ def _sort_options(sp):
                         "name, the same on any PC")
     g.add_argument("--conflicts", metavar="FILE",
                    help="a conflicts.json from sf-mod-check conflict, for the record-conflict choices the sort makes")
+    g.add_argument("--clashes", metavar="FILE", help="your own known-clashes file (its fixed_by entries), as in sort")
+    g.add_argument("--patch-sources", metavar="FILE|FOLDER", action="append",
+                   help="a patch-sources.json (or a folder of them) besides those found next to the enabled plugins, "
+                        "as in sort (may be given more than once)")
 
 
 # ---------- reading ----------

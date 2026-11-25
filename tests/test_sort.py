@@ -140,6 +140,18 @@ class PluginsTxt(Base):
         with open(os.path.join(self.out, "report.txt"), encoding="utf-8") as f:
             self.assertNotIn("default group", f.read().split("Rules used, by source:")[1].split(".")[0])
 
+    def test_a_group_on_an_official_plugin_isnt_inactive(self):
+        # code review round 5: the game places Starfield.esm, so its group is moot, not "a plugin that isn't enabled"
+        r = self.rules([{"plugin": "Starfield.esm", "group": "Late"}], groups=[{"name": "Late"}])
+        _code, _out, j = self.sort("--rules", r)
+        self.assertEqual(j["sort"]["inactive_rules"], 0)
+
+    def test_how_to_has_no_move_line_when_nothing_moves(self):
+        # code review round 5: HOW-TO-APPLY.txt said "Sorting moves 0 plugin(s). Back up ..." before "nothing to apply"
+        self.sort()
+        with open(os.path.join(self.out, "HOW-TO-APPLY.txt"), encoding="utf-8") as f:
+            self.assertNotIn("Sorting moves", f.read())
+
     def test_rule_against_a_master_is_not_used(self):
         # ExamplePatch has ExampleA as a master, so "ExampleA after ExamplePatch" can't be met
         r = self.rules([{"plugin": "ExampleA.esm", "after": ["ExamplePatch.esm"]}])

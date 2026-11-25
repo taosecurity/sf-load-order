@@ -468,8 +468,9 @@ def run(ctx, env=None):
         recommend.mo2_officials_caution(ctx, lo, _add)
         ctx.report.recommended = res["order"]
         files_w = writers.write(ctx, res=dict(res, same_as_current=res["same_as_current"]), section=SECTION,
-                                intro=[f"Sorting moves {len(res['moves'])} plugin(s). Back up your current order "
-                                       "first (the steps below say how).", ""])
+                                intro=None if res["same_as_current"] else
+                                [f"Sorting moves {len(res['moves'])} plugin(s). Back up your current order "
+                                 "first (the steps below say how).", ""])
         res["files"] = files_w
         ctx.report.outputs.update(files_w)
     try:

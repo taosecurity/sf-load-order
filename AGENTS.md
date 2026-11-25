@@ -164,7 +164,7 @@ there changes what "changed since the last run" reports.
   options and writes plugins.txt, `loadorder.txt` for MO2, the Vortex import file, HOW-TO-APPLY.txt,
   `rules-proposed.json` and the report; nothing is applied):
   `.\sf-load-order.cmd sort`
-  The RESULT line and `report.txt` name the number of plugins moved; the "Sorted order" part lists each move with its
+  `report.txt` names the number of plugins moved (the RESULT line has the usual counts); the "Sorted order" part lists each move with its
   reason, the rules that weren't used and why, and the requires and incompatible checks. In report.json the key
   `sort` has `moves`, `rejected`, `proposed` and `files`. A master loop (plugins that each need the other) is a
   problem and no order files are written. Use `--tie-break name` for an order by file name that is the same on any PC
@@ -174,7 +174,8 @@ there changes what "changed since the last run" reports.
   exit 2): `.\sf-load-order.cmd sort --rules "<rules file>"`
 - Sort with a community rules file (a local file; nothing is downloaded):
   `.\sf-load-order.cmd sort --community-rules "<community rules file>"`
-- Say why a plugin is where it is in the sorted order (writes nothing but the log):
+- Say why a plugin is where it is in the sorted order (writes nothing but the log; give it the same `--picks`,
+  `--clashes`, `--patch-sources` and `--conflicts` you gave `sort`):
   `.\sf-load-order.cmd rules explain ExampleAddon.esm --data "<Data folder>"`
 - List every rule and whether it is active in this load order, with the reason when `sort` leaves an active rule
   out (`--derived` adds the game's own rules):
@@ -268,10 +269,11 @@ credits and writes nothing. Screen output keeps the console's character set and 
 - It never ships or copies LOOT's masterlist; it reads the person's own copy.
 - `sort` and `rules` never apply an order and never download a rules file. A plugin counts as a master when it has the
   master flag or an `.esm` or `.esl` name (esplugin 6.1.4, which libloot uses); light and medium never change a
-  plugin's place. Vortex mod rules are only a tie-break. A rule that breaks the game's own rules is left out, with one
-  caution that says why. LOOT's regular-expression names are checked before use: a pattern over 256 characters, a
+  plugin's place. Vortex mod rules are only a tie-break. A rule that breaks the game's own rules is left out and the report
+  says why: a caution for your own rules and picks, a note for community, LOOT and default-group rules, and a
+  problem for a master plugin that needs a non-master. LOOT's regular-expression names are checked before use: a pattern over 256 characters, a
   back-reference, a `(?` form other than `(?:` and `(?i)`, a group followed by `*`, `+` or `{..}`, more than six
-  choices in all (`*`, `+`, `?`, `{..}` and `|`) or more than two open-ended repeats is refused with a caution.
+  choices in all (`*`, `+`, `?`, `{..}` and `|`) or more than two open-ended repeats is refused and its entry skipped (the log and `unsafe_patterns` count them).
 - Our own rules files take exact plugin file names only: no regex, no wildcard (`( ) [ ] +` are plain name characters).
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
   and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
