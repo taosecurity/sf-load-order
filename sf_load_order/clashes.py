@@ -557,20 +557,22 @@ MAX_MATCH = 260
 MAX_REGEX_ENTRIES = 2000      # regex entry names read per LOOT file; the rest are skipped
 MAX_LOOT_BYTES = 20 * 1024 * 1024
 MAX_UNBOUNDED = 2             # open-ended repeats per pattern: two match a 260-character name quickly, more may not
+MAX_REPEATS = 6               # repeats of any kind (*, +, ?, {..}) per pattern: a?a?a?... doubles the work per term
 _QUANT = re.compile(r"\{\d*(,\d*)?\}")
 
 
 def regex_refusal(text):
     """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
-    back-reference or look-behind, or a group holding a repeat or a | that is itself repeated with *, + or {..}
-    (like (a+)+ or (a|ab)*; a group followed by ? is fine), or more than MAX_UNBOUNDED open-ended repeats (*, + or
-    {n,}) in all, since a*a*a*a*... backtracks for a very long time too."""
+    back-reference or look-behind, a group holding a repeat (*, +, ? or {..}) or a | that is itself repeated with
+    *, + or {..} (like (a+)+, (a?a?)+ or (a|ab)*; a group followed by ? is fine), more than MAX_UNBOUNDED open-ended
+    repeats (*, + or {n,}), or more than MAX_REPEATS repeats of any kind, since a*a*a*... and a?a?a?... backtrack
+    for a very long time too."""
     if not isinstance(text, str):
         return "not text"
     if len(text) > MAX_PATTERN:
         return f"longer than {MAX_PATTERN} characters"
-    unbounded = 0
-    stack = [False]  # per open group: does it hold a repeat (*, + or {..}) or a | anywhere inside?
+    unbounded = repeats = 0
+    stack = [False]  # per open group: does it hold a repeat (*, +, ? or {..}) or a | anywhere inside?
     last = None      # what the next quantifier applies to: None, "atom" or ("group", holds_a_repeat)
     i, n = 0, len(text)
     while i < n:
@@ -606,10 +608,16 @@ def regex_refusal(text):
             i, last = i + 1, ("group", inner)
             continue
         q = _QUANT.match(text, i) if c == "{" else None
-        if c in "*+" or q:
-            if isinstance(last, tuple) and last[1]:
+        if c in "*+?" or q:
+            if last is None:  # ? right after ( is group syntax, like (?: or (?i)
+                i += 1
+                continue
+            repeats += 1
+            if repeats > MAX_REPEATS:
+                return f"more than {MAX_REPEATS} repeats (*, +, ? or {{..}}; it can take very long to match)"
+            if c != "?" and isinstance(last, tuple) and last[1]:
                 return "a repeated group that itself repeats or holds a | (it can take very long to match)"
-            if c in "*+" or q.group(1) == ",":
+            if c in "*+" or (q and q.group(1) == ","):
                 unbounded += 1
                 if unbounded > MAX_UNBOUNDED:
                     return (f"more than {MAX_UNBOUNDED} open-ended repeats (*, + or {{n,}}; it can take very long "
@@ -622,7 +630,7 @@ def regex_refusal(text):
             continue
         if c == "|":
             stack[-1] = True
-        i, last = i + 1, "atom"  # a plain character, |, ^, $, or ? (a group followed by ? is fine)
+        i, last = i + 1, "atom"  # a plain character, |, ^ or $
     return None
 
 

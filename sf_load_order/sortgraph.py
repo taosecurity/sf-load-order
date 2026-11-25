@@ -282,10 +282,12 @@ def rule_checks(lo, files):
 
 
 # ---------- explain ----------
-def explain(b, plugin):
+def explain(b, plugin, full=None, order=None):
     """Why plugin is where it is: {"plugin", "found", "fixed", "position", "was", "moved", "after": [Edge texts],
     "before": [Edge texts], "anchor": the nearest plugin above it that didn't move, "rejected": [texts],
-    "inactive": [texts]}."""
+    "inactive": [texts]}. full, order: the order sort writes (whole, movable part); default the graph's own."""
+    if full is None:
+        full, order = b.full, b.order
     p = plugin.lower()
     cur_low = [n.lower() for n in b.current]
     out = {"plugin": plugin, "found": p in cur_low, "fixed": p in b.fixed, "position": None, "was": None,
@@ -295,12 +297,12 @@ def explain(b, plugin):
     real = b.current[cur_low.index(p)]
     out["plugin"] = real
     out["was"] = cur_low.index(p) + 1
-    if b.full is not None:
-        full_low = [n.lower() for n in b.full]
+    if full is not None:
+        full_low = [n.lower() for n in full]
         out["position"] = full_low.index(p) + 1
-        mv = {n.lower() for n in recommend.moved(b.order, b.movable)} if b.order is not None else set()
+        mv = {n.lower() for n in recommend.moved(order, b.movable)} if order is not None else set()
         out["moved"] = p in mv
-        for n in reversed(b.full[:full_low.index(p)]):
+        for n in reversed(full[:full_low.index(p)]):
             if n.lower() not in mv:
                 out["anchor"] = n
                 break

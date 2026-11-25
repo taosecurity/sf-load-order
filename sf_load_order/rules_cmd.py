@@ -337,7 +337,12 @@ def cmd_explain(args, env=None):
     lo = read_lo(args)
     files = read_files(args, env)
     b, _s, _ctx = build(args, lo, files, env)
-    x = sortgraph.explain(b, args.plugin)
+    # the order sort writes: the graph's order with the picks' right-after placement, the record-conflict climb
+    # (with --conflicts) and the Vortex tie-break, so explain's position and anchor match sort's files
+    from . import sort
+    rec = _records(_ctx, lo)
+    sf = sort.soft(_ctx, b, rec) if b.order is not None else None
+    x = sortgraph.explain(b, args.plugin, full=sf["full"] if sf else None, order=sf["order"] if sf else None)
     if not x["found"]:
         raise Stop(f"{args.plugin} isn't enabled in this load order (rules explain looks only at enabled plugins).")
     lines = []
@@ -366,9 +371,7 @@ def cmd_explain(args, env=None):
         lines.append("Rules about it that don't apply here (a plugin they name isn't enabled):")
         lines += [f"  - {t}" for t in x["inactive"]]
     x["soft"] = None
-    sf = soft(_ctx, lo, b) if not x["fixed"] else None
-    if sf:
-        from . import sort
+    if sf and rec is not None and not x["fixed"]:
         low = x["plugin"].lower()
         f = next((f for f in sf["flips"] if f["loser"].lower() == low), None)
         w = next((f for f in sf["flips"] if f["winner"].lower() == low), None)

@@ -132,6 +132,20 @@ class ExplainCmd(Base):
         self.assertEqual(x["position"], x["was"] + 2)  # moved down past ExampleB.esm and ExampleC.esm
         self.assertEqual(x["anchor"], "ExampleC.esm")
 
+    def test_explain_gives_the_position_sort_writes_with_a_pick(self):
+        # code review round 3: a pick puts ExampleD.esm right after ExampleA.esm; the graph alone leaves it in place
+        picks = self.write("picks.json", {"picks": [{"plugin": "ExampleD.esm", "after": "ExampleA.esm"}]})
+        js = os.path.join(self.tmp, "x.json")
+        code, out = run("rules", "explain", "ExampleD.esm", "--no-rules", "--no-loot", "--picks", picks,
+                        "--json", js, *self.src)
+        self.assertEqual(code, 0, out)
+        self.assertIn("the sort moves it", out)
+        with open(js, encoding="utf-8") as f:
+            x = json.load(f)
+        self.assertTrue(x["moved"])
+        self.assertEqual(x["anchor"], "ExampleA.esm")
+        self.assertEqual(x["position"], x["was"] - 2)  # up past ExampleB.esm and ExampleC.esm
+
     def test_explain_refuses_a_vortex_profile_that_isnt_deployed(self):
         from unittest import mock
         real = cli.read_load_order

@@ -66,6 +66,15 @@ class Guard(unittest.TestCase):
         for p in (r"a*b*", r".*\.esm", r"a{2,5}b{3}c{1,}"):
             self.assertIsNone(clashes.regex_refusal(p), p)
 
+    def test_optional_repeats_count_too(self):
+        # code review round 3: ? and {n,m} are repeats as well (each one doubles the work of a long chain)
+        self.assertIn("repeat", clashes.regex_refusal(r"(a?a?)+b"))
+        self.assertIn("repeat", clashes.regex_refusal(r"(a{0,2})*b"))
+        self.assertIn("repeats", clashes.regex_refusal("a?" * 26 + "a" * 26))
+        self.assertIn("repeats", clashes.regex_refusal("a{0,1}" * 8))
+        for p in (r"(?:blueprintships-)?sfta0[1-6]\.esm", r"(?i)abc\.esm", r"(foo|bar)?\.esm", r"a?b?c?\.es[mp]"):
+            self.assertIsNone(clashes.regex_refusal(p), p)
+
     def test_long_backrefs_and_lookbehinds_are_refused(self):
         self.assertIn("256", clashes.regex_refusal("a" * 300))
         self.assertIn("back-reference", clashes.regex_refusal(r"(a)\1"))

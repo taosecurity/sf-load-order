@@ -197,7 +197,10 @@ def soft(ctx, b, rec=None):
                                     "a pick or a rules-file rule)", arranger=arr)
     order = pl["order"]
     pairs = (rec or {}).get("pairs") or []
-    newly = [k for k in pl["flipped"] if k not in pl["flipped0"]]
+    # only the climb's own pairs are record-conflict choices: a pair a master, LOOT or rules edge flipped (or one
+    # the climb never weighs) gets no choice proposal and no record-conflict reason
+    cand = set(pl["candidates"])
+    newly = [k for k in pl["flipped"] if k not in pl["flipped0"] and k in cand]
     soft_edges = [(pairs[k]["winner"], pairs[k]["loser"]) for k in newly]
     score = recommend.scorer(rec) if rated else None
     best = pl["score_recommended"]
@@ -223,6 +226,7 @@ def soft(ctx, b, rec=None):
         pl["score_recommended"], flipped = score(full)
         newly = [k for k in flipped if k not in pl["flipped0"]]
         pl["estimate"] = any(not pairs[k].get("cost_complete") for k in newly)
+        newly = [k for k in newly if k in cand]
     flips = []
     for k in newly:
         p = pairs[k]

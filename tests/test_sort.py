@@ -429,6 +429,23 @@ class Soft(unittest.TestCase):
         # the proposal file is a valid rules file
         self.assertEqual(rulesfile.read(os.path.join(self.t, "rules-proposed.json"), "user").problems, [])
 
+    def test_a_pair_a_master_flips_gets_no_choice_proposal(self):
+        # code review round 3: B.esm has A.esm as a master but loads above it; the master edge moves it below A.esm,
+        # which also flips the record pair (loser B, winner A). That is the master's doing, not a choice.
+        recommend.NEAR_MIN, recommend.NEAR_SHARE = 0, 0
+        ps = [model.Plugin("Starfield.esm", True, official=True, masters=[], master=True),
+              model.Plugin("B.esm", True, masters=["Starfield.esm", "A.esm"], master=True),
+              model.Plugin("A.esm", True, masters=["Starfield.esm"], master=True),
+              model.Plugin("C.esm", True, masters=["Starfield.esm"], master=True)]
+        lo = model.LoadOrder(source="plugins.txt", plugins=ps)
+        ctx = ctx_for(self.t, lo)
+        ctx.results["records"] = self.rec(lo, [lost("000100:Starfield.esm", "B.esm", "A.esm", [field("Keywords")])])
+        sort.run(ctx)
+        s = ctx.results["sort"]
+        self.assertLess(s["order"].index("A.esm"), s["order"].index("B.esm"))
+        self.assertEqual(s["proposed"], 0)
+        self.assertTrue(all(m["source"] != "records" for m in s["moves"]), s["moves"])
+
     def test_near_tie_keeps_the_order(self):
         lo = make_lo(["A.esm", "B.esm", "C.esm"])
         ctx = ctx_for(self.t, lo)
