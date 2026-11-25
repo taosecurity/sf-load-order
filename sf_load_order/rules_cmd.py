@@ -94,7 +94,8 @@ def parser():
                                     "without the order files.",
                         allow_abbrev=False)
     sp.add_argument("--kind", choices=KINDS, default="choice",
-                    help="choice: the record-conflict choices the sort makes (default); patch: the plugins each patch "
+                    help="choice: the record-conflict choices the sort makes (default; needs --conflicts, since "
+                         "propose doesn't run sf-mod-check itself); patch: the plugins each patch "
                          "in --clashes fixes (fixed_by), for sharing in a community file; all: both")
     sp.add_argument("--out", metavar="FOLDER", default="sf-load-order-report",
                     help="where rules-proposed.json goes (default: .\\sf-load-order-report)")
@@ -624,6 +625,9 @@ def cmd_propose(args, env=None):
         raise Stop(f"can't write rules-proposed.json in {args.out} ({e.strerror or e}). Fix: give --out a folder "
                    "you can write to.")
     lines = [f"{len(rules)} proposal(s) written to {path}."]
+    if args.kind in ("choice", "all") and not getattr(args, "conflicts", None):
+        lines.append("Note: record-conflict choices need record data. Give --conflicts <conflicts.json> (from "
+                     "sf-mod-check conflict), or run sort, which gets it itself.")
     lines += [f"  {r['id']}: {rulesfile.describe(dict(r, before=[], requires=[], incompatible=[]))}" for r in rules]
     if rules:
         lines.append(f"To keep them: sf-load-order rules accept \"{path}\" --all (or --id <id> for one).")

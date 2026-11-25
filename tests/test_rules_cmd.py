@@ -310,6 +310,7 @@ class ProposeCmd(Base):
         self.assertEqual(code, 0, out)
         with open(os.path.join(out_dir, "rules-proposed.json"), encoding="utf-8") as f:
             self.assertEqual(json.load(f), {"schema": 1, "kind": "user", "rules": []})
+        self.assertIn("record-conflict choices need record data", out)
 
     def test_patch_proposals_from_fixed_by_then_accept(self):
         cl = self.write("clashes.json", [{"plugins": ["ExampleB.esm", "ExampleC.esm"], "level": "caution",
@@ -356,6 +357,7 @@ class ChoiceProposals(Base):
         self.assertEqual([(p["plugin"], p["after"], p["evidence"]["kind"]) for p in prop],
                          [("ExampleA.esm", ["ExampleC.esm"], "choice")])
         self.assertEqual(len(prop[0]["evidence"]["records"]), 4)
+        self.assertNotIn("record-conflict choices need record data", text)
 
     def test_explain_names_the_soft_move(self):
         code, text = run("rules", "explain", "ExampleA.esm", "--no-rules", "--no-loot", "--conflicts",

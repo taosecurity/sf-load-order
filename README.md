@@ -687,7 +687,7 @@ names. Schema 1:
 | `rules list` | Every rule from your file, the community file and LOOT, and whether it is active in this load order (given a source option); an active rule that `sort` leaves out, because a stronger rule contradicts it, says why. `--derived` adds the game's own rules. Takes sort's `--picks`, `--clashes` and `--patch-sources` too, so it sees the rules they override. |
 | `rules explain PLUGIN` | Why the plugin is where it is in the sorted order: every rule into and out of it, and any rule about it that wasn't used. Give it the same options you gave `sort` (`--picks`, `--clashes`, `--patch-sources`, `--conflicts`, `--tie-break`) to get the same position. |
 | `rules check` | Checks the files: schema, names, limits and loops among a file's own rules; with a source option also rules the game contradicts and stale rules. Exit 0 clean, 1 something to fix, 2 a file couldn't be read. |
-| `rules propose` | Writes `rules-proposed.json` into `--out`, as `sort` does, without the order files. `--kind patch` proposes each patch's targets from `--clashes`, for sharing. |
+| `rules propose` | Writes `rules-proposed.json` into `--out`, as `sort` does, without the order files. It doesn't run sf-mod-check itself, so the record-conflict choices need `--conflicts <conflicts.json>` (from `sf-mod-check conflict`); without it the file holds no choices and the command says so. `--kind patch` proposes each patch's targets from `--clashes`, for sharing. |
 | `rules accept PROPOSED.json` | Copies proposals (`--id ID`, or `--all`) into your rules file. |
 
 `sort` always writes `rules-proposed.json`: the record-conflict choices it made, each as a rule ("the loser loads

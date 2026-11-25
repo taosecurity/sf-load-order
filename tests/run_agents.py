@@ -309,7 +309,7 @@ COMMANDS = [
          checks=[prints("usable rule(s)")]),
     dict(text=C + ' rules accept "<rules-proposed.json>" --all --state "<folder>"', report=False,
          checks=[rules_added]),
-    dict(text=C + ' rules propose --out "<report folder>"', report=False, checks=[proposed_written]),
+    dict(text=C + ' rules propose --conflicts "<conflicts.json>" --out "<report folder>"', report=False, checks=[proposed_written]),
     dict(text=C + ' --state "<folder>"', checks=[state_written]),
     dict(text=C + " --no-state", checks=[no_state]),
     dict(text=C + ' --out "<report folder>"', checks=[]),

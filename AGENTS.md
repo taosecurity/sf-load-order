@@ -186,7 +186,9 @@ there changes what "changed since the last run" reports.
   command that writes outside `--out`: it writes the rules file (default `sf-load-order-rules.json` in the state
   folder) and its `.bak`, nothing else:
   `.\sf-load-order.cmd rules accept "<rules-proposed.json>" --all --state "<folder>"`
-- Write only the proposals, without the order files: `.\sf-load-order.cmd rules propose --out "<report folder>"`
+- Write only the proposals, without the order files:
+  `.\sf-load-order.cmd rules propose --conflicts "<conflicts.json>" --out "<report folder>"`. `propose` doesn't run
+  sf-mod-check, so without `--conflicts` (a `sf-mod-check conflict` file) it writes no record-conflict choices.
 
 After a run, read `sf-load-order-report\report.txt` (or `report.json`) and explain the top 10 to the person. To
 apply a suggested order, follow `sf-load-order-report\HOW-TO-APPLY.txt` with them; it starts with a backup. Never
