@@ -431,6 +431,8 @@ class MO2(Base):
               "mod_directory=..\\\\MO2\\\\mods\nprofiles_directory=..\\\\MO2\\\\profiles\n")
         lo = self.ok("--mo2", inst, "--data", self.data)
         self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
+        # sf-mod-check --mo2 reads backslashes as they are, so off Windows it isn't given this instance
+        self.assertEqual(lo.mo2_instance, inst if os.name == "nt" else None)
         # a relative base_directory with backslashes, used through %BASE_DIR% (0.3.2 review)
         write(os.path.join(inst, "ModOrganizer.ini"), "[General]\nselected_profile=@ByteArray(Default)\n[Settings]\n"
               "base_directory=..\\\\MO2\nmod_directory=%BASE_DIR%\\\\mods\nprofiles_directory=%BASE_DIR%\\\\profiles\n")

@@ -606,7 +606,15 @@ def from_mo2(instance, args, env, drives, registry):
     data, extra = _find_data(args, env, drives, registry, os.path.join(game, "Data") if game else None,
                              "MO2's gamePath")
     log.info(SECTION, f"mo2 {instance} profile {profile}; mods {mods_dir}")
-    lo = LoadOrder("mo2", profile=profile, files={"plugins_txt": ptxt}, data=data, mo2_instance=instance)
+    # sf-mod-check --mo2 reads these folder values as they are, so on Linux a backslash ini (copied from Windows)
+    # isn't handed to it: the record check then works as in 0.3.1 (0.3.2 review)
+    keys = ("base_directory", "profiles_directory", "mod_directory", "overwrite_directory")
+    shareable = os.name == "nt" or not any("\\" in (ini.get(k) or "") for k in keys)
+    if not shareable:
+        log.info(SECTION, "mo2: the ini's folder values use backslashes, so sf-mod-check isn't given --mo2 on this "
+                          "system")
+    lo = LoadOrder("mo2", profile=profile, files={"plugins_txt": ptxt}, data=data,
+                   mo2_instance=instance if shareable else None)
     if os.path.isfile(ini_path):
         lo.files["modorganizer_ini"] = ini_path
     mlpath = os.path.join(pdir, "modlist.txt")

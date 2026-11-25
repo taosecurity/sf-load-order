@@ -724,7 +724,8 @@ def run(ctx):
             why = (f"{len(hidden)} enabled plugin(s) aren't in {lo.data} (MO2 keeps mods in their own folders, and "
                    "only programs started from MO2 see them in Data). Fix: update sf-mod-check to 0.16.0 or later "
                    "(it reads the MO2 folder itself), start sf-load-order from MO2 (add it as an executable), or "
-                   "run sf-mod-check conflict with --mo2 and pass its conflicts.json with --conflicts.")
+                   f"run sf-mod-check conflict with --mo2 and --profile {lo.profile} and pass its conflicts.json "
+                   "with --conflicts.")
             ctx.report.add(Finding("note", SECTION, "Record conflicts weren't checked: " + why.split(" Fix: ")[0] + ".",
                                    fix=why.split(" Fix: ")[1], plugins=hidden[:20]))
             return _skip(why, program=prog.to_dict())

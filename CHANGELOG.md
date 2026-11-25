@@ -4,10 +4,10 @@
 
 ### What's new
 
-A small release. No option was removed or renamed, the exit codes are the same, and report.json has the same keys.
+A small release. No option was removed or renamed, the exit codes are the same, and report.json has one new key, `load_order.mo2_instance` (the MO2 instance folder given to sf-mod-check, or `null`).
 
-- **MO2 record check without `--conflicts`.** With `--mo2` and sf-mod-check 0.16.0 or newer, the record check runs `sf-mod-check conflict --mo2 <instance folder> --profile <profile>` (and `--data` when one was found), so sf-mod-check reads MO2's mod folders itself. Before, plugins kept in MO2's mod folders made the check skip unless you started sf-load-order from MO2 or passed `--conflicts` by hand. With an older sf-mod-check the check still skips, and the message now says to update it. sf-mod-check reads the profile's plugins.txt as it is, so a plugin whose name the game drops is read too; a caution then says its record results don't happen in the game. `--depth heavy`'s per-plugin `sf-mod-check check` still needs sf-load-order started from MO2 (that command has no `--mo2`), and `candidate` is unchanged (still start it from MO2).
-- **A `ModOrganizer.ini` copied from Windows works on Linux.** Folder settings such as `mod_directory=..\\MO2\\mods` are split at the backslashes on Linux, where 0.3.1 read them as one odd folder name.
+- **MO2 record check without `--conflicts`.** With `--mo2` and sf-mod-check 0.16.0 or newer, the record check runs `sf-mod-check conflict --mo2 <instance folder> --profile <profile>` (and `--data` when one was found), so sf-mod-check reads MO2's mod folders itself. Before, plugins kept in MO2's mod folders made the check skip unless you started sf-load-order from MO2 or passed `--conflicts` by hand. With an older sf-mod-check the check still skips, and the message now says to update it. sf-mod-check reads the profile's plugins.txt as it is, so a plugin whose name the game drops is read too; a caution then says its record results don't happen in the game. `--depth heavy`'s per-plugin `sf-mod-check check` and the merged-patch check still need sf-load-order started from MO2, and `candidate` is unchanged (still start it from MO2).
+- **A `ModOrganizer.ini` copied from Windows works on Linux.** Folder settings such as `mod_directory=..\\MO2\\mods` are split at the backslashes on Linux, where 0.3.1 read them as one odd folder name. sf-mod-check doesn't do that, so on Linux such an instance isn't handed to it with `--mo2`, and the record check works as in 0.3.1.
 
 ### Example
 
