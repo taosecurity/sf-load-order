@@ -54,7 +54,9 @@ def parser():
 
     sp = sub.add_parser("list", help="every rule, and whether it is active in this load order (with a source)",
                         description="Print every rule from your rules file, the community file and LOOT's files. "
-                                    "With a source option, each rule says whether it is active in that load order.",
+                                    "With a source option, each rule says whether it is active in that load order, "
+                                    "and an active rule that sort leaves out (a stronger rule contradicts it) says "
+                                    "why.",
                         allow_abbrev=False)
     sp.add_argument("--derived", action="store_true",
                     help="also list the game's rules read from the plugins (masters, master plugins first, a mod's "
@@ -210,10 +212,25 @@ def _active(r, on):
     return not order or any(x.lower() in on for x in order)
 
 
+def _left_out(args, lo, files, env):
+    """{key: [why, ...]} for each rule the sort leaves out in this load order (the same graph as sort's).
+    Keys: (source, entry) for a rules file's rule, (source, entry, plugin, after) for a LOOT after rule."""
+    b, _s, _ctx = build(args, lo, files, env)
+    left = {}
+    for r in b.rejected:
+        e = r["edge"]
+        if e.source in ("user", "community"):
+            left.setdefault((e.source, str(e.entry)), []).append(r["why"])
+        elif e.source in ("loot_userlist", "loot_masterlist"):
+            left.setdefault((e.source, str(e.entry), e.after.lower(), e.before.lower()), []).append(r["why"])
+    return left
+
+
 def cmd_list(args, env=None):
     lo = read_lo(args) if (_source_given(args) or args.derived) else None
     on = {n.lower() for n in lo.enabled()} if lo else None
     files = read_files(args, env)
+    left = _left_out(args, lo, files, env) if lo else {}
     lines, rows = [], []
 
     def head(label, rf, path, why_none):
@@ -232,9 +249,10 @@ def cmd_list(args, env=None):
                          "text": text})
         for r in rf.rules:
             act = None if on is None else _active(r, on)
-            lines.append(f"  {rf.label(r)}: {rulesfile.describe(r)}" + _flag(act))
+            why = left.get((label_key[label], str(r["entry"])), []) if act else []
+            lines.append(f"  {rf.label(r)}: {rulesfile.describe(r)}" + _flag(act, why))
             rows.append({"source": label_key[label], "file": rf.path, "entry": r["entry"], "id": r.get("id"),
-                         "plugin": r["plugin"], "text": rulesfile.describe(r), "active": act})
+                         "plugin": r["plugin"], "text": rulesfile.describe(r), "active": act, "not_used": why})
 
     label_key = {"Your rules": "user", "Community rules": "community"}
     why_user = "--no-rules" if args.no_rules else f"no file at {files['user_path']}"
@@ -261,10 +279,11 @@ def cmd_list(args, env=None):
                 rows.append({"source": source, "file": path, "entry": g["entry"], "group": g["name"], "text": text})
             for a in mine:
                 act = None if on is None else (a["plugin"].lower() in on and a["after"].lower() in on)
+                why = left.get((source, str(a["entry"]), a["plugin"].lower(), a["after"].lower()), []) if act else []
                 text = f"{a['plugin']} loads after {a['after']}"
-                lines.append(f"  entry {a['entry']}: {text}" + _flag(act))
+                lines.append(f"  entry {a['entry']}: {text}" + _flag(act, why))
                 rows.append({"source": source, "file": path, "entry": a["entry"], "plugin": a["plugin"],
-                             "text": text, "active": act})
+                             "text": text, "active": act, "not_used": why})
             for m in mem:
                 act = None if on is None else m["plugin"].lower() in on
                 text = f"{m['plugin']} is in the group {m['group']}"
@@ -288,7 +307,9 @@ def cmd_list(args, env=None):
     return 0, lines, {"command": "list", "rules": rows}
 
 
-def _flag(act):
+def _flag(act, why=()):
+    if act and why:
+        return f" [active, but the sort doesn't use it: {'; '.join(why)}]"
     return "" if act is None else " [active]" if act else " [inactive: a plugin it names isn't enabled]"
 
 

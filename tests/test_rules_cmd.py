@@ -69,6 +69,20 @@ class ListCmd(Base):
             rows = json.load(f)["rules"]
         self.assertEqual([x["active"] for x in rows], [True, False])
 
+    def test_list_marks_a_rule_the_sort_leaves_out(self):
+        # 0.3.0 bug hunt: a rule the game's masters contradict was listed as plain [active]
+        r = self.rules([{"plugin": "ExampleA.esm", "after": ["ExamplePatch.esm"]},
+                        {"plugin": "ExampleB.esm", "after": ["ExampleD.esm"]}])
+        js = os.path.join(self.tmp, "list.json")
+        code, out = run("rules", "list", "--rules", r, "--no-loot", "--json", js, *self.src)
+        self.assertEqual(code, 0)
+        self.assertIn("entry 1: ExampleA.esm loads after ExamplePatch.esm [active, but the sort doesn't use it: "
+                      "ExamplePatch.esm has ExampleA.esm as a master]", out)
+        self.assertIn("entry 2: ExampleB.esm loads after ExampleD.esm [active]", out)
+        with open(js, encoding="utf-8") as f:
+            rows = json.load(f)["rules"]
+        self.assertEqual([bool(x["not_used"]) for x in rows], [True, False])
+
     def test_list_without_a_file_or_source(self):
         code, out = run("rules", "list", "--state", self.state, "--no-loot")
         self.assertEqual(code, 0)

@@ -176,7 +176,8 @@ there changes what "changed since the last run" reports.
   `.\sf-load-order.cmd sort --community-rules "<community rules file>"`
 - Say why a plugin is where it is in the sorted order (writes nothing but the log):
   `.\sf-load-order.cmd rules explain ExampleAddon.esm --data "<Data folder>"`
-- List every rule and whether it is active in this load order (`--derived` adds the game's own rules):
+- List every rule and whether it is active in this load order, with the reason when `sort` leaves an active rule
+  out (`--derived` adds the game's own rules):
   `.\sf-load-order.cmd rules list --derived --data "<Data folder>"`
 - Check a rules file, and against the load order when a source is given (exit 0 clean, 1 something to fix, 2 a file
   couldn't be read): `.\sf-load-order.cmd rules check --rules "<rules file>" --data "<Data folder>"`

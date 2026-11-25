@@ -211,6 +211,19 @@ class PluginsTxt(Base):
                                        "*ExamplePatch.esm"])
 
 
+class TieBreakNameReasons(Base):
+    PLUGINS = {"ExampleC.esm": {}, "ExampleA.esm": {}, "ExampleB.esm": {}}
+
+    def test_each_move_names_the_tie_break(self):
+        # 0.3.0 bug hunt: the first move said "it moves along with the moves above" with no move above it
+        _code, _out, j = self.sort("--tie-break", "name", "--no-rules")
+        self.assertEqual(self.mods(), ["*ExampleA.esm", "*ExampleB.esm", "*ExampleC.esm"])
+        self.assertTrue(j["sort"]["moves"])
+        for m in j["sort"]["moves"]:
+            self.assertIn("--tie-break name", m["reason"])
+            self.assertNotIn("moves along", m["reason"])
+
+
 class LootAndPatches(Base):
     MASTERLIST = """
 plugins:

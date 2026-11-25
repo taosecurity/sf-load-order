@@ -324,6 +324,8 @@ def moves(b, sf):
                               + (" (estimated)" if not w["cost_complete"] else "")), "records"
         elif low in vort:
             reason, source = f"so the plugins keep the order of {vort[low]['rule']}", "vortex"
+        elif b.graph.tie_break == "name":
+            reason, source = "--tie-break name puts the plugins in file-name order wherever the rules allow", "order"
         else:
             reason, source = "it moves along with the moves above", "order"
         out.append({"plugin": n, "after": after, "reason": reason, "source": source})
