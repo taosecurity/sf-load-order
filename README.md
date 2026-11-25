@@ -510,7 +510,8 @@ RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 The note names OldShipMod as the older copy left out. One caution says the build overrides two files of CoreTools
 with different content; it is a caution, not a problem, because overriding the mod a build is built on is usual. The
 other caution says the records weren't checked: run from the command line, sf-mod-check can't see MO2's mods
-(update sf-mod-check to 0.16.0 or newer, or start sf-load-order from MO2, for that check).
+(for `candidate`, start sf-load-order from MO2 for that check; updating sf-mod-check to 0.16.0 or newer helps
+the normal record check, not `candidate`).
 
 | Finding | Level |
 |---|---|

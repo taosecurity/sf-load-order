@@ -942,6 +942,19 @@ class Program(unittest.TestCase):
         self.assertEqual(conflict[conflict.index("--profile") + 1], "Default")
         self.assertNotIn("--plugins", conflict)
 
+    def test_mo2_dropped_plugin_caution(self):
+        """0.3.2 review: under --mo2 sf-mod-check reads plugins.txt as it is, dropped names included: a caution says
+        so (the written --plugins file used to leave them out)."""
+        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
+        lo = make_lo(["A.esm", "Foo-ShatteredSpace.esm"], data=self.data, source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        bad = [p for p in lo.plugins if p.name == "Foo-ShatteredSpace.esm"][0]
+        bad.dropped = True
+        ctx = ctx_for(self.t, lo, sf_mod_check=exe)
+        self.assertEqual(records.run(ctx)["status"], "done")
+        hits = [f for f in ctx.report.findings if "the game drops" in f.text]
+        self.assertEqual([f.plugins for f in hits], [["Foo-ShatteredSpace.esm"]])
+
     def test_mo2_heavy_skips_mod_folder_plugins(self):
         """0.3.2 review: conflict reads MO2 itself, but check has no --mo2, so --depth heavy still skips (once, with
         a reason) instead of listing every MO2 plugin as not checked."""

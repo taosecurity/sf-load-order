@@ -601,6 +601,8 @@ def from_mo2(instance, args, env, drives, registry):
                          "writes the file, or pass --profile with another profile.")
     mods_dir = _mo2_dir(ini, "mod_directory", instance, "mods")
     game = ini.get("gamepath")
+    if game and os.name != "nt":
+        game = game.replace("\\", "/")  # an ini copied from Windows (0.3.2 review)
     data, extra = _find_data(args, env, drives, registry, os.path.join(game, "Data") if game else None,
                              "MO2's gamePath")
     log.info(SECTION, f"mo2 {instance} profile {profile}; mods {mods_dir}")

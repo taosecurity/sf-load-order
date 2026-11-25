@@ -739,7 +739,8 @@ def run(ctx):
         if getattr(r, "refused", False):
             failed = (f"sf-mod-check wasn't run: {r.start_error}.",
                       "Give --sf-mod-check the sf-mod-check.exe itself (not the .cmd), or use folders whose names "
-                      "hold none of & | < > ^ % ! \" for the output (--out) and the game.")
+                      "hold none of & | < > ^ % ! \" for the output (--out) and the game"
+                      + (", and for the MO2 folder and profile name." if mo2 else "."))
         elif r.start_error:
             failed = (f"sf-mod-check couldn't be started ({r.start_error}).",
                       "Check the --sf-mod-check path, or reinstall sf-mod-check.")
@@ -769,6 +770,14 @@ def run(ctx):
             ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + err))
             return _skip(err, program=prog.to_dict(), exit=r.exit, result_line=r.result)
         source, path = "run", r.conflicts
+        dropped = [p.name for p in lo.plugins if p.enabled and p.dropped] if mo2 else []
+        if dropped:
+            # sf-mod-check reads MO2's plugins.txt as it is; the written --plugins file used to leave these out
+            log.info(SECTION, f"MO2 run: {len(dropped)} plugin(s) the game drops were read by sf-mod-check")
+            ctx.report.add(Finding("caution", SECTION, f"sf-mod-check read {len(dropped)} plugin(s) the game drops "
+                                   "from its load order, so record results that name them don't happen in the game.",
+                                   fix="Rename those plugins (see the problem about their names) and run again.",
+                                   plugins=dropped[:20]))
 
     res = analyse(cj, lo)
     res.update({"source": source, "file": path, "program": prog.to_dict() if prog else None,
@@ -799,7 +808,8 @@ def run(ctx):
                 status["heavy"] = "skipped: no Data folder (pass --data)"
             elif _not_visible(lo) and lo.source == "mo2":
                 # sf-mod-check check has no --mo2, so a plugin in an MO2 mod folder (and its masters) can't be read
-                status["heavy"] = "skipped: MO2's mods aren't in the Data folder (start sf-load-order from MO2)"
+                status["heavy"] = ("skipped: MO2's mods aren't in the Data folder, and sf-mod-check check can't read "
+                                   "MO2's mod folders (start sf-load-order from MO2)")
             else:
                 done, bad = heavy(ctx, prog, res)
                 status["heavy"] = f"sf-mod-check check on {done} plugin(s), {bad} not checked"
