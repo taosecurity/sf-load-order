@@ -640,7 +640,8 @@ Rules about it that weren't used:
 - It never applies the order, and it never downloads a rules file or LOOT's masterlist (it reads your own copy).
 - Two rules that can't both hold are not both applied: the report names the one that was left out. A loop among the
   game's own rules (plugins that are each other's masters) is a problem, and then only the report and
-  `rules-proposed.json` are written, with no order files.
+  `rules-proposed.json` are written, with no order files (order files an earlier run left in the output folder are
+  removed, so nothing there looks ready to apply).
 - LOOT's `req` and `inc` entries stay in the known-clashes section; `sort`'s own requires and incompatible checks
   come from the rules files.
 - It doesn't rate an order without record-conflict data: without sf-mod-check, the report says so and no record-based

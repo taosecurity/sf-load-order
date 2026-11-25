@@ -199,8 +199,10 @@ def soft(ctx, b, rec=None):
     pairs = (rec or {}).get("pairs") or []
     # only the climb's own pairs are record-conflict choices: a pair a master, LOOT or rules edge flipped (or one
     # the climb never weighs) gets no choice proposal and no record-conflict reason
+    # (a pair the arranged order already flipped before the climb was moved by a hard edge, not chosen)
     cand = set(pl["candidates"])
-    newly = [k for k in pl["flipped"] if k not in pl["flipped0"] and k in cand]
+    chosen = {k for k in pl["flipped"] if k not in pl["flipped0"] and k not in pl["flipped_start"] and k in cand}
+    newly = [k for k in pl["flipped"] if k in chosen]
     soft_edges = [(pairs[k]["winner"], pairs[k]["loser"]) for k in newly]
     score = recommend.scorer(rec) if rated else None
     best = pl["score_recommended"]
@@ -226,7 +228,7 @@ def soft(ctx, b, rec=None):
         pl["score_recommended"], flipped = score(full)
         newly = [k for k in flipped if k not in pl["flipped0"]]
         pl["estimate"] = any(not pairs[k].get("cost_complete") for k in newly)
-        newly = [k for k in newly if k in cand]
+        newly = [k for k in newly if k in chosen]
     flips = []
     for k in newly:
         p = pairs[k]
@@ -432,7 +434,19 @@ def run(ctx, env=None):
     if b.order is None:
         loop = b.graph.loops[0]
         res["loop"] = [x.text for x in loop]
-        _add(ctx, "problem", sortgraph.loop_text(loop) + " No sorted order was written.",
+        # an earlier run's order files in the same folder would look ready to apply: remove them
+        old = []
+        for n in (writers.PLUGINS_TXT, writers.LOADORDER_TXT, writers.VORTEX_JSON, writers.HOW_TO):
+            p = os.path.join(args.out, n)
+            if os.path.isfile(p):
+                try:
+                    os.remove(p)
+                    old.append(n)
+                    log.info(SECTION, f"removed an earlier run's {n} from {args.out}")
+                except OSError as e:
+                    log.info(SECTION, f"couldn't remove the earlier {n}: {e}")
+        _add(ctx, "problem", sortgraph.loop_text(loop) + " No sorted order was written"
+             + (" (an earlier run's order files in the output folder were removed)." if old else "."),
              "Tell the authors of these plugins: a plugin can't need itself as a master, even through other "
              "plugins. Until it is fixed, disable one of them.",
              sorted({n for x in loop for n in (x.before, x.after)}), kind="master-loop")

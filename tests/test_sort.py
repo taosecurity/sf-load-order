@@ -328,6 +328,16 @@ class Loop(Base):
         code, _out, _j = self.sort()
         self.assertEqual(code, 0)
 
+    def test_master_loop_removes_an_earlier_runs_order_files(self):
+        os.makedirs(self.out, exist_ok=True)
+        for n in ("plugins.txt", "HOW-TO-APPLY.txt"):
+            with open(os.path.join(self.out, n), "w", encoding="utf-8") as f:
+                f.write("old\n")
+        _code, _out, j = self.sort()
+        self.assertFalse(os.path.exists(os.path.join(self.out, "plugins.txt")))
+        self.assertFalse(os.path.exists(os.path.join(self.out, "HOW-TO-APPLY.txt")))
+        self.assertTrue(self.finding(j, "master-loop", "were removed"))
+
 
 class Mo2AndVortex(unittest.TestCase):
     def setUp(self):
@@ -455,6 +465,23 @@ class Soft(unittest.TestCase):
         sort.run(ctx)
         s = ctx.results["sort"]
         self.assertLess(s["order"].index("A.esm"), s["order"].index("B.esm"))
+        self.assertEqual(s["proposed"], 0)
+        self.assertTrue(all(m["source"] != "records" for m in s["moves"]), s["moves"])
+
+    def test_a_pair_a_master_flips_indirectly_gets_no_choice_proposal(self):
+        # code review round 7: X.esm needs M.esm, so it moves below M.esm and so below Y.esm too; the pair
+        # (loser X, winner Y) has no graph path between them but the climb didn't choose the flip
+        recommend.NEAR_MIN, recommend.NEAR_SHARE = 0, 0
+        ps = [model.Plugin("Starfield.esm", True, official=True, masters=[], master=True),
+              model.Plugin("X.esm", True, masters=["Starfield.esm", "M.esm"], master=True),
+              model.Plugin("Y.esm", True, masters=["Starfield.esm"], master=True),
+              model.Plugin("M.esm", True, masters=["Starfield.esm"], master=True)]
+        lo = model.LoadOrder(source="plugins.txt", plugins=ps)
+        ctx = ctx_for(self.t, lo)
+        ctx.results["records"] = self.rec(lo, [lost("000100:Starfield.esm", "X.esm", "Y.esm", [field("Keywords")])])
+        sort.run(ctx)
+        s = ctx.results["sort"]
+        self.assertLess(s["order"].index("Y.esm"), s["order"].index("X.esm"))
         self.assertEqual(s["proposed"], 0)
         self.assertTrue(all(m["source"] != "records" for m in s["moves"]), s["moves"])
 

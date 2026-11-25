@@ -167,7 +167,7 @@ there changes what "changed since the last run" reports.
   `report.txt` names the number of plugins moved (the RESULT line has the usual counts); the "Sorted order" part lists each move with its
   reason, the rules that weren't used and why, and the requires and incompatible checks. In report.json the key
   `sort` has `moves`, `rejected`, `proposed` and `files`. A master loop (plugins that each need the other) is a
-  problem and no order files are written. Use `--tie-break name` for an order by file name that is the same on any PC
+  problem: no order files are written, and an earlier run's order files in `--out` are removed. Use `--tie-break name` for an order by file name that is the same on any PC
   (it moves many plugins), `--no-loot` to leave LOOT out, `--loot-groups` to also use LOOT's groups, and
   `--depth light` for a quick run.
 - Sort with the person's own rules file (format in the README, a sample in `examples\`; a missing file given here is

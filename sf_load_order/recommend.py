@@ -281,7 +281,8 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
 
     Returns {"order": movable order, "score_current", "score_recommended" (None unrated), "flipped": [pair index],
     "flipped0": {pair index flipped in the current order}, "rejected": [{"loser", "winner", "why"}],
-    "estimate": bool, "candidates": [pair index]}."""
+    "estimate": bool, "candidates": [pair index], "flipped_start": {pair index already flipped by the arranged
+    order before the climb (masters, picks, rules edges)}}."""
     arranger = arranger or arrange
     order = arranger(movable, edges, applied)
     if order is None:  # a master loop in the plugins themselves: leave the order alone
@@ -289,7 +290,7 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
         log.info(SECTION, "master loop among the plugins; order left as is")
 
     score_cur = score_rec = None
-    flipped, flipped0, rejected, cands = [], set(), [], []
+    flipped, flipped0, rejected, cands, flipped_start = [], set(), [], [], set()
     estimate = False
     if rec is not None:
         pairs = rec.get("pairs") or []
@@ -329,6 +330,7 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
             return cur_order, best
 
         start = list(order)  # the current order with picks and master fixes only
+        flipped_start = set(score(_full(current, start, fixed))[1])
         for _ in range(MAX_RESTARTS):
             o, s = climb(order, best)
             if s >= best:
@@ -353,7 +355,8 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
             rejected.append({"loser": p["loser"], "winner": p["winner"], "why": tried.get(k, "not tried")})
             log.info(SECTION, f"kept {p['loser']} above {p['winner']}: {tried.get(k)}")
     return {"order": order, "score_current": score_cur, "score_recommended": score_rec, "flipped": flipped,
-            "flipped0": flipped0, "rejected": rejected, "estimate": estimate, "candidates": cands}
+            "flipped0": flipped0, "rejected": rejected, "estimate": estimate, "candidates": cands,
+            "flipped_start": flipped_start}
 
 
 def mo2_officials_caution(ctx, lo, add):
