@@ -551,10 +551,11 @@ def _mo2_ini(instance):
 def _mo2_dir(ini, key, instance, default):
     """An MO2 folder setting as MO2 reads it: a missing key is %BASE_DIR%\\<default>, %BASE_DIR% is base_directory
     (or the instance folder), and a relative path is read from the instance folder."""
-    base = ini.get("base_directory") or instance
-    v = ini.get(key)
-    if v and os.name != "nt":
-        v = v.replace("\\", "/")  # an ini copied from Windows: its backslashes are folder separators (0.3.2)
+    base, v = ini.get("base_directory"), ini.get(key)
+    if os.name != "nt":
+        # an ini copied from Windows: its backslashes are folder separators (0.3.2), in base_directory too
+        base, v = (x.replace("\\", "/") if x else x for x in (base, v))
+    base = base or instance
     v = os.path.join(base, default) if not v else re.sub("%BASE_DIR%", lambda _m: base, v, flags=re.I)
     return os.path.normpath(os.path.join(instance, v))
 

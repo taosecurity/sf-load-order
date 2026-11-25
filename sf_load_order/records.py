@@ -752,8 +752,9 @@ def run(ctx):
                       "Close other programs and run again with a higher --max-memory (or none).")
         elif r.exit == 2:
             failed = (f"sf-mod-check conflict couldn't run ({r.result or 'no RESULT line'}).",
-                      "Run it with --log to see why: sf-mod-check conflict --plugins <file> --data <folder> --log "
-                      "sf-mod-check-log.txt.")
+                      "Run it with --log to see why: sf-mod-check conflict "
+                      + ("--mo2 <MO2 folder> --profile <name>" if mo2 else "--plugins <file>")
+                      + " --data <folder> --log sf-mod-check-log.txt.")
         elif r.exit != 0:
             failed = (f"sf-mod-check conflict ended with exit code {r.exit} ({r.result or 'no RESULT line'}).",
                       "Run it yourself with --log to see why.")
@@ -796,7 +797,8 @@ def run(ctx):
         if prog is not None:
             if not lo.data:
                 status["heavy"] = "skipped: no Data folder (pass --data)"
-            elif _not_visible(lo) and lo.source == "mo2" and not _mo2_run(lo, prog):
+            elif _not_visible(lo) and lo.source == "mo2":
+                # sf-mod-check check has no --mo2, so a plugin in an MO2 mod folder (and its masters) can't be read
                 status["heavy"] = "skipped: MO2's mods aren't in the Data folder (start sf-load-order from MO2)"
             else:
                 done, bad = heavy(ctx, prog, res)

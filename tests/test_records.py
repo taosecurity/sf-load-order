@@ -942,6 +942,17 @@ class Program(unittest.TestCase):
         self.assertEqual(conflict[conflict.index("--profile") + 1], "Default")
         self.assertNotIn("--plugins", conflict)
 
+    def test_mo2_heavy_skips_mod_folder_plugins(self):
+        """0.3.2 review: conflict reads MO2 itself, but check has no --mo2, so --depth heavy still skips (once, with
+        a reason) instead of listing every MO2 plugin as not checked."""
+        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
+        lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        st = records.run(ctx_for(self.t, lo, sf_mod_check=exe, depth="heavy"))
+        self.assertEqual(st["status"], "done")
+        self.assertIn("start sf-load-order from MO2", st["heavy"])
+        self.assertFalse([c for c in self.calls() if c[0] == "check"])
+
     def test_mo2_old_sf_mod_check_still_skips(self):
         exe = self.fake(version="sf-mod-check 0.15.0 by someone - GPL-3.0")
         lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
