@@ -549,11 +549,12 @@ def _mo2_ini(instance):
 
 
 def _mo2_dir(ini, key, instance, default):
-    v = ini.get(key)
-    if not v:
-        return os.path.join(instance, default)
+    """An MO2 folder setting as MO2 reads it: a missing key is %BASE_DIR%\\<default>, %BASE_DIR% is base_directory
+    (or the instance folder), and a relative path is read from the instance folder."""
     base = ini.get("base_directory") or instance
-    return os.path.normpath(v.replace("%BASE_DIR%", base))
+    v = ini.get(key)
+    v = os.path.join(base, default) if not v else re.sub("%BASE_DIR%", lambda _m: base, v, flags=re.I)
+    return os.path.normpath(os.path.join(instance, v))
 
 
 def read_modlist(path):

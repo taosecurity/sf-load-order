@@ -45,7 +45,7 @@ def _read_manifest(path):
     try:
         with open(path, encoding="utf-8-sig") as f:
             d = json.load(f)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:
         return None, f"it couldn't be read ({getattr(e, 'strerror', None) or e})"
     p = d.get("patch") if isinstance(d, dict) else None
     name = p.get("name") if isinstance(p, dict) else None
@@ -60,7 +60,7 @@ def _load(path):
     try:
         with open(path, encoding="utf-8-sig") as f:
             return json.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):  # RecursionError: JSON nested too deep for the parser
         return None
 
 

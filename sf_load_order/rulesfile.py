@@ -309,10 +309,29 @@ def names_in(r):
 
 
 # ---------- stale pins (2.5) ----------
+def hash_cache(lo):
+    """One cache per load order, shared by the stale check and every proposal, so a plugin is hashed once per
+    run."""
+    return lo.__dict__.setdefault("_hash_cache", {})
+
+
+def _hash(path, cache):
+    """(sha256, size) of path; cache entries are keyed by the file's size and time too, so a changed file is read
+    again."""
+    try:
+        st = os.stat(path)
+        key = (path, st.st_size, st.st_mtime_ns)
+    except OSError:
+        key = (path, None, None)
+    if key not in cache:
+        cache[key] = _sha256(path, {})
+    return cache[key]
+
+
 def stale(rf, lo, cache=None):
     """The rules whose evidence.files hashes no longer match the installed plugins: [{"entry", "id", "plugin",
     "changed": [plugin names]}]. A plugin that isn't installed doesn't make a rule stale (the rule is inactive)."""
-    cache = {} if cache is None else cache
+    cache = hash_cache(lo) if cache is None else cache
     out = []
     for r in rf.rules:
         files = (r.get("evidence") or {}).get("files") or {}
@@ -321,7 +340,7 @@ def stale(rf, lo, cache=None):
             path = _plugin_path(lo, name)
             if not path:
                 continue
-            sha, _size = _sha256(path, cache)
+            sha, _size = _hash(path, cache)
             if sha and sha.lower() != f["sha256"].lower():
                 changed.append(name)
         if changed:
@@ -339,11 +358,11 @@ def proposal_id(plugin, after, kind):
 
 def file_hashes(lo, names, cache=None):
     """{name: {"sha256": ...}} for the installed copies of these plugins (a file that can't be read is left out)."""
-    cache = {} if cache is None else cache
+    cache = hash_cache(lo) if cache is None else cache
     out = {}
     for n in names:
         path = _plugin_path(lo, n)
-        sha = _sha256(path, cache)[0] if path else None
+        sha = _hash(path, cache)[0] if path else None
         if sha:
             out[n] = {"sha256": sha}
     return out

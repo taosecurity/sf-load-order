@@ -314,6 +314,74 @@ class TypeRuleAndLoop(Base):
         self.assertIn("isn't a master plugin", m["reason"])
 
 
+class Fixes031(Base):
+    """0.3.1: the review rounds' sort nits (each test fails on 0.3.0)."""
+    PLUGINS = {"ExampleE.esp": {}, "ExampleA.esm": {}, "ExampleB.esm": {}, "ExampleC.esm": {}}
+
+    def test_a_user_rule_move_isnt_credited_to_master_plugins_first(self):
+        # ExampleA.esm moves for the user rule; the .esp above it in the current order made 0.3.0 name the
+        # master-plugins-first rule instead
+        no_master_flag(os.path.join(self.data, "ExampleE.esp"))
+        r = self.rules([{"id": "u-0001", "plugin": "ExampleA.esm", "after": ["ExampleC.esm"]}])
+        _code, _out, j = self.sort("--rules", r)
+        self.assertEqual(self.mods(), ["*ExampleB.esm", "*ExampleC.esm", "*ExampleA.esm", "*ExampleE.esp"])
+        m = {x["plugin"]: x for x in j["sort"]["moves"]}
+        self.assertEqual(m["ExampleA.esm"]["source"], "user", m)
+        self.assertEqual(m["ExampleE.esp"]["source"], "game")
+
+    def test_a_pick_naming_a_disabled_plugin_gets_a_caution(self):
+        picks = self.write("picks.json", [{"plugin": "ExampleA.esm", "after": "NotEnabled.esm"}])
+        _code, _out, j = self.sort("--picks", picks)
+        c = self.finding(j, "pick-inactive")
+        self.assertEqual([f["level"] for f in c], ["caution"])
+        self.assertIn("NotEnabled.esm", c[0]["text"])
+
+    def test_rules_used_counts_rules_not_edges(self):
+        r = self.rules([{"id": "u-0001", "plugin": "ExampleA.esm", "after": ["ExampleB.esm", "ExampleC.esm"]}])
+        _code, _out, j = self.sort("--rules", r)
+        self.assertEqual(j["sort"]["sources"]["user"], 1)
+
+    def test_default_group_across_the_master_plugins_gives_no_notes(self):
+        # a group after `default` holding a master plugin: 0.3.0 listed one "rule not met" per .esp
+        for n in ("ExampleE.esp",):
+            no_master_flag(os.path.join(self.data, n))
+        r = self.rules([{"id": "u-0001", "plugin": "ExampleA.esm", "group": "late"}],
+                       groups=[{"name": "late", "after": ["default"]}])
+        _code, _out, j = self.sort("--rules", r)
+        self.assertEqual([x for x in j["sort"]["rejected"] if x["source"] == "default_group"], [])
+        self.assertIsNotNone(j["sort"]["order"])
+
+    def test_sorted_part_says_the_section_failed_not_master_loop(self):
+        real = sort.soft
+
+        def boom(*a, **k):
+            raise RuntimeError("made-up crash")
+        sort.soft = boom
+        try:
+            _code, _out, j = self.sort()
+        finally:
+            sort.soft = real
+        self.assertEqual(j["sections"]["sort"]["status"], "failed")
+        with open(os.path.join(self.out, "report.txt"), encoding="utf-8") as f:
+            txt = f.read()
+        self.assertNotIn("masters form a loop", txt)
+        self.assertIn("No order was sorted", txt)
+
+
+class PickCredit(Base):
+    # X.esm needs M.esm, which loads below Y.esm: the pick "X right after Y" can't place X there, the master does
+    PLUGINS = {"ExampleX.esm": {"masters": ["Starfield.esm", "ExampleM.esm"]}, "ExampleY.esm": {},
+               "ExampleM.esm": {}}
+
+    def test_moves_says_your_pick_only_when_the_pick_placed_it(self):
+        picks = self.write("picks.json", [{"plugin": "ExampleX.esm", "after": "ExampleY.esm"}])
+        _code, _out, j = self.sort("--picks", picks)
+        self.assertEqual(self.mods(), ["*ExampleY.esm", "*ExampleM.esm", "*ExampleX.esm"])
+        m = {x["plugin"]: x for x in j["sort"]["moves"]}["ExampleX.esm"]
+        self.assertEqual(m["source"], "game", m)
+        self.assertNotIn("your pick", m["reason"])
+
+
 class Loop(Base):
     PLUGINS = {"ExampleA.esm": {"masters": ["ExampleB.esm"]}, "ExampleB.esm": {"masters": ["ExampleA.esm"]}}
 
@@ -484,6 +552,63 @@ class Soft(unittest.TestCase):
         self.assertLess(s["order"].index("Y.esm"), s["order"].index("X.esm"))
         self.assertEqual(s["proposed"], 0)
         self.assertTrue(all(m["source"] != "records" for m in s["moves"]), s["moves"])
+
+    def restart_case(self, extra=(), mods=None):
+        # C.esm needs A.esm and D.esm needs B.esm. Pair 1 (D wins over A, 3 points) and pair 2 (C wins over B, 6
+        # points) can't both flip (D<A<C<B<D). The first climb takes pair 1; a restart that starts from that order
+        # finds pair 2, which saves more (0.3.0's sort restarted from the graph's order and found nothing).
+        ps = [model.Plugin("Starfield.esm", True, official=True, masters=[], master=True)]
+        for n in ["A.esm", "B.esm", *extra, "C.esm", "D.esm"]:
+            ms = {"C.esm": ["A.esm"], "D.esm": ["B.esm"]}.get(n, [])
+            ps.append(model.Plugin(n, True, masters=["Starfield.esm"] + ms, master=True))
+        lo = model.LoadOrder(source="plugins.txt", plugins=ps,
+                             mods=[model.Mod(m, True, plugins=list(p), id=m.lower()) for m, p in (mods or {}).items()]
+                             or None)
+        rec = self.rec(lo, [lost("000100:Starfield.esm", "A.esm", "D.esm", [field("Keywords")]),
+                            lost("000200:Starfield.esm", "B.esm", "C.esm", [field("Keywords"), field("Name")])])
+        return lo, rec
+
+    def test_a_restart_keeps_the_improved_order(self):
+        recommend.NEAR_MIN, recommend.NEAR_SHARE = 0, 0
+        lo, rec = self.restart_case()
+        ctx = ctx_for(self.t, lo)
+        ctx.results["records"] = rec
+        sort.run(ctx)
+        s = ctx.results["sort"]
+        self.assertEqual([n for n in s["order"] if n not in OFFICIAL], ["A.esm", "C.esm", "B.esm", "D.esm"])
+        self.assertEqual(s["score_sorted"], 3)
+
+    def test_the_arranger_keeps_the_base_order_where_the_rules_allow(self):
+        # 0.3.0's sort arranger ignored base, so a restart started again from the graph's order
+        lo, _rec = self.restart_case()
+        b = sortgraph.build(lo, lo.enabled(), sortgraph.Sources())
+        arr = sort.arranger(b.graph)
+        self.assertEqual(arr(["B.esm", "D.esm", "A.esm", "C.esm"], [], []), ["B.esm", "D.esm", "A.esm", "C.esm"])
+        self.assertEqual(arr(None, [], []), ["A.esm", "B.esm", "C.esm", "D.esm"])
+        name = sortgraph.build(lo, lo.enabled(), sortgraph.Sources(), "name")
+        self.assertEqual(sort.arranger(name.graph)(["D.esm", "C.esm", "B.esm", "A.esm"], [], []),
+                         ["A.esm", "B.esm", "C.esm", "D.esm"])  # --tie-break name ignores base
+
+    def test_the_vortex_trial_starts_from_the_climbed_order(self):
+        # E.esm sits wherever the climb left it; the Vortex rule (G's mod after F's) moves only F and G
+        recommend.NEAR_MIN, recommend.NEAR_SHARE = 0, 0
+        lo, rec = self.restart_case(extra=("E.esm", "G.esm", "F.esm"), mods={"ModF": ["F.esm"], "ModG": ["G.esm"]})
+        lo._vortex_modlist = [{"vortexId": "modg", "enabled": True, "rules": [{"type": "after",
+                                                                              "reference": {"id": "modf"}}]},
+                              {"vortexId": "modf", "enabled": True}]
+        ctx = ctx_for(self.t, lo)
+        ctx.results["records"] = rec
+        lo_no_rule, _ = self.restart_case(extra=("E.esm", "G.esm", "F.esm"))
+        ctx0 = ctx_for(self.t, lo_no_rule)
+        ctx0.results["records"] = rec
+        sort.run(ctx0)
+        sort.run(ctx)
+        climbed = [n for n in ctx0.results["sort"]["order"] if n not in OFFICIAL]
+        got = [n for n in ctx.results["sort"]["order"] if n not in OFFICIAL]
+        self.assertEqual([n for n in got if n not in ("F.esm", "G.esm")],
+                         [n for n in climbed if n not in ("F.esm", "G.esm")])
+        self.assertLess(got.index("F.esm"), got.index("G.esm"))
+        self.assertEqual(ctx.results["sort"]["vortex_broken"], [])
 
     def test_near_tie_keeps_the_order(self):
         lo = make_lo(["A.esm", "B.esm", "C.esm"])

@@ -55,7 +55,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -275,7 +275,7 @@ credits and writes nothing. Screen output keeps the console's character set and 
   says why: a caution for your own rules and picks, a note for community, LOOT and default-group rules, and a
   problem for a master plugin that needs a non-master. LOOT's regular-expression names are checked before use: a pattern over 256 characters, a
   back-reference, a `(?` form other than `(?:` and `(?i)`, a group followed by `*`, `+` or `{..}`, more than six
-  choices in all (`*`, `+`, `?`, `{..}` and `|`) more than two open-ended repeats, or repeats whose choices multiply past a budget (each `?` and `|` weighs 2, `{n,m}` m-n+1, an open-ended repeat 260; product at most 1,000,000) is refused and its entry skipped (the log and `unsafe_patterns` count them).
+  choices in all (`*`, `+`, `?`, `{..}` and `|`) more than two open-ended repeats, or repeats whose choices multiply past a budget (each `?` and `|` weighs 2, `{n,m}` m-n+1, an open-ended repeat 260; product at most 1,000,000) is refused and its entry skipped (the log and `unsafe_patterns` count them; a repeat count over 260 is refused too, and regex entries past the limit are counted as `regex_entries_over_limit`).
 - Our own rules files take exact plugin file names only: no regex, no wildcard (`( ) [ ] +` are plain name characters).
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
   and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only

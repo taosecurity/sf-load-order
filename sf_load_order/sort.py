@@ -140,9 +140,14 @@ def _valid(g, extra, order):
 
 def arranger(g):
     """recommend.plan's arranger for the graph: the graph's order with the climb's edges, then each pick's plugin
-    placed right after its `after` plugin where every edge allows (the adjacency step of recommend.arrange)."""
-    def arr(_base, edges, picks):
-        order = _topo(g, edges)
+    placed right after its `after` plugin where every edge allows (the adjacency step of recommend.arrange).
+    With --tie-break current, base (an order of the movable plugins, such as the climb's last result) breaks the
+    ties, so a restart starts from the improved order; base None (or --tie-break name) uses the graph's own key."""
+    def arr(base, edges, picks):
+        key = None
+        if base is not None and g.tie_break == "current":
+            key = {n.lower(): (0, i, "") for i, n in enumerate(base)}
+        order = _topo(g, edges, key)
         if order is None:
             return None
         for p in picks:
@@ -215,7 +220,8 @@ def soft(ctx, b, rec=None):
         if pos.get(v["before"].lower(), -1) < pos.get(v["after"].lower(), -1):
             kept.append(v)
             continue
-        trial = arr(None, soft_edges + [(x["before"], x["after"]) for x in kept] + [(v["before"], v["after"])],
+        # start from the climbed order, so the trial moves only what the rule needs
+        trial = arr(order, soft_edges + [(x["before"], x["after"]) for x in kept] + [(v["before"], v["after"])],
                     applied)
         if trial is not None and (score is None or score(recommend._full(b.current, trial, b.fixed))[0] <= best):
             order = trial
@@ -286,19 +292,24 @@ def _edge_reason(b, name, cur):
     if not g.has(p):
         return None
     me = cur.get(p, 0)
+    # a plugin-to-plugin edge comes first: a rule through a virtual node (master plugins first, a group) is named
+    # only when no direct edge explains the move, so a user rule isn't credited to the master-plugins-first rule
     best = None
     for a in g.pred[p]:
         e = g.edges[(a, p)]
         below = [a] if not a.startswith("<") else _virtual_preds(g, a)
-        if any(cur.get(x, -1) > me for x in below) and (best is None or e.rank < best.rank):
-            best = e
+        k = (a.startswith("<"), e.rank)
+        if any(cur.get(x, -1) > me for x in below) and (best is None or k < best[0]):
+            best = (k, e)
     for c in g.succ[p]:
         e = g.edges[(p, c)]
         above = [c] if not c.startswith("<") else _virtual_succs(g, c)
-        if any(cur.get(x, 1 << 30) < me for x in above) and (best is None or e.rank < best.rank):
-            best = e
+        k = (c.startswith("<"), e.rank)
+        if any(cur.get(x, 1 << 30) < me for x in above) and (best is None or k < best[0]):
+            best = (k, e)
     if best is None:
         return None
+    best = best[1]
     return best.text, sortgraph.REPORT_SOURCE.get(best.source, best.source)
 
 
@@ -321,8 +332,8 @@ def moves(b, sf):
         f = next((x for x in sf["flips"] if x["loser"].lower() == low), None)
         w = next((x for x in sf["flips"] if x["winner"].lower() == low), None)
         er = _edge_reason(b, n, cur)
-        if low in pick_of:
-            pk = pick_of[low]
+        pk = pick_of.get(low)
+        if pk and (after or "").lower() == pk["after"].lower():  # the pick placed it (right after its plugin)
             reason, source = f"your pick: load after {pk['after']}" + (f" ({pk['why']})" if pk.get("why") else ""), \
                 "picks"
         elif er:
@@ -358,6 +369,11 @@ def _findings(ctx, b, res, files, stale_rows, req, inc, vbroken):
                                                                              if not x.startswith("<")],
              kind="rule-not-used", source=sortgraph.REPORT_SOURCE.get(e.source, e.source), entry=e.entry,
              file=e.file)
+    for p in ctx.results.get("picks") or []:
+        if p.get("active") is False:  # the main run's words (recommend._picks)
+            _add(ctx, "caution", f"Your pick {p['plugin']} after {p['after']} wasn't applied: one of them isn't "
+                                 "enabled.", FIX["picks"], [p["plugin"], p["after"]], kind="pick-inactive",
+                 entry=p.get("entry"))
     for x in req:
         _add(ctx, "problem", f"{x['plugin']} needs {x['needs']}, which isn't enabled ({_src(x)}).",
              f"Enable {x['needs']}, or disable {x['plugin']}. The sort never enables or disables a plugin.",
@@ -461,7 +477,7 @@ def run(ctx, env=None):
                    score_sorted=pl["score_recommended"], estimate=pl["estimate"],
                    same_as_current=[n.lower() for n in full] == [n.lower() for n in current],
                    decided=sf["decided"], proposed=len(proposals))
-        res["sources"]["vortex"] = len(sf["vortex"]["kept"])
+        res["sources"]["vortex"] = len({v["key"] for v in sf["vortex"]["kept"]})  # rules, not plugin pairs
         res["vortex_broken"] = [{k: v[k] for k in ("before", "after", "rule")} for v in vbroken]
     _findings(ctx, b, res, files, stale_rows, req, inc, vbroken)
     if res["order"] is not None:

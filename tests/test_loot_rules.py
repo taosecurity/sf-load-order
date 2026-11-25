@@ -101,6 +101,15 @@ class Guard(unittest.TestCase):
             rx, why = clashes.safe_regex(p)
             self.assertIsNone(rx, p)
 
+    def test_huge_repeat_counts_are_refused_not_raised(self):
+        # 0.3.1: a count Python's re can't hold raised OverflowError in re.compile
+        for p in (r"a{99999999999}", r"a{1,99999999999}", r"a{99999999999,}", r"x{261}\.esm"):
+            rx, why = clashes.safe_regex(p)
+            self.assertIsNone(rx, p)
+            self.assertIn("repeat count", why, p)
+        for p in (r"a{260}", r"a{0,10}\.esm"):
+            self.assertIsNone(clashes.regex_refusal(p), p)
+
     def test_bad_regex_is_refused_not_raised(self):
         rx, why = clashes.safe_regex("(unclosed")
         self.assertIsNone(rx)
@@ -168,6 +177,35 @@ class Reading(Base):
     def test_no_loot_reads_nothing(self):
         r = loot_rules.read(self.ctx(self.lo(), no_loot=True), self.env)
         self.assertEqual((r["files"], r["after"]), ({}, []))
+
+    def test_an_unsafe_after_item_counts_once_per_item(self):
+        # 0.3.1: a regex entry matching three plugins counted its unsafe "after" item three times
+        lo = self.lo(("ExampleA.esm", "ExampleWeapon1.esm", "ExampleWeapon2.esm", "ExampleWeapon3.esm"))
+        ml = self.write("ml.yaml", "plugins:\n  - name: 'ExampleWeapon.*\\.esm'\n"
+                                   "    after: [ 'ExampleA.esm', '(a+)+\\.esm' ]\n")
+        r = loot_rules.read(self.ctx(lo, loot_masterlist=ml), self.env)
+        self.assertEqual(r["unsafe"], 1)
+        self.assertEqual(len(r["after"]), 3)
+
+    def test_names_starting_with_lt_are_dropped(self):
+        # 0.3.1: "<group:...>" is the graph's own node name; a LOOT name like it must not reach the graph
+        lo = self.lo(("ExampleA.esm", "ExampleB.esm"))
+        ml = self.write("ml.yaml", "plugins:\n  - name: '<group:x:start>'\n    after: [ 'ExampleA.esm' ]\n"
+                                   "  - name: 'ExampleB.esm'\n    after: [ '<group:x:end>', 'ExampleA.esm' ]\n")
+        r = loot_rules.read(self.ctx(lo, loot_masterlist=ml), self.env)
+        self.assertEqual([(a["plugin"], a["after"]) for a in r["after"]], [("ExampleB.esm", "ExampleA.esm")])
+        entries, _unsafe, _over = clashes.loot_entries({"plugins": [{"name": "<x>"}, {"name": "A.esm"}]}, "ml")
+        self.assertEqual([e["name"] for _m, e, _s in entries], ["A.esm"])
+
+    def test_regex_entries_past_the_limit_are_not_counted_as_unsafe(self):
+        old = clashes.MAX_REGEX_ENTRIES
+        clashes.MAX_REGEX_ENTRIES = 1
+        try:
+            entries, unsafe, over = clashes.loot_entries(
+                {"plugins": [{"name": "A.*\\.esm"}, {"name": "B.*\\.esm"}, {"name": "C.*\\.esm"}]}, "ml")
+        finally:
+            clashes.MAX_REGEX_ENTRIES = old
+        self.assertEqual((len(entries), unsafe, over), (1, 0, 2))
 
     def test_size_cap(self):
         old = clashes.MAX_LOOT_BYTES

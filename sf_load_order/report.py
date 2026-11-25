@@ -425,7 +425,7 @@ def _sorted(ctx):
         return None
     res = ctx.results.get("sort")
     st = _status(ctx.report, "sort")
-    if not res:
+    if not res or st.get("status") != "done":  # a crashed section may have left a half-filled result
         return [(None, [f"No order was sorted. {status_text(st)}"], [])]
     parts = []
     if res.get("order") is None:

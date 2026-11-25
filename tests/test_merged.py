@@ -314,6 +314,21 @@ class Runs(Base):
         self.assertFalse([a for a in self.calls() if a[:1] == ["patch"]])
         self.assertEqual([f.level for f in self.mine(c)], ["caution"])
 
+    def test_deeply_nested_json_is_unreadable_not_a_crash(self):
+        """0.3.1: JSON nested too deep for the parser (RecursionError) is a file that can't be read."""
+        deep = "[" * 200000 + "]" * 200000
+        with open(self.man, "w", encoding="utf-8") as f:
+            f.write(deep)
+        extra = os.path.join(self.t, "extra")
+        os.makedirs(extra)
+        with open(os.path.join(extra, "deep.json"), "w", encoding="utf-8") as f:
+            f.write(deep)
+        exe = self.fake()
+        c = self.ctx(self.lo(), sf_mod_check=exe, patch_sources=[extra])
+        entries, _ = merged.run(c)
+        self.assertEqual([e["state"] for e in entries], ["cannot check"])
+        self.assertEqual([f.level for f in self.mine(c)], ["caution"])
+
     def old_manifest(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:

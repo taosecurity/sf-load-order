@@ -404,6 +404,23 @@ class MO2(Base):
         lo = self.ok("--mo2", self.inst)
         self.assertEqual(lo.data, os.path.join(game, "Data"))
 
+    def test_base_directory_moves_the_default_folders(self):
+        """0.3.1: with base_directory set and mod_directory, profiles_directory and overwrite_directory left out, MO2
+        uses %BASE_DIR%\\mods, \\profiles and \\overwrite (0.3.0 looked in the instance folder)."""
+        fixtures.plugin(os.path.join(self.inst, "overwrite", "Extra.esm"), kind="M")
+        inst = os.path.join(self.t, "Instance")
+        os.makedirs(inst)
+        write(os.path.join(inst, "ModOrganizer.ini"), "[General]\nselected_profile=@ByteArray(Default)\n[Settings]\n"
+              f"base_directory={self.inst.replace(chr(92), chr(92) * 2)}\n")
+        lo = self.ok("--mo2", inst, "--data", self.data)
+        self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
+        self.assertEqual(self.by_name(lo, "Extra.esm").path, os.path.join(self.inst, "overwrite", "Extra.esm"))
+        # a relative value is read from the instance folder
+        write(os.path.join(inst, "ModOrganizer.ini"), "[General]\nselected_profile=@ByteArray(Default)\n[Settings]\n"
+              "mod_directory=..\\\\MO2\\\\mods\nprofiles_directory=../MO2/profiles\n")
+        lo = self.ok("--mo2", inst, "--data", self.data)
+        self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
+
     def test_no_modlist(self):
         os.remove(os.path.join(self.inst, "profiles", "Default", "modlist.txt"))
         lo = self.ok("--mo2", self.inst, "--data", self.data)

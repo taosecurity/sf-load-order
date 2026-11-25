@@ -32,6 +32,7 @@ REPORT_SOURCE = {"masters": "game", "type": "game", "mod": "mod", "picks": "pick
                  "loot_masterlist": "loot_masterlist", "loot_groups": "loot_groups", "groups": "default_group"}
 SOURCE_KEYS = ("game", "mod", "picks", "user", "patch", "community", "loot_userlist", "loot_masterlist",
                "loot_groups", "vortex")
+ENTRY_SOURCES = {"picks", "user", "community", "loot_userlist", "loot_masterlist", "loot_groups"}  # counted by entry
 OWN = {"user", "picks"}  # the player's own: a rule of theirs that isn't used is a caution; others are notes
 
 
@@ -231,16 +232,33 @@ def build(lo, current, sources=None, tie_break="current"):
     if b.order is not None:
         b.full = recommend._full(current, b.order, b.fixed)
     rej = [{"edge": r["edge"], "path": r["path"], "why": describe(r["path"])} for r in g.rejected] + bl.fixed_rejected
+    # the implied default group can't put a plugin on the wrong side of the master plugins (LOOT sorts masters and
+    # the others apart too): those are dropped with one log line, not one note per plugin
+    keep, cross = [], []
+    for r in rej:
+        (cross if r["edge"].source == "groups" and any(x.source == "type" for x in r["path"]) else keep).append(r)
+    if cross:
+        log.info(SECTION, f"{len(cross)} default-group placement(s) skipped: they cross the master plugins")
+    rej = keep
     for r in rej:
         e = r["edge"]
         r["level"] = "problem" if e.source == "type" else "caution" if e.source in OWN else "note"
     b.rejected = sorted(rej, key=lambda r: (r["edge"].rank, r["edge"].file or "", str(r["edge"].entry)))
-    b.counts = dict.fromkeys(SOURCE_KEYS, 0)
+    # rules, not edges: the edges of one written entry (each `after` name, a group's two membership edges) count
+    # once; the game's rules, a mod's order and the patch targets count one per pair
+    rules = set()
     for e in g.edges.values():
         if e.source == "groups" or (e.before.endswith(":start>") and e.after.endswith(":end>")):
             continue  # the default group (implied, not a rule anyone wrote) and a group's own start-before-end edge
-        key = REPORT_SOURCE.get(e.source, e.source)
-        b.counts[key] = b.counts.get(key, 0) + 1
+        src = REPORT_SOURCE.get(e.source, e.source)
+        if e.source in ENTRY_SOURCES and e.entry is not None:
+            group_edge = e.before.startswith("<group:") and e.after.startswith("<group:")  # own entry numbers
+            rules.add((src, e.file, str(e.entry), group_edge))
+        else:
+            rules.add((src, e.before.lower(), e.after.lower(), None))
+    b.counts = dict.fromkeys(SOURCE_KEYS, 0)
+    for r in rules:
+        b.counts[r[0]] = b.counts.get(r[0], 0) + 1
     log.info(SECTION, f"graph: {len(b.movable)} movable, {len(g.edges)} edges, {len(b.rejected)} rejected, "
                       f"{len(g.inactive)} inactive, {len(g.loops)} master loop(s)")
     return b

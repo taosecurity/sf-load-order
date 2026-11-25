@@ -101,7 +101,7 @@ class NeverRaises(unittest.TestCase):
     def test_fill_survives_an_unexpected_error(self):
         lo = model.LoadOrder("plugins.txt")
         lo.plugins = [model.Plugin("A.esm", True, path="A.esm"), model.Plugin("B.esm", True, path="B.esm")]
-        with mock.patch.object(plugin_header, "header", side_effect=RuntimeError("boom")):
+        with mock.patch.object(plugin_header, "read", side_effect=RuntimeError("boom")):
             plugin_header.fill(lo)
         self.assertEqual([(p.kind, p.masters) for p in lo.plugins], [("?", []), ("?", [])])
 
@@ -125,7 +125,17 @@ class MasterFlag(unittest.TestCase):
 
     def test_flag_read(self):
         self.assertEqual(plugin_header.read(write_header(os.path.join(self.t, "A.esp"), HEDR, 0x401))[2], 0x401)
-        self.assertEqual(plugin_header.flags_of(os.path.join(self.t, "A.esp")), 0x401)
+
+    def test_fill_opens_each_plugin_once(self):
+        """0.3.1: kind, masters and the master flag come from one read of the file."""
+        p = write_header(os.path.join(self.t, "Once.esp"), HEDR, plugin_header.FLAG_MASTER)
+        lo = model.LoadOrder("plugins.txt")
+        lo.plugins = [model.Plugin("Once.esp", True, path=p)]
+        real = open
+        with mock.patch("builtins.open", side_effect=lambda *a, **k: real(*a, **k)) as m:
+            plugin_header.fill(lo)
+        self.assertEqual([c.args[0] for c in m.call_args_list], [p])
+        self.assertTrue(lo.plugins[0].master)
 
     def test_esp_with_and_without_the_flag(self):
         self.assertTrue(self.master("Flagged.esp", plugin_header.FLAG_MASTER))
@@ -148,8 +158,8 @@ class MasterFlag(unittest.TestCase):
         plugin_header.fill(lo)
         self.assertFalse(lo.plugins[0].master)  # by name alone
         self.assertIsNone(lo.plugins[1].master)  # not read
-        self.assertIsNone(plugin_header.flags_of(p))
-        self.assertIsNone(plugin_header.flags_of(os.path.join(self.t, "nothing-here.esm")))
+        self.assertIsNone(plugin_header.read(p)[2])
+        self.assertIsNone(plugin_header.read(os.path.join(self.t, "nothing-here.esm"))[2])
 
 
 if __name__ == "__main__":

@@ -369,5 +369,62 @@ class ChoiceProposals(Base):
         self.assertIn("No record-conflict choice moves it.", text)
 
 
+
+class Fixes031(Base):
+    """0.3.1: the review rounds' rules nits (each test fails on 0.3.0)."""
+
+    def bad_inputs(self):
+        picks = self.write("picks.json", [{"plugin": "ExampleA.esm"}])  # no "after"
+        cl = self.write("clashes.json", [{"plugins": ["ExampleB.esm"], "level": "nope", "note": "x"}])
+        return ["--picks", picks, "--clashes", cl]
+
+    def test_explain_list_and_propose_show_bad_picks_and_clashes_entries(self):
+        bad = self.bad_inputs()
+        for argv in (["explain", "ExampleA.esm"], ["list"], ["propose", "--out", os.path.join(self.tmp, "out")]):
+            js = os.path.join(self.tmp, "x.json")
+            code, out = run("rules", *argv, "--no-rules", "--no-loot", "--json", js, *bad, *self.src)
+            self.assertEqual(code, 0, out)
+            self.assertIn("Caution: " + os.path.join(self.tmp, "picks.json") + ", entry 1:", out, argv)
+            self.assertIn("Caution: " + os.path.join(self.tmp, "clashes.json") + ", entry 1:", out, argv)
+            self.assertEqual(out.count("clashes.json, entry 1:"), 1, argv)
+            with open(js, encoding="utf-8") as f:
+                self.assertEqual(len(json.load(f)["cautions"]), 2, argv)
+
+    def test_accept_skips_an_id_a_skipped_entry_uses(self):
+        mine = self.rules([{"id": "u-0001", "plugin": "ExampleB.esm"}], "mine.json")  # not valid: no order
+        self.assertTrue(rulesfile.read(mine).problems)
+        pp = self.write("rules-proposed.json", {"schema": 1, "kind": "user", "rules": [
+            {"id": rulesfile.proposal_id("ExampleA.esm", ["ExampleB.esm"], "choice"), "plugin": "ExampleA.esm",
+             "after": ["ExampleB.esm"], "evidence": {"kind": "choice", "text": "So its changes win."}}]})
+        code, out = run("rules", "accept", pp, "--all", "--rules", mine)
+        self.assertEqual(code, 0, out)
+        self.assertIn("Added u-0002", out)
+
+    def test_one_hash_per_plugin_for_the_stale_check_and_proposals(self):
+        from sf_load_order.model import LoadOrder, Plugin
+        lo = LoadOrder(source="plugins.txt", data=self.data,
+                       plugins=[Plugin(n, True, path=os.path.join(self.data, n)) for n in ("ExampleA.esm",
+                                                                                        "ExampleB.esm")])
+        calls = []
+        real = rulesfile._sha256
+
+        def counting(path, cache):
+            if path not in cache:
+                calls.append(path)
+            return real(path, cache)
+        rulesfile._sha256 = counting
+        try:
+            pins = rulesfile.file_hashes(lo, ["ExampleA.esm", "ExampleB.esm"])
+            rf = rulesfile.RulesFile("u.json", "user", {}, [], [{"entry": 1, "plugin": "ExampleA.esm",
+                                                                "after": ["ExampleB.esm"], "before": [],
+                                                                "requires": [], "incompatible": [],
+                                                                "evidence": {"files": pins}}])
+            self.assertEqual(rulesfile.stale(rf, lo), [])
+            rulesfile.file_hashes(lo, ["ExampleA.esm"])
+        finally:
+            rulesfile._sha256 = real
+        self.assertEqual(len(calls), 2, calls)
+
+
 if __name__ == "__main__":
     unittest.main()

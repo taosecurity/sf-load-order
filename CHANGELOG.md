@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.3.1 (2026-11-25)
+
+### What's new
+
+A fix-up release for 0.3.0. No option was removed or renamed, the exit codes are the same, and report.json only gained keys. A normal run (no `sort`, no `rules`) writes the same order files and report as 0.3.0.
+
+- **`sort` keeps what the climb found.** The restarts of the record-conflict climb start from the best order so far, and Vortex's tie-break trials start from the climbed order, so a sort moves only the plugins a rule needs moved.
+- **Clearer reasons in "Sorted order".** A move says "your pick" only when the plugin lands right after the plugin you picked; a user rule's move is no longer credited to "master plugins first"; a crashed sort section says "No order was sorted" and its status. A pick that names a plugin that isn't enabled gets a caution.
+- **"Rules used, by source" counts rules, not edges**: one per written entry (picks, rules files, LOOT) and one per pair for the game, mods and patch targets. On a real load order the LOOT masterlist's 15 became 5.
+- **`rules`**: `list`, `explain` and `propose` print the cautions for a bad `--picks` or `--clashes` entry (JSON key `cautions`). `rules accept` can't reuse an id that a skipped entry holds, and a rules file is hashed once per run.
+- **LOOT**: a regex repeat count over 260 (`a{99999999999}`) is refused instead of raising an error; an unsafe "after" item is counted once per entry; entries past the regex limit are counted apart (report.json clashes `loot` part, `regex_entries_over_limit`, only when above 0, and a `rules list` line); entry names starting with `<` are dropped. Default-group placements that cross the master plugins are dropped with one log line.
+- **MO2**: a missing `mod_directory`, `profiles_directory` or `overwrite_directory` in `ModOrganizer.ini` means `mods`, `profiles` and `overwrite` under `base_directory` (or under the instance folder when there is none), as MO2 does. 0.3.0 looked in the instance folder only.
+- **Smaller**: JSON nested too deep in a merged-patch manifest is treated as a file that can't be read; each plugin's header is read once.
+
+### Example
+
+The same made-up `sort` run as 0.3.0's; only the version in the byline differs.
+
+    > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
+    sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+
+The "Sorted order" part of the report:
+
+    Sorting moves 2 plugins; the order wasn't rated (no record-conflict data).
+    Moves (2):
+       1. Load ExampleArmor.esm after ExampleLights.esm. Why: Your rule (my-rules.json, entry 1) says
+          ExampleArmorRetexture.esm loads after ExampleArmor.esm.
+       2. Load ExampleQuests.esm after ExampleArmorRetexture.esm. Why: ExampleQuestsPatch.esm has ExampleQuests.esm as a
+          master.
+    Rules not met (1):
+       1. Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but
+          ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+
+### How it works
+
+Nothing changed in the design: rules become edges in one graph, strongest first, and the order is the topological order closest to yours. The climb's restarts and the Vortex trials now start from the best order found so far, instead of from the order the graph first gave.
+
+### Options
+
+No option was added, removed or renamed. `rules list`, `explain` and `propose` print more cautions, and `--json` has them under `cautions`.
+
+### Not yet
+
+- Everything listed under 0.3.0's "Not yet" still holds: no community rules file, LOOT `req` and `inc` entries stay in the known-clashes section, and `sort` doesn't apply the order.
+- `--mo2` isn't passed on to sf-mod-check yet.
+
 ## 0.3.0 (2026-11-25)
 
 ### What's new

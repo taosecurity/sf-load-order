@@ -24,12 +24,14 @@ SOURCES = (("loot_userlist", "userlist", 7), ("loot_masterlist", "masterlist", 8
 
 
 def _empty():
-    return {"files": {}, "after": [], "members": [], "groups": [], "unsafe": 0, "errors": [], "conditions_unknown": 0}
+    return {"files": {}, "after": [], "members": [], "groups": [], "unsafe": 0, "over_limit": 0, "errors": [],
+            "conditions_unknown": 0}
 
 
 def read(ctx, env=None, groups=False, lo=None):
     """LOOT's ordering rules: {"files": {source: path}, "after": [{plugin, after, source, rank, file, entry}],
     "members": [{plugin, group, ...}], "groups": [{name, after, ...}] (both only with groups), "unsafe": n,
+    "over_limit": n (regex entries skipped past clashes.MAX_REGEX_ENTRIES),
     "errors": [text], "conditions_unknown": n}. source is "loot_userlist" (rank 7) or "loot_masterlist" (rank 8).
 
     lo: the load order (default ctx.load_order). With one, a regex entry name gives one rule per plugin it matches
@@ -52,32 +54,21 @@ def read(ctx, env=None, groups=False, lo=None):
             out["errors"].append(f"{path}: {err[0]}")
             continue
         out["files"][source] = path
-        entries, unsafe = loot_entries(d, path)
+        entries, unsafe, over = loot_entries(d, path)
         out["unsafe"] += unsafe
+        out["over_limit"] += over
         pos = {id(e): k + 1 for k, e in enumerate(d.get("plugins") or [])}
         for match, e, _src in entries:
             k = pos[id(e)]
             # the load order's plugins the entry names (a regex may match several); none (or no load order): the
             # name as written, so `rules list` still shows the rule (inactive) and the graph leaves it out
             plugins = [n for n in names if match(n)] or [e["name"]]
-            after_items = e.get("after") if isinstance(e.get("after"), list) else []
+            after = _after_names(e, names, lo, cenv, out)  # once per entry, so each item is counted once
             for p in plugins:
-                for x in after_items:
-                    name, _disp, cond = _file_item(x)
-                    if not name:
-                        continue
-                    if cond:
-                        if cenv is None:
-                            continue
-                        v, _why = evaluate(cond, cenv)
-                        if v is None:
-                            out["conditions_unknown"] += 1
-                        if v is not True:
-                            continue
-                    for a in _expand(name, names, lo, out):
-                        if a.lower() != p.lower():
-                            out["after"].append({"plugin": p, "after": a, "source": source, "rank": rank,
-                                                 "file": path, "entry": k})
+                for a in after:
+                    if a.lower() != p.lower():
+                        out["after"].append({"plugin": p, "after": a, "source": source, "rank": rank,
+                                             "file": path, "entry": k})
                 if groups and isinstance(e.get("group"), str) and e["group"].strip():
                     out["members"].append({"plugin": p, "group": e["group"], "source": source, "rank": rank,
                                            "file": path, "entry": k})
@@ -95,12 +86,38 @@ def read(ctx, env=None, groups=False, lo=None):
         out["unsafe"] += cenv.unsafe
     log.info(SECTION, f"loot rules: {len(out['after'])} after, {len(out['members'])} group member(s), "
                       f"{len(out['groups'])} group(s) from {', '.join(out['files'].values()) or 'no LOOT file'}"
-                      + (f"; {out['unsafe']} LOOT entries skipped: unsafe pattern" if out["unsafe"] else ""))
+                      + (f"; {out['unsafe']} LOOT entries skipped: unsafe pattern" if out["unsafe"] else "")
+                      + (f"; {out['over_limit']} LOOT regex entries skipped: over the limit" if out["over_limit"]
+                         else ""))
     return out
 
 
+def _after_names(e, names, lo, cenv, out):
+    """The plugin names an entry's "after" items name: items whose condition is false or unknown (or, with no load
+    order, any condition) are left out, and a regex item is expanded against the load order."""
+    got = []
+    for x in e.get("after") if isinstance(e.get("after"), list) else []:
+        name, _disp, cond = _file_item(x)
+        if not name:
+            continue
+        if cond:
+            if cenv is None:
+                continue
+            v, _why = evaluate(cond, cenv)
+            if v is None:
+                out["conditions_unknown"] += 1
+            if v is not True:
+                continue
+        got += _expand(name, names, lo, out)
+    return got
+
+
 def _expand(name, names, lo, out):
-    """An "after" item's plugin names: the name itself, or with a regex, the load order's plugins it matches."""
+    """An "after" item's plugin names: the name itself, or with a regex, the load order's plugins it matches. A name
+    starting with "<" isn't a plugin name and gives none."""
+    if name.startswith("<"):
+        log.info(SECTION, f"loot rules: after item {name[:80]!r} skipped: a name starting with '<' isn't a plugin name")
+        return []
     if not _is_regex(name) or lo is None:
         return [name]
     rx, why = safe_regex(name)

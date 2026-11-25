@@ -82,25 +82,13 @@ def fill(load_order, official_only=False):
     """Read kind and masters for every plugin in a LoadOrder that has a path and hasn't been read yet (only the
     official ones with official_only). Never raises: a plugin whose header can't be read gets kind "?" and no
     masters. Plugin.master is set from the flags and the file name (is_master); a file that isn't a plugin or
-    can't be read goes by its name alone."""
+    can't be read goes by its name alone. Each file is opened once."""
     for p in load_order.plugins:
         if p.path and p.kind is None and (p.official or not official_only):
             try:
-                p.kind, p.masters = header(p.path)
-            except Exception as e:  # header() doesn't raise; this guards the run against anything it missed
+                p.kind, p.masters, flags = read(p.path)
+            except Exception as e:  # read() doesn't raise; this guards the run against anything it missed
                 log.info("inputs", f"can't read the header of {p.path}: {type(e).__name__}: {e}")
-                p.kind, p.masters = "?", []
+                p.kind, p.masters, flags = "?", [], None
             if p.kind is not None:
-                p.master = is_master(p.name, flags_of(p.path) or 0)
-
-
-def flags_of(path):
-    """The header record's flags, or None when the file can't be opened or isn't a plugin. Never raises."""
-    try:
-        with open(path, "rb") as f:
-            head = f.read(12)
-    except (OSError, ValueError):
-        return None
-    if len(head) < 12 or head[:4] != b"TES4":
-        return None
-    return struct.unpack_from("<I", head, 8)[0]
+                p.master = is_master(p.name, flags or 0)

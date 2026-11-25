@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -85,7 +85,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -111,12 +111,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.3.0.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.0.zip SHA256`.
+2. Download `sf-load-order-0.3.1.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.1.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.0 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.1 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -180,7 +180,7 @@ Give one source. When you give none, the game's own Plugins.txt is read.
 | Your setup | Option | What is read |
 |---|---|---|
 | No mod manager, or you just want what the game reads | (none), or `--plugins-txt <file>` | `%LOCALAPPDATA%\Starfield\Plugins.txt` (Steam and Game Pass use the same file), or the file you name. |
-| Mod Organizer 2 | `--mo2 <instance folder>` and, if you like, `--profile <name>` | The folder that holds `ModOrganizer.ini`, `profiles\` and `mods\`. The profile's `plugins.txt`, `loadorder.txt` and `modlist.txt` give the order, which plugins are on, and each mod's priority. Without `--profile`, MO2's selected profile is used. The game folder comes from MO2's `gamePath` setting. |
+| Mod Organizer 2 | `--mo2 <instance folder>` and, if you like, `--profile <name>` | The folder that holds `ModOrganizer.ini`, `profiles\` and `mods\` (0.3.1: when `ModOrganizer.ini` leaves out `mod_directory`, `profiles_directory` or `overwrite_directory`, the default is that folder under `base_directory`, or under the instance folder when there is none, as MO2 does). The profile's `plugins.txt`, `loadorder.txt` and `modlist.txt` give the order, which plugins are on, and each mod's priority. Without `--profile`, MO2's selected profile is used. The game folder comes from MO2's `gamePath` setting. |
 | Vortex | `--vortex-loadorder <file>`, and `--vortex-staging <folder>` if your staging folder isn't the default | On Vortex's **Load Order** page, click **Export** and save the file. That file gives the order. Each mod's own folder comes from Vortex's staging folder (default `%APPDATA%\Vortex\starfield\mods`; Vortex shows yours under Settings, Mods, Mod Staging Folder). Vortex's deployment record in the Data folder (`vortex.deployment.*.json`) says which mod deployed each loose file, so mods with no plugin are found too. |
 
 With the Modlist Backup extension for Vortex (it writes a modlist and a load order file for each profile), you can
@@ -502,7 +502,7 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -595,7 +595,7 @@ after `ExampleArmor.esm`. Its second rule, that `ExampleQuests.esm` loads after 
 
 ```
 > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
-sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -695,7 +695,7 @@ names. Schema 1:
 after the winner") with the record counts and the plugins' hashes, so the same choice isn't worked out again.
 `rules accept` is the only command that writes outside `--out`, and it writes only your rules file and its `.bak`
 copy (the old file), in one step, so a crash never leaves half a file. It refuses a proposal that contradicts a rule
-already in your file and writes nothing. Each command takes `--json FILE` to write its result as JSON.
+already in your file and writes nothing. Each command takes `--json FILE` to write its result as JSON. `list`, `explain` and `propose` print the same cautions `sort` gives for a bad `--picks` or `--clashes` entry (and `--json` has them under `cautions`).
 
 ## Depth
 
@@ -806,7 +806,7 @@ New in 0.3.0 (nothing was renamed or removed; a normal run's file is the same as
 
 | Key | Meaning |
 |---|---|
-| `sort` | `sort` runs only: `tie_break`, `order` (plugin names), `moved`, `moves` (each `plugin`, `after`, `reason`, `source`), `score_current`, `score_sorted`, `estimate`, `rated`, `same_as_current`, `sources` (rules used, by source: `game`, `mod`, `picks`, `user`, `patch`, `community`, `loot_userlist`, `loot_masterlist`, `loot_groups`, `vortex`), `rejected` (each rule left out, with the `why` and the `path` of rules that beat it), `inactive_rules`, `requires_missing`, `incompatible`, `proposed`, `stale`, `vortex_broken`, `loot_files`, `decided`, `loop` and `files` (by role). Its section is `sections.sort`; the findings have section `sort`. |
+| `sort` | `sort` runs only: `tie_break`, `order` (plugin names), `moved`, `moves` (each `plugin`, `after`, `reason`, `source`), `score_current`, `score_sorted`, `estimate`, `rated`, `same_as_current`, `sources` (rules used, by source, one per written entry or per pair, not per edge: `game`, `mod`, `picks`, `user`, `patch`, `community`, `loot_userlist`, `loot_masterlist`, `loot_groups`, `vortex`), `rejected` (each rule left out, with the `why` and the `path` of rules that beat it), `inactive_rules`, `requires_missing`, `incompatible`, `proposed`, `stale`, `vortex_broken`, `loot_files`, `decided`, `loop` and `files` (by role). Its section is `sections.sort`; the findings have section `sort`. |
 
 The "files its records use aren't installed" findings count the files by kind (script, model, mesh, material,
 texture, sound) in their text, and their `data` has a `kinds` count.
@@ -862,7 +862,7 @@ before you post it.
   `{..}` (`(a+)+`, `(ab)+`; only `?` may follow a group), more than six choices in all (`*`, `+`, `?`, `{..}` and
   `|` together) or more than two open-ended repeats (`*`, `+`, `{n,}` or `{n,m}` with m over 10, as in
   `.*.*.*\.esm`), or repeats whose choices multiply past a budget (as in `[a-z]*[a-z]*` followed by four
-  `[a-z]{0,10}`), is refused and its entry skipped, because it could make the match run for hours (the log, `rules list` and report.json's clashes `loot` part, as `unsafe_patterns`, say how many). A masterlist's real patterns all pass. Our own rules files take no pattern at all.
+  `[a-z]{0,10}`), is refused and its entry skipped, because it could make the match run for hours (the log, `rules list` and report.json's clashes `loot` part, as `unsafe_patterns`, say how many; a repeat count over 260, as in `a{99999999999}`, counts as unsafe too, and entries past the limit on regex entries are counted apart, as `regex_entries_over_limit`). A masterlist's real patterns all pass. Our own rules files take no pattern at all.
 - **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
   after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an
   update of the mod made for that file does. The report says so instead of suggesting a patch (see

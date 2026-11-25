@@ -569,9 +569,10 @@ _GROUP_OPEN = ("(?:", "(?i)")  # the only (? forms allowed; any other (look-behi
 
 def regex_refusal(text):
     """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
-    back-reference, a (? form other than (?: and (?i), a group followed by *, + or {..} (only ? may follow a group),
-    more than MAX_CHOICES choices (*, +, ?, {..} and | together), more than MAX_UNBOUNDED open-ended repeats, or a
-    product of choice weights over MAX_WORK (? and | weigh 2, {n,m} weighs m-n+1, an open-ended repeat MAX_MATCH)."""
+    back-reference, a (? form other than (?: and (?i), a {..} count over MAX_MATCH, a group followed by *, + or {..}
+    (only ? may follow a group), more than MAX_CHOICES choices (*, +, ?, {..} and | together), more than
+    MAX_UNBOUNDED open-ended repeats, or a product of choice weights over MAX_WORK (? and | weigh 2, {n,m} weighs
+    m-n+1, an open-ended repeat MAX_MATCH)."""
     if not isinstance(text, str):
         return "not text"
     if len(text) > MAX_PATTERN:
@@ -611,6 +612,8 @@ def regex_refusal(text):
             i, after_group = i + 1, True
             continue
         q = _QUANT.match(text, i) if c == "{" else None
+        if q and any(len(x) > 3 or int(x) > MAX_MATCH for x in (q.group(1), q.group(3)) if x):
+            return f"a repeat count over {MAX_MATCH} (no plugin name is that long)"
         if c in "*+?|" or q:
             choices += 1
             if choices > MAX_CHOICES:
@@ -1264,16 +1267,21 @@ def _read_loot_file(ctx, path, what):
 
 def loot_entries(d, src):
     """[(match, entry, src)] for a LOOT file's plugin entries: match(name) -> bool. A regex name goes through the
-    regex guard; a refused one, and those past MAX_REGEX_ENTRIES, are skipped. Returns (entries, unsafe count)."""
-    entries, unsafe, nrx = [], 0, 0
+    regex guard; a refused one, and those past MAX_REGEX_ENTRIES, are skipped. A name starting with "<" (no plugin
+    name does; this tool's graph uses such names for groups) is skipped. Returns (entries, unsafe count, count
+    skipped past MAX_REGEX_ENTRIES)."""
+    entries, unsafe, over, nrx = [], 0, 0, 0
     for k, e in enumerate(d.get("plugins") or []):
         if not isinstance(e, dict) or not isinstance(e.get("name"), str):
             log.info(SECTION, f"loot: {src}: plugin entry {k + 1} has no name, skipped")
             continue
+        if e["name"].startswith("<"):
+            log.info(SECTION, f"loot: {src}: entry {k + 1} skipped: a name starting with '<' isn't a plugin name")
+            continue
         if _is_regex(e["name"]):
             nrx += 1
             if nrx > MAX_REGEX_ENTRIES:
-                unsafe += 1
+                over += 1
                 log.info(SECTION, f"loot: {src}: entry {k + 1} skipped: over {MAX_REGEX_ENTRIES} regex entries")
                 continue
             rx, why = safe_regex(e["name"])
@@ -1286,7 +1294,7 @@ def loot_entries(d, src):
         else:
             low = e["name"].lower()
             entries.append((lambda n, low=low: n.lower() == low, e, src))
-    return entries, unsafe
+    return entries, unsafe, over
 
 
 def _text(content, subs):
@@ -1332,11 +1340,12 @@ def run_loot(ctx, env, accepted, cache):
             used.append(ul)
     lo = ctx.load_order
     cenv = Env(lo)
-    entries, unsafe = [], 0
+    entries, unsafe, over = [], 0, 0
     for src, d in zip(used, lists):
-        got, bad = loot_entries(d, src)
+        got, bad, past = loot_entries(d, src)
         entries += got
         unsafe += bad
+        over += past
     unknown = [0]
 
     def ok(cond, what):
@@ -1453,6 +1462,9 @@ def run_loot(ctx, env, accepted, cache):
     if unsafe:  # only when there are some, so a run without them reports exactly what 0.2.3 did
         log.info(SECTION, f"loot: {unsafe} LOOT entries skipped: unsafe pattern")
         st["unsafe_patterns"] = unsafe
+    if over:
+        log.info(SECTION, f"loot: {over} LOOT regex entries skipped: over {MAX_REGEX_ENTRIES} per file")
+        st["regex_entries_over_limit"] = over
     return st, results
 
 

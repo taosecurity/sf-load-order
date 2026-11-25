@@ -221,6 +221,13 @@ def sources(args, lo, files, ctx=None, env=None):
     return s, ctx
 
 
+def input_cautions(ctx):
+    """The cautions sort gives for bad --picks and --clashes entries (clashes.read_picks and read_clashes make
+    them), each once."""
+    return list(dict.fromkeys(f.text for f in ctx.report.findings  # propose reads --clashes twice
+                              if f.section == "clashes" and (f.data or {}).get("part") in ("picks", "clashes")))
+
+
 def build(args, lo, files, env=None):
     s, ctx = sources(args, lo, files, env=env)
     eff = (ctx.results.get("order") or {}).get("effective")
@@ -237,8 +244,9 @@ def _active(r, on):
 
 def _left_out(args, lo, files, env):
     """{key: [why, ...]} for each rule the sort leaves out in this load order (the same graph as sort's).
-    Keys: (source, entry) for a rules file's rule, (source, entry, plugin, after) for a LOOT after rule."""
-    b, _s, _ctx = build(args, lo, files, env)
+    Keys: (source, entry) for a rules file's rule, (source, entry, plugin, after) for a LOOT after rule. Also
+    returns the input cautions (bad --picks and --clashes entries)."""
+    b, _s, ctx = build(args, lo, files, env)
     left = {}
     for r in b.rejected:
         e = r["edge"]
@@ -248,15 +256,15 @@ def _left_out(args, lo, files, env):
             left.setdefault((e.source, str(e.entry)), []).append(r["why"])
         elif e.source in ("loot_userlist", "loot_masterlist"):
             left.setdefault((e.source, str(e.entry), e.after.lower(), e.before.lower()), []).append(r["why"])
-    return left
+    return left, input_cautions(ctx)
 
 
 def cmd_list(args, env=None):
     lo = read_lo(args) if (_source_given(args) or args.derived) else None
     on = {n.lower() for n in current(lo)} if lo else None
     files = read_files(args, env)
-    left = _left_out(args, lo, files, env) if lo else {}
-    lines, rows = [], []
+    left, cautions = _left_out(args, lo, files, env) if lo else ({}, [])
+    lines, rows = [f"Caution: {c}" for c in cautions], []
 
     def head(label, rf, path, why_none):
         if rf is None:
@@ -319,6 +327,8 @@ def cmd_list(args, env=None):
             lines.append(f"  Caution: {e}")
         if loot["unsafe"]:
             lines.append(f"  {loot['unsafe']} LOOT entries skipped: unsafe pattern")
+        if loot["over_limit"]:
+            lines.append(f"  {loot['over_limit']} LOOT regex entries skipped: over the limit of regex entries per file")
     if args.derived:
         b = sortgraph.build(lo, current(lo), sortgraph.Sources())
         game = [e for e in b.graph.edges.values() if e.source in ("masters", "type", "mod")
@@ -329,7 +339,7 @@ def cmd_list(args, env=None):
             rows.append({"source": sortgraph.REPORT_SOURCE[e.source], "text": e.text})
     if on is None and not args.derived:
         lines.append("(Give a source option, such as --plugins-txt, to see which rules are active in a load order.)")
-    return 0, lines, {"command": "list", "rules": rows}
+    return 0, lines, {"command": "list", "rules": rows, "cautions": cautions}
 
 
 def _flag(act, why=()):
@@ -351,7 +361,8 @@ def cmd_explain(args, env=None):
     x = sortgraph.explain(b, args.plugin, full=sf["full"] if sf else None, order=sf["order"] if sf else None)
     if not x["found"]:
         raise Stop(f"{args.plugin} isn't enabled in this load order (rules explain looks only at enabled plugins).")
-    lines = []
+    cautions = input_cautions(_ctx)
+    lines = [f"Caution: {c}" for c in cautions]
     p = x["plugin"]
     if b.order is None:
         lines.append(sortgraph.loop_text(b.graph.loops[0]))
@@ -390,7 +401,7 @@ def cmd_explain(args, env=None):
                          f"{w['records']} record(s) win over it.")
         else:
             lines.append("No record-conflict choice moves it.")
-    return 0, lines, dict({"command": "explain"}, **x)
+    return 0, lines, dict({"command": "explain", "cautions": cautions}, **x)
 
 
 # ---------- check ----------
@@ -494,8 +505,11 @@ def cmd_accept(args, env=None):
     else:
         raw, old = None, rulesfile.RulesFile(path)
     lines, added, skipped = [], [], []
-    used = {int(r["id"][2:]) for r in old.rules if (r.get("id") or "").lower().startswith("u-")
-            and r["id"][2:].isdigit()}
+    # every raw entry's id, the skipped (not valid) ones too, so a new id never repeats one already in the file
+    raw_rules = raw.get("rules") if isinstance(raw, dict) and isinstance(raw.get("rules"), list) else []
+    ids = [r.get("id") for r in raw_rules if isinstance(r, dict)] + [r.get("id") for r in old.rules]
+    used = {int(i[2:]) for i in ids if isinstance(i, str) and i.lower().startswith("u-") and i[2:].isascii()
+            and i[2:].isdigit()}
     nxt = max(used, default=0) + 1
     for r in chosen:
         if any(_same(r, o) for o in old.rules + added):
@@ -624,14 +638,16 @@ def cmd_propose(args, env=None):
     except OSError as e:
         raise Stop(f"can't write rules-proposed.json in {args.out} ({e.strerror or e}). Fix: give --out a folder "
                    "you can write to.")
-    lines = [f"{len(rules)} proposal(s) written to {path}."]
+    cautions = input_cautions(ctx)
+    lines = [f"Caution: {c}" for c in cautions] + [f"{len(rules)} proposal(s) written to {path}."]
     if args.kind in ("choice", "all") and not getattr(args, "conflicts", None):
         lines.append("Note: record-conflict choices need record data. Give --conflicts <conflicts.json> (from "
                      "sf-mod-check conflict), or run sort, which gets it itself.")
     lines += [f"  {r['id']}: {rulesfile.describe(dict(r, before=[], requires=[], incompatible=[]))}" for r in rules]
     if rules:
         lines.append(f"To keep them: sf-load-order rules accept \"{path}\" --all (or --id <id> for one).")
-    return 0, lines, {"command": "propose", "file": path, "proposals": rules}
+    return 0, lines, {"command": "propose", "file": path, "proposals": rules,
+                      "cautions": cautions}
 
 
 def _records(ctx, lo):
