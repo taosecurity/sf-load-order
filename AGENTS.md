@@ -14,8 +14,11 @@ before each release.
 2. It rates the order, suggests a better one when the data supports it, and writes files to apply it, with steps.
 3. Use it when someone asks whether their load order is right, why a mod's changes don't show up in game, whether a
    patch still fits after an update, or which mod's textures or files win.
-4. Don't use it to sort a load order from scratch (that is LOOT's job), to edit records or build patches (use xEdit),
-   or for games other than Starfield.
+4. `sf-load-order sort` builds a whole, valid load order from the enabled plugins without LOOT: game facts (masters,
+   master plugins first), the person's picks and rules file, an optional community rules file and, when found, LOOT's
+   masterlist. It keeps the current order wherever it can, explains every move, and never applies anything.
+   `sf-load-order rules` lists, explains, checks, accepts and proposes the ordering rules.
+5. Don't use it to edit records or build patches (use xEdit), or for games other than Starfield.
 
 ## 2. Prerequisites (exact versions)
 
@@ -52,7 +55,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -157,6 +160,32 @@ there changes what "changed since the last run" reports.
 - Linux (a copy of a load order; give every path, since the Windows defaults don't apply there):
   `python -I sf-load-order.py --plugins-txt "<Plugins.txt>" --data "<Data folder>"`
 
+- Sort a load order (`sort` runs every check of a normal run, then builds the order; it reads the same load order
+  options and writes plugins.txt, `loadorder.txt` for MO2, the Vortex import file, HOW-TO-APPLY.txt,
+  `rules-proposed.json` and the report; nothing is applied):
+  `.\sf-load-order.cmd sort`
+  The RESULT line and `report.txt` name the number of plugins moved; the "Sorted order" part lists each move with its
+  reason, the rules that weren't used and why, and the requires and incompatible checks. In report.json the key
+  `sort` has `moves`, `rejected`, `proposed` and `files`. A master loop (plugins that each need the other) is a
+  problem and no order files are written. Use `--tie-break name` for an order by file name that is the same on any PC
+  (it moves many plugins), `--no-loot` to leave LOOT out, `--loot-groups` to also use LOOT's groups, and
+  `--depth light` for a quick run.
+- Sort with the person's own rules file (format in the README, a sample in `examples\`; a missing file given here is
+  exit 2): `.\sf-load-order.cmd sort --rules "<rules file>"`
+- Sort with a community rules file (a local file; nothing is downloaded):
+  `.\sf-load-order.cmd sort --community-rules "<community rules file>"`
+- Say why a plugin is where it is in the sorted order (writes nothing but the log):
+  `.\sf-load-order.cmd rules explain ExampleAddon.esm --data "<Data folder>"`
+- List every rule and whether it is active in this load order (`--derived` adds the game's own rules):
+  `.\sf-load-order.cmd rules list --derived --data "<Data folder>"`
+- Check a rules file, and against the load order when a source is given (exit 0 clean, 1 something to fix, 2 a file
+  couldn't be read): `.\sf-load-order.cmd rules check --rules "<rules file>" --data "<Data folder>"`
+- Keep proposals from a `sort` run. Show the person `rules-proposed.json` first and ask. `rules accept` is the only
+  command that writes outside `--out`: it writes the rules file (default `sf-load-order-rules.json` in the state
+  folder) and its `.bak`, nothing else:
+  `.\sf-load-order.cmd rules accept "<rules-proposed.json>" --all --state "<folder>"`
+- Write only the proposals, without the order files: `.\sf-load-order.cmd rules propose --out "<report folder>"`
+
 After a run, read `sf-load-order-report\report.txt` (or `report.json`) and explain the top 10 to the person. To
 apply a suggested order, follow `sf-load-order-report\HOW-TO-APPLY.txt` with them; it starts with a backup. Never
 copy the files into place without the person agreeing. For MO2 the steps are: close MO2, back up the profile's
@@ -201,6 +230,9 @@ All in `--out` (default `sf-load-order-report` in the current folder):
 - A `candidate` run writes `report.txt`, `report.html` and `report.json` only (no plugins.txt, no HOW-TO-APPLY.txt),
   and puts the copies it makes in `work\candidate`.
 - `plugins.txt` (the suggested order in the game's format) and `HOW-TO-APPLY.txt`.
+- A `sort` run writes the same files from the sorted order, plus `rules-proposed.json` (rules the person can keep with
+  `rules accept`; `"rules": []` when there are none). Its report has the `sort` key and the "Sorted order" part in
+  place of the suggested order.
 - `loadorder.txt`, only for an MO2 source (MO2's order file; it goes into the profile folder with `plugins.txt`).
 - `vortex-loadorder-recommended.json`, only for a Vortex source (for the Load Order page's Import button).
 - `work\`: sf-mod-check's input Plugins.txt and its `conflict\conflicts.json`, when it was run.
@@ -233,6 +265,12 @@ credits and writes nothing. Screen output keeps the console's character set and 
   `--log` file. Applying a suggestion is the person's own step (HOW-TO-APPLY.txt).
 - It never uploads anything and makes no network connections. It runs sf-mod-check only when one is found or given.
 - It never ships or copies LOOT's masterlist; it reads the person's own copy.
+- `sort` and `rules` never apply an order and never download a rules file. A plugin counts as a master when it has the
+  master flag or an `.esm` or `.esl` name (esplugin 6.1.4, which libloot uses); light and medium never change a
+  plugin's place. Vortex mod rules are only a tie-break. A rule that breaks the game's own rules is left out, with one
+  caution that says why. LOOT's regular-expression names are checked before use: a pattern over 256 characters, a
+  back-reference, a look-behind or a nested repeat is refused with a caution.
+- Our own rules files take exact plugin file names only: no regex, no wildcard.
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
   and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
   names who won; it says so. Install extension 0.6.2 or later for the rules.

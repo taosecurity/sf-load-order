@@ -11,7 +11,8 @@ SCHEMA_VERSION = 1
 LEVELS = ("problem", "caution", "note")
 
 # Sections, in the order the report shows them.
-SECTIONS = ("inputs", "order", "patches", "clashes", "archives", "loose", "rules", "records", "recommend", "candidate")
+SECTIONS = ("inputs", "order", "patches", "clashes", "archives", "loose", "rules", "records", "recommend", "sort",
+            "candidate")
 
 
 @dataclass
@@ -24,6 +25,7 @@ class Plugin:
     dropped: bool = False     # the game removes this name from Plugins.txt, so it never loads
     kind: str = None          # "F" full, "M" medium, "L" light, "?" unreadable, None not read yet
     masters: list = None      # master file names from the header, None until read
+    master: bool = None       # loads with the master plugins (master flag, or a .esm/.esl name); None until read
 
 
 @dataclass
@@ -84,6 +86,8 @@ class Report:
     patches: object = None                        # merged patches (merged.py): [{patch, manifest, state, level,
                                                   # rebuild, reasons, checked, result, findings}], [] (no manifest)
                                                   # or {"not_checked": why}; None when the section didn't run
+    sort: dict = None                             # `sort` only: the sorted order, moves, rules used and not used
+                                                  # (sort.py's module text); None on other runs
 
     def add(self, finding):
         self.findings.append(finding)
@@ -96,6 +100,8 @@ class Report:
 
     def to_dict(self):
         d = dataclasses.asdict(self)
+        if d.get("sort") is None:  # only a `sort` run has the key, so the main run's report.json is unchanged
+            d.pop("sort", None)
         d["schema"] = SCHEMA_VERSION
         from . import AUTHOR, LICENSE, URL  # here, not at the top: the package imports nothing from model
         d.update(author=AUTHOR, license=LICENSE, url=URL)

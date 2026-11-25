@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.3.0 (2026-11-25)
+
+### What's new
+
+`sf-load-order sort` builds a whole, valid load order from your enabled plugins without LOOT, and `sf-load-order rules` manages the ordering rules it uses. No option, section or report.json key was renamed or removed; keys were added. A normal run (no `sort`, no `rules`) writes the same files as 0.2.3.
+
+- **`sort`**: reads the same load order options as a normal run, runs every check of a normal run, and builds the order from the game's own rules (masters, master plugins first, a mod's own plugin order), your picks, your rules file, the patches' targets, an optional community rules file and, when found, LOOT's userlist and masterlist (`after` rules; groups only with `--loot-groups`). It starts from your current order and moves as few plugins as it can, and every move names the rule behind it. It writes `plugins.txt`, `loadorder.txt` (MO2), the Vortex import file, `HOW-TO-APPLY.txt` (which now opens with the number of plugins moved and "back up your current order first"), `rules-proposed.json` and the report, and never applies an order.
+- **A rule that can't be met is never dropped silently.** Each rule left out (it contradicts the game's rules, or a stronger rule) is listed under "Rules not met" with the rule that beat it. A plugin's `requires` and `incompatible` entries are checked and reported. A loop among the plugins' own masters is a problem, and then no order files are written.
+- **`rules`**: `list` (every rule, active or not, with `--derived` for the game's own rules), `explain PLUGIN` (why a plugin is where it is), `check` (the rules files; exit 0, 1 or 2), `propose` (`rules-proposed.json` without the order files; `--kind patch` proposes each patch's targets from `--clashes`) and `accept` (copies proposals into your rules file, with a `.bak` copy of the old file; the only command that writes outside `--out`).
+- **The rules file** `sf-load-order-rules.json` (schema 1): exact plugin names only (no regex, no wildcard), `after`, `before`, `requires`, `incompatible`, `group`, a `note` and `evidence` with the plugins' hashes. It lives in the state folder or is given with `--rules`. A rule whose pinned hashes no longer match is still applied, with one caution that lists the stale rules. `examples\sf-load-order-rules.example.json` is a sample.
+- **Which plugins are masters** (it settles an open question): a plugin is a master when it has the master flag or its name ends in `.esm` or `.esl` (source: esplugin 6.1.4, which libloot uses); the light and medium flags never change a plugin's place.
+- **A safety check on LOOT's regular-expression names and conditions**: a pattern over 256 characters, a back-reference, a look-behind or a repeated group that holds a repeat (`(a+)+`) is refused with one caution (the clashes `loot` part counts them as `unsafe_patterns` only when above 0), and a masterlist over 20 MB isn't read. This covers the 0.2.x LOOT code too. The three regex names in today's masterlist pass.
+- report.json: a top-level `sort` key on a `sort` run only, and `load_order.plugins[].master`. report.txt and report.html get a "Sorted order" part on a `sort` run, in place of "Suggested order".
+- Tested with sf-mod-check 0.17.0: its `conflicts.json` has every key this tool reads, and a `sort` run at `--depth medium` on a 161-plugin load order rated the order. The minimum versions stay 0.8.0 (record data) and 0.15.0 (patch manifests).
+
+### Example
+
+A real `sort` run on a made-up load order (five mod plugins and the official ones; `ExampleQuestsPatch.esm` is listed before its master, and the rules file puts `ExampleArmorRetexture.esm` after `ExampleArmor.esm`). Its second rule, that `ExampleQuests.esm` loads after its own patch, can't be met:
+
+    > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
+    sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+
+The "Sorted order" part of the report:
+
+    Sorting moves 2 plugins; the order wasn't rated (no record-conflict data).
+    Moves (2):
+       1. Load ExampleArmor.esm after ExampleLights.esm. Why: Your rule (my-rules.json, entry 1) says
+          ExampleArmorRetexture.esm loads after ExampleArmor.esm.
+       2. Load ExampleQuests.esm after ExampleArmorRetexture.esm. Why: ExampleQuestsPatch.esm has ExampleQuests.esm as a
+          master.
+    Rules not met (1):
+       1. Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but
+          ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+
+### How it works
+
+The game's rules, your picks and rules, the patches' targets, the community file and LOOT's `after` rules become edges in one graph of the plugins, added strongest first. An edge that would close a loop with stronger ones is rejected and reported. The order is the graph's topological order that is closest to your current one (a plugin moves only when an edge forces it), then the record-conflict climb of the main run chooses between the plugins the graph leaves open, and Vortex's mod rules break the last ties. `sort` and the main run share the climb, so the main run's suggested order is unchanged. A test sorts 1,000 plugins with thousands of rules in a few seconds.
+
+### Options
+
+- `sort` takes every load order, check and output option of the main run, plus `--rules FILE`, `--no-rules`, `--community-rules FILE`, `--tie-break {current,name}`, `--no-loot` and `--loot-groups`.
+- `rules <command>` takes `--rules`, `--no-rules`, `--community-rules`, `--state`, the LOOT options and the load order options, and `--json FILE`; `explain` and `propose` also take `--picks`, `--tie-break` and `--conflicts`; `propose` takes `--kind {choice,patch,all}`, `--clashes` and `--out`; `accept` takes `--id` or `--all`.
+- A missing default rules file is fine; a missing file given with `--rules` or `--community-rules` is exit 2.
+
+### Not yet
+
+- There is no community rules file yet, and the tool never downloads one: it reads only a local `--community-rules` file.
+- LOOT userlist `req` and `inc` entries stay in the known-clashes section; they aren't part of `sort`'s own requires and incompatible checks.
+- `sort` doesn't apply the order, and it doesn't use LOOT's metadata beyond `after` rules and (with `--loot-groups`) groups.
+
+### Docs
+
+- README sections "Sorting a load order (`sort`)" and "Your own ordering rules", the new options, the report.json keys and a Traps entry on the regex check; AGENTS.md commands for `sort` and `rules`, run by `tests\run_agents.py`. `tests\test_doc_examples.py` checks the `sort` Example against a real run.
+
 ## 0.2.3 (2026-11-24)
 
 ### What's new

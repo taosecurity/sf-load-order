@@ -8,9 +8,19 @@ import struct
 
 from . import log
 
+FLAG_MASTER = 0x1
 FLAG_LIGHT = 0x100
 FLAG_MEDIUM = 0x400
 MAX_HEADER = 1 << 20  # a TES4 header is a few KB; read at most 1 MB
+MASTER_EXTENSIONS = (".esm", ".esl")
+
+
+def is_master(name, flags):
+    """Whether the game loads this plugin with the master plugins (before every plugin that isn't one): the master
+    flag (0x1) is set, or the file name ends in .esm or .esl, whatever the flags say. The light and medium flags
+    don't make a plugin a master. (The rule esplugin 6.1.4 uses for Starfield, Plugin::is_master_file; NOTES.md
+    "0.3.0" has the evidence.)"""
+    return bool(flags & FLAG_MASTER) or name.lower().endswith(MASTER_EXTENSIONS)
 
 
 def _name(raw):
@@ -42,29 +52,37 @@ def masters_of(data):
 def header(path):
     """Return (kind, [masters]). (None, None) when the file is missing or can't be opened; ("?", []) when it isn't
     a plugin (no TES4 record) or its header can't be read. Never raises."""
+    kind, masters, _flags = read(path)
+    return kind, masters
+
+
+def read(path):
+    """Return (kind, [masters], flags): header() plus the header record's flags (None when the file can't be
+    opened or isn't a plugin). Never raises."""
     try:
         with open(path, "rb") as f:
             head = f.read(24)
             if len(head) < 24 or head[:4] != b"TES4":
-                return "?", []
+                return "?", [], None
             size = struct.unpack_from("<I", head, 4)[0]
             flags = struct.unpack_from("<I", head, 8)[0]
             data = f.read(min(size, MAX_HEADER))
     except (OSError, ValueError):  # ValueError: a path the system can't open (a NUL in it)
-        return None, None
+        return None, None, None
     try:
         masters = masters_of(data)
     except Exception as e:  # a header this can't read must never stop the run
         log.info("inputs", f"can't read the header of {path}: {type(e).__name__}: {e}")
-        return "?", []
+        return "?", [], flags
     kind = "L" if flags & FLAG_LIGHT else "M" if flags & FLAG_MEDIUM else "F"
-    return kind, masters
+    return kind, masters, flags
 
 
 def fill(load_order, official_only=False):
     """Read kind and masters for every plugin in a LoadOrder that has a path and hasn't been read yet (only the
     official ones with official_only). Never raises: a plugin whose header can't be read gets kind "?" and no
-    masters."""
+    masters. Plugin.master is set from the flags and the file name (is_master); a file that isn't a plugin or
+    can't be read goes by its name alone."""
     for p in load_order.plugins:
         if p.path and p.kind is None and (p.official or not official_only):
             try:
@@ -72,3 +90,17 @@ def fill(load_order, official_only=False):
             except Exception as e:  # header() doesn't raise; this guards the run against anything it missed
                 log.info("inputs", f"can't read the header of {p.path}: {type(e).__name__}: {e}")
                 p.kind, p.masters = "?", []
+            if p.kind is not None:
+                p.master = is_master(p.name, flags_of(p.path) or 0)
+
+
+def flags_of(path):
+    """The header record's flags, or None when the file can't be opened or isn't a plugin. Never raises."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+    except (OSError, ValueError):
+        return None
+    if len(head) < 12 or head[:4] != b"TES4":
+        return None
+    return struct.unpack_from("<I", head, 8)[0]

@@ -62,8 +62,8 @@ def reorder(items, key, new_order, fixed):
     return [it if fixed(it) else next(it_) for it in items]
 
 
-def _movable(ctx):
-    rec = ctx.results.get("recommend") or {}
+def _movable(ctx, rec=None):
+    rec = rec if rec is not None else ctx.results.get("recommend") or {}
     return [n for n in rec.get("order") or ctx.load_order.enabled() if not inputs.is_official(n)
             and not n.lower().startswith("blueprintships-")]
 
@@ -113,9 +113,10 @@ def write_vortex(src, order, out_path):
     return same
 
 
-def how_to(lo, same, files, estimate=False):
+def how_to(lo, same, files, estimate=False, intro=None):
     src = lo.source
     lines = ["How to apply the recommended load order", "=======================================", ""]
+    lines += list(intro or [])
     if same:
         lines += ["The files in this folder equal your current order: nothing moves, so there is nothing to apply.",
                   "They are written anyway, so you can keep them as a record of a checked order.", ""]
@@ -192,12 +193,14 @@ def how_to(lo, same, files, estimate=False):
     return lines
 
 
-def write(ctx):
+def write(ctx, res=None, section=SECTION, intro=None):
+    """res: the order's results (default ctx.results["recommend"]); section: where a write problem is reported;
+    intro: lines HOW-TO-APPLY.txt starts with (`sort`)."""
     lo = ctx.load_order
     out = ctx.args.out
     os.makedirs(out, exist_ok=True)
-    rec = ctx.results.get("recommend") or {}
-    order = _movable(ctx)
+    rec = res if res is not None else ctx.results.get("recommend") or {}
+    order = _movable(ctx, rec)
     same = rec.get("same_as_current", True)
     files = {}
     p = os.path.join(out, PLUGINS_TXT)
@@ -211,7 +214,7 @@ def write(ctx):
             log.info(SECTION, f"wrote {m}")
         except OSError as e:
             log.info(SECTION, f"couldn't write {m}: {e}")
-            ctx.report.add(Finding("caution", SECTION, f"MO2's {LOADORDER_TXT} couldn't be written to {m} ({e}), so "
+            ctx.report.add(Finding("caution", section, f"MO2's {LOADORDER_TXT} couldn't be written to {m} ({e}), so "
                                    "there is no complete pair of files for MO2.",
                                    fix=f"Check {out} can be written (and the file isn't open in another program), "
                                        "then run sf-load-order again.", data={"file": m}))
@@ -224,13 +227,13 @@ def write(ctx):
             log.info(SECTION, f"wrote {v} ({'a copy of the export' if unchanged else 'reordered'})")
         except (OSError, ValueError) as e:  # the export was read once by inputs; it may have changed since
             log.info(SECTION, f"couldn't write {v}: {e}")
-            ctx.report.add(Finding("caution", SECTION, f"{VORTEX_JSON} couldn't be written ({e}), so there is no "
+            ctx.report.add(Finding("caution", section, f"{VORTEX_JSON} couldn't be written ({e}), so there is no "
                                    "file for Vortex's Import button.",
                                    fix=f"Check the Vortex export {src} is still there and unchanged (export it "
                                        f"again from Vortex's Load Order page if not) and that {out} can be written, "
                                        "then run sf-load-order again.", data={"file": v, "export": src}))
     h = os.path.join(out, HOW_TO)
-    _write_text(h, how_to(lo, same, dict(files), rec.get("estimate", False)))
+    _write_text(h, how_to(lo, same, dict(files), rec.get("estimate", False), intro))
     files["how_to"] = h
     log.info(SECTION, f"wrote {sorted(files)} to {out}")
     return files

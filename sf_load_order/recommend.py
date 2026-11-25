@@ -265,26 +265,25 @@ def _read_loot(ctx, path):
     return [n for n, on in listed if on], None
 
 
-def run(ctx):
-    lo = ctx.load_order
-    rec = ctx.results.get("records")
-    rated = bool(rec and rec.get("lost") is not None)
-    current = _current(ctx)
-    fixed = {n.lower() for n in current if _fixed(lo, n)}
-    movable = [n for n in current if n.lower() not in fixed]
-    edges, edge_why = _edges(lo, movable)
-    applied, not_applied = _picks(ctx, movable, edges)
-    log.info(SECTION, f"{len(movable)} movable plugins, {len(edges)} constraint edges, {len(applied)} pick(s) applied, "
-                      f"records data {'yes' if rated else 'no'}")
-    off = inputs.mo2_unpinned_officials(lo)
-    if off:  # A5: a suspicion from MO2's source (2.5.2 pins eight plugins), so a caution, not extra lines
-        _add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so copying in a plugins.txt this tool writes (it "
-             f"leaves official plugins out) can leave {', '.join(off)} unticked in MO2.",
-             f"After you copy the files, check in MO2's Plugins tab that {', '.join(off)} "
-             f"{'is' if len(off) == 1 else 'are'} still ticked, and tick {'it' if len(off) == 1 else 'them'} if not "
-             "(the 2.5.3 betas pin them at the top).", off)
-        ctx.report.findings[-1].data = {"kind": "mo2-officials", "plugins": off}
-    order = arrange(movable, edges, applied)
+BLOCKED_WHY = "it would put a plugin above its own master, break a mod's own plugin order or undo one of your picks"
+
+
+def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BLOCKED_WHY, arranger=None):
+    """Arrange the movable plugins under the hard edges and picks, then run the score climb over the record-conflict
+    pairs (the module docstring, steps 2 to 4, and the near-tie rule). The main run and `sort` share it.
+
+    current: the whole current enabled order; movable: its movable plugins in current order; fixed: lower-case names
+    that keep their slots; edges: [(before, after)] hard edges among movable plugins (the climb adds to a copy);
+    applied: the picks applied; rec: ctx.results["records"] when the order can be rated, else None.
+    skip(k, pair) -> True leaves a pair out of the climb (sort: a pair a hard edge already decides).
+    blocked_why: the reason given for a pair whose move breaks a hard edge.
+    arranger(base, edges, picks) -> order or None replaces arrange() (sort passes its graph's order).
+
+    Returns {"order": movable order, "score_current", "score_recommended" (None unrated), "flipped": [pair index],
+    "flipped0": {pair index flipped in the current order}, "rejected": [{"loser", "winner", "why"}],
+    "estimate": bool, "candidates": [pair index]}."""
+    arranger = arranger or arrange
+    order = arranger(movable, edges, applied)
     if order is None:  # a master loop in the plugins themselves: leave the order alone
         order = list(movable)
         log.info(SECTION, "master loop among the plugins; order left as is")
@@ -292,7 +291,7 @@ def run(ctx):
     score_cur = score_rec = None
     flipped, flipped0, rejected, cands = [], set(), [], []
     estimate = False
-    if rated:
+    if rec is not None:
         pairs = rec.get("pairs") or []
         score = scorer(rec)
         score_cur, f0 = score(_full(current, movable, fixed))
@@ -302,11 +301,11 @@ def run(ctx):
         # records.acts_on is the one "acts on" rule (advice merge/conflict, not a BlueprintShips winner); an
         # ordinary official winner is never moved either, which acts_on doesn't cover
         cands = [k for k, p in enumerate(pairs) if records.acts_on(p) and not p.get("winner_official")
-                 and p["loser"].lower() in pos0 and p["winner"].lower() in pos0]
+                 and p["loser"].lower() in pos0 and p["winner"].lower() in pos0 and not (skip and skip(k, p))]
         tried = {}
 
         def climb(base, best):
-            ed, cur_order = list(edges), arrange(base, edges, applied)
+            ed, cur_order = list(edges), arranger(base, edges, applied)
             for _ in range(MAX_PASSES):
                 changed = False
                 for k in cands:
@@ -314,10 +313,9 @@ def run(ctx):
                     e = (p["winner"], p["loser"])
                     if e in ed:
                         continue
-                    o = arrange(base, ed + [e], applied)
+                    o = arranger(base, ed + [e], applied)
                     if o is None:
-                        tried[k] = "it would put a plugin above its own master, break a mod's own plugin order or " \
-                                   "undo one of your picks"
+                        tried[k] = blocked_why
                         continue
                     s = score(_full(current, o, fixed))[0]
                     if s < best:
@@ -354,6 +352,32 @@ def run(ctx):
             p = pairs[k]
             rejected.append({"loser": p["loser"], "winner": p["winner"], "why": tried.get(k, "not tried")})
             log.info(SECTION, f"kept {p['loser']} above {p['winner']}: {tried.get(k)}")
+    return {"order": order, "score_current": score_cur, "score_recommended": score_rec, "flipped": flipped,
+            "flipped0": flipped0, "rejected": rejected, "estimate": estimate, "candidates": cands}
+
+
+def run(ctx):
+    lo = ctx.load_order
+    rec = ctx.results.get("records")
+    rated = bool(rec and rec.get("lost") is not None)
+    current = _current(ctx)
+    fixed = {n.lower() for n in current if _fixed(lo, n)}
+    movable = [n for n in current if n.lower() not in fixed]
+    edges, edge_why = _edges(lo, movable)
+    applied, not_applied = _picks(ctx, movable, edges)
+    log.info(SECTION, f"{len(movable)} movable plugins, {len(edges)} constraint edges, {len(applied)} pick(s) applied, "
+                      f"records data {'yes' if rated else 'no'}")
+    off = inputs.mo2_unpinned_officials(lo)
+    if off:  # A5: a suspicion from MO2's source (2.5.2 pins eight plugins), so a caution, not extra lines
+        _add(ctx, "caution", f"MO2 2.5.2 pins only some official plugins, so copying in a plugins.txt this tool writes (it "
+             f"leaves official plugins out) can leave {', '.join(off)} unticked in MO2.",
+             f"After you copy the files, check in MO2's Plugins tab that {', '.join(off)} "
+             f"{'is' if len(off) == 1 else 'are'} still ticked, and tick {'it' if len(off) == 1 else 'them'} if not "
+             "(the 2.5.3 betas pin them at the top).", off)
+        ctx.report.findings[-1].data = {"kind": "mo2-officials", "plugins": off}
+    pl = plan(current, movable, fixed, edges, applied, rec if rated else None)
+    order, score_cur, score_rec = pl["order"], pl["score_current"], pl["score_recommended"]
+    flipped, flipped0, rejected, estimate = pl["flipped"], pl["flipped0"], pl["rejected"], pl["estimate"]
     full = _full(current, order, fixed)
     same = [n.lower() for n in full] == [n.lower() for n in current]
 

@@ -549,6 +549,89 @@ def _is_regex(s):
     return any(c in s for c in ":\\*?|")
 
 
+# The regex guard (DESIGN-0.3.0.md 2.6). LOOT's entry names and active() arguments may be regular expressions; a
+# slow one (a repeated group that itself repeats, like (a+)+) can take very long on a short name, so every pattern
+# goes through safe_regex() first, and every match through rx_match() (names of at most MAX_MATCH characters).
+MAX_PATTERN = 256
+MAX_MATCH = 260
+MAX_REGEX_ENTRIES = 2000      # regex entry names read per LOOT file; the rest are skipped
+MAX_LOOT_BYTES = 20 * 1024 * 1024
+_QUANT = re.compile(r"\{\d*(,\d*)?\}")
+
+
+def regex_refusal(text):
+    """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
+    back-reference or look-behind, or a quantified group that is itself quantified with *, + or {..} (a group
+    followed by ? is fine)."""
+    if not isinstance(text, str):
+        return "not text"
+    if len(text) > MAX_PATTERN:
+        return f"longer than {MAX_PATTERN} characters"
+    stack = [False]  # per open group: does it hold a repeat (*, + or {..}) anywhere inside?
+    last = None      # what the next quantifier applies to: None, "atom" or ("group", holds_a_repeat)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            nxt = text[i + 1:i + 2]
+            if nxt.isdigit() and nxt != "0":
+                return "a back-reference"
+            i, last = i + 2, "atom"
+            continue
+        if c == "[":
+            j = i + 1
+            if j < n and text[j] == "^":
+                j += 1
+            if j < n and text[j] == "]":
+                j += 1
+            while j < n and text[j] != "]":
+                j += 2 if text[j] == "\\" else 1
+            i, last = j + 1, "atom"
+            continue
+        if c == "(":
+            if text.startswith(("(?<=", "(?<!"), i):
+                return "a look-behind"
+            if text.startswith("(?P=", i):
+                return "a back-reference"
+            stack.append(False)
+            i, last = i + 1, None
+            continue
+        if c == ")":
+            inner = stack.pop() if len(stack) > 1 else False
+            if inner:
+                stack[-1] = True
+            i, last = i + 1, ("group", inner)
+            continue
+        q = _QUANT.match(text, i) if c == "{" else None
+        if c in "*+" or q:
+            if isinstance(last, tuple) and last[1]:
+                return "a repeated group that itself repeats (it can take very long to match)"
+            stack[-1] = True
+            i = q.end() if q else i + 1
+            if i < n and text[i] in "?+":
+                i += 1
+            last = "atom"
+            continue
+        i, last = i + 1, "atom"  # a plain character, |, ^, $, or ? (a group followed by ? is fine)
+    return None
+
+
+def safe_regex(text):
+    """(compiled pattern, None) for a safe pattern (case-insensitive, as LOOT matches), or (None, why)."""
+    why = regex_refusal(text)
+    if why:
+        return None, why
+    try:
+        return re.compile(text, re.I), None
+    except re.error as e:
+        return None, f"not a valid regular expression ({e})"
+
+
+def rx_match(rx, s):
+    """rx.fullmatch(s) for names of at most MAX_MATCH characters (plugin and folder entry names); longer: no match."""
+    return isinstance(s, str) and len(s) <= MAX_MATCH and rx.fullmatch(s) is not None
+
+
 def search_roots(lo):
     """Folders a LOOT path (relative to Data) is looked up in, the winning copy first. MO2: the enabled mods' folders,
     highest priority first (Overwrite included), then the real Data folder, since MO2 shows them all to the game as
@@ -594,6 +677,19 @@ class Env:
         self.paths = {p.name.lower(): p.path for p in lo.plugins if p.path}
         self.names = [p.name for p in lo.plugins]
         self._crc = {}
+        self._rx = {}
+        self.unsafe = 0  # condition patterns refused by the regex guard (each one makes its condition unknown)
+
+    def regex(self, pattern):
+        """The compiled pattern, or None when the guard refuses it or it doesn't compile (logged once each)."""
+        if pattern not in self._rx:
+            rx, why = safe_regex(pattern)
+            if rx is None:
+                if regex_refusal(pattern):
+                    self.unsafe += 1
+                log.info(SECTION, f"loot: condition pattern {pattern[:80]!r} skipped: {why}")
+            self._rx[pattern] = rx
+        return self._rx[pattern]
 
     def crc(self, path):
         if path not in self._crc:
@@ -624,11 +720,10 @@ class Env:
         else:
             parent, leaf = "", r
         if _is_regex(leaf):
-            try:
-                rx = re.compile(leaf, re.I)
-            except re.error:
+            rx = self.regex(leaf)
+            if rx is None:
                 return None
-            win = {n.lower(): self.paths[n.lower()] for n in self.names if not parent and rx.fullmatch(n)
+            win = {n.lower(): self.paths[n.lower()] for n in self.names if not parent and rx_match(rx, n)
                    and n.lower() in self.paths}
             if not self.roots and not win:
                 return None
@@ -638,7 +733,7 @@ class Env:
                     continue
                 try:
                     for x in os.listdir(d):
-                        if rx.fullmatch(x):
+                        if rx_match(rx, x):
                             win.setdefault(x.lower(), os.path.join(d, x))
                 except OSError:
                     pass
@@ -662,11 +757,10 @@ class Env:
         a = args[0][1:-1]
         if name in ("active", "many_active"):
             if _is_regex(a):
-                try:
-                    rx = re.compile(a, re.I)
-                except re.error:
+                rx = self.regex(a)
+                if rx is None:
                     return None
-                n = sum(1 for x in self.on if rx.fullmatch(x))
+                n = sum(1 for x in self.on if rx_match(rx, x))
                 return n > 1 if name == "many_active" else n > 0
             return False if name == "many_active" else a.lower() in self.on
         found = self.find(a)
@@ -1108,28 +1202,66 @@ def loot_paths(ctx, env):
     return ml, ul
 
 
-def _read_loot_file(ctx, path, what):
-    """(dict, None) or (None, failed status)."""
+def load_loot_file(path, what):
+    """(dict, None) or (None, (text, fix, extra data)). Reads nothing over MAX_LOOT_BYTES. Adds no finding, so the
+    clashes section and the LOOT rules reader (loot_rules.py) can both use it."""
     try:
+        if os.path.getsize(path) > MAX_LOOT_BYTES:
+            return None, (f"LOOT's {what} is over {MAX_LOOT_BYTES // (1024 * 1024)} MB, so it wasn't read.",
+                          "Let LOOT download the masterlist again (in LOOT: update masterlist).", {})
         with open(path, encoding="utf-8-sig") as f:
             d = read_yaml(f.read())
     except OSError as e:
-        return None, _bad_file(ctx, "loot", path, f"can't read LOOT's {what} ({e.strerror}).",
-                               "Check that the file can be opened, or update the masterlist in LOOT.")
+        return None, (f"can't read LOOT's {what} ({e.strerror}).",
+                      "Check that the file can be opened, or update the masterlist in LOOT.", {})
     except UnicodeDecodeError:
-        return None, _bad_file(ctx, "loot", path, f"LOOT's {what} isn't UTF-8 text.",
-                               "Let LOOT download the masterlist again (in LOOT: update masterlist).")
+        return None, (f"LOOT's {what} isn't UTF-8 text.",
+                      "Let LOOT download the masterlist again (in LOOT: update masterlist).", {})
     except YamlError as e:
-        return None, _bad_file(ctx, "loot", path, f"line {e.line}: {e.msg} (in LOOT's {what}).",
-                               "If LOOT reads this file fine, this tool's YAML reader is missing a feature: please "
-                               "report it with the --log file. Otherwise update the masterlist in LOOT.",
-                               line=e.line)
+        return None, (f"line {e.line}: {e.msg} (in LOOT's {what}).",
+                      "If LOOT reads this file fine, this tool's YAML reader is missing a feature: please "
+                      "report it with the --log file. Otherwise update the masterlist in LOOT.", {"line": e.line})
     if d is None:
         d = {}
     if not isinstance(d, dict) or not isinstance(d.get("plugins", []), list):
-        return None, _bad_file(ctx, "loot", path, f"LOOT's {what} doesn't have the expected 'plugins:' list.",
-                               "Update the masterlist in LOOT.")
+        return None, (f"LOOT's {what} doesn't have the expected 'plugins:' list.", "Update the masterlist in LOOT.", {})
     return d, None
+
+
+def _read_loot_file(ctx, path, what):
+    """(dict, None) or (None, failed status)."""
+    d, err = load_loot_file(path, what)
+    if err:
+        text, fix, extra = err
+        return None, _bad_file(ctx, "loot", path, text, fix, **extra)
+    return d, None
+
+
+def loot_entries(d, src):
+    """[(match, entry, src)] for a LOOT file's plugin entries: match(name) -> bool. A regex name goes through the
+    regex guard; a refused one, and those past MAX_REGEX_ENTRIES, are skipped. Returns (entries, unsafe count)."""
+    entries, unsafe, nrx = [], 0, 0
+    for k, e in enumerate(d.get("plugins") or []):
+        if not isinstance(e, dict) or not isinstance(e.get("name"), str):
+            log.info(SECTION, f"loot: {src}: plugin entry {k + 1} has no name, skipped")
+            continue
+        if _is_regex(e["name"]):
+            nrx += 1
+            if nrx > MAX_REGEX_ENTRIES:
+                unsafe += 1
+                log.info(SECTION, f"loot: {src}: entry {k + 1} skipped: over {MAX_REGEX_ENTRIES} regex entries")
+                continue
+            rx, why = safe_regex(e["name"])
+            if rx is None:
+                if regex_refusal(e["name"]):
+                    unsafe += 1
+                log.info(SECTION, f"loot: {src}: regex name {e['name'][:80]!r} skipped: {why}")
+                continue
+            entries.append((lambda n, rx=rx: rx_match(rx, n), e, src))
+        else:
+            low = e["name"].lower()
+            entries.append((lambda n, low=low: n.lower() == low, e, src))
+    return entries, unsafe
 
 
 def _text(content, subs):
@@ -1155,6 +1287,9 @@ def _file_item(x):
 
 
 def run_loot(ctx, env, accepted, cache):
+    if getattr(ctx.args, "no_loot", False):  # `sort --no-loot` (the main run has no such option)
+        log.info(SECTION, "loot: off (--no-loot)")
+        return {"status": "skipped", "why": "--no-loot was given"}, {}
     ml, ul = loot_paths(ctx, env)
     if not ml or not os.path.isfile(ml):
         log.info(SECTION, f"loot: no masterlist at {ml}")
@@ -1172,22 +1307,11 @@ def run_loot(ctx, env, accepted, cache):
             used.append(ul)
     lo = ctx.load_order
     cenv = Env(lo)
-    entries = []
+    entries, unsafe = [], 0
     for src, d in zip(used, lists):
-        for k, e in enumerate(d.get("plugins") or []):
-            if not isinstance(e, dict) or not isinstance(e.get("name"), str):
-                log.info(SECTION, f"loot: {src}: plugin entry {k + 1} has no name, skipped")
-                continue
-            if _is_regex(e["name"]):
-                try:
-                    rx = re.compile(e["name"], re.I)
-                except re.error as err:
-                    log.info(SECTION, f"loot: {src}: bad regex name {e['name']!r} ({err}), skipped")
-                    continue
-                entries.append((rx.fullmatch, e, src))
-            else:
-                low = e["name"].lower()
-                entries.append((lambda n, low=low: n.lower() == low, e, src))
+        got, bad = loot_entries(d, src)
+        entries += got
+        unsafe += bad
     unknown = [0]
 
     def ok(cond, what):
@@ -1296,10 +1420,15 @@ def run_loot(ctx, env, accepted, cache):
                 ctx.report.add(Finding("caution", SECTION, f"LOOT's masterlist says this exact copy of {p.name} "
                                        f"(CRC32 {crc:08X}) needs cleaning" + (f": {', '.join(bits)}." if bits else "."),
                                        fix=fix, plugins=[p.name], data={"source": "loot", "file": src, "crc": crc}))
+    unsafe += cenv.unsafe
     log.info(SECTION, f"loot: {len(entries)} entries read from {', '.join(used)}; found {counts}; "
                       f"{unknown[0]} unknown condition(s) skipped")
-    return {"status": "done", "file": ml, "userlist": results["userlist"], "entries": len(entries),
-            "unknown_conditions": unknown[0], **counts}, results
+    st = {"status": "done", "file": ml, "userlist": results["userlist"], "entries": len(entries),
+          "unknown_conditions": unknown[0], **counts}
+    if unsafe:  # only when there are some, so a run without them reports exactly what 0.2.3 did
+        log.info(SECTION, f"loot: {unsafe} LOOT entries skipped: unsafe pattern")
+        st["unsafe_patterns"] = unsafe
+    return st, results
 
 
 # =====================================================================================================================

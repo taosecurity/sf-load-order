@@ -106,5 +106,51 @@ class NeverRaises(unittest.TestCase):
         self.assertEqual([(p.kind, p.masters) for p in lo.plugins], [("?", []), ("?", [])])
 
 
+class MasterFlag(unittest.TestCase):
+    """Plugin.master: the master flag (0x1), or a .esm or .esl name whatever the flags say (esplugin's Starfield
+    rule); the light and medium flags don't make a plugin a master."""
+
+    def setUp(self):
+        self._t = tempfile.TemporaryDirectory()
+        self.t = self._t.name
+
+    def tearDown(self):
+        self._t.cleanup()
+
+    def master(self, name, flags):
+        lo = model.LoadOrder("plugins.txt")
+        lo.plugins = [model.Plugin(name, True, path=write_header(os.path.join(self.t, name), HEDR, flags))]
+        plugin_header.fill(lo)
+        return lo.plugins[0].master
+
+    def test_flag_read(self):
+        self.assertEqual(plugin_header.read(write_header(os.path.join(self.t, "A.esp"), HEDR, 0x401))[2], 0x401)
+        self.assertEqual(plugin_header.flags_of(os.path.join(self.t, "A.esp")), 0x401)
+
+    def test_esp_with_and_without_the_flag(self):
+        self.assertTrue(self.master("Flagged.esp", plugin_header.FLAG_MASTER))
+        self.assertFalse(self.master("Plain.esp", 0))
+
+    def test_light_or_medium_flag_alone_is_not_a_master(self):
+        self.assertFalse(self.master("Light.esp", plugin_header.FLAG_LIGHT))
+        self.assertFalse(self.master("Medium.esp", plugin_header.FLAG_MEDIUM))
+
+    def test_esm_and_esl_extension_is_a_master_without_the_flag(self):
+        self.assertTrue(self.master("NoFlag.esm", 0))
+        self.assertTrue(self.master("NoFlag.ESL", 0))
+
+    def test_unreadable_and_missing(self):
+        p = os.path.join(self.t, "Junk.esp")
+        with open(p, "wb") as f:
+            f.write(b"not a plugin")
+        lo = model.LoadOrder("plugins.txt")
+        lo.plugins = [model.Plugin("Junk.esp", True, path=p), model.Plugin("Gone.esm", True, path=None)]
+        plugin_header.fill(lo)
+        self.assertFalse(lo.plugins[0].master)  # by name alone
+        self.assertIsNone(lo.plugins[1].master)  # not read
+        self.assertIsNone(plugin_header.flags_of(p))
+        self.assertIsNone(plugin_header.flags_of(os.path.join(self.t, "nothing-here.esm")))
+
+
 if __name__ == "__main__":
     unittest.main()

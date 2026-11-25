@@ -1,10 +1,13 @@
 """The `candidate` Example in README.md and in CHANGELOG.md's newest release must print the RESULT line a real run
-prints (older CHANGELOG entries show what their release printed: 0.2.3's record check added a caution).
+prints (older CHANGELOG entries show what their release printed: 0.2.3's record check added a caution). The `sort`
+Example (README.md and the newest CHANGELOG entry) must match a real run too: its RESULT line, its moves and its
+unmet rule. The example rules file must read clean and pass `rules check`.
 
 It rebuilds the made-up files the Example describes (ShipMod 0.3.0 built on the installed CoreTools, an older
 ShipMod installed as a mod of its own), runs `candidate`, and compares the RESULT line (without the report path)
 with the one in each document. This catches an Example that went stale when a later change added a finding.
 """
+import json
 import os
 import re
 import sys
@@ -70,9 +73,60 @@ class DocExamples(unittest.TestCase):
         self.assertTrue(m, out)
         for doc in ("README.md", "CHANGELOG.md"):
             lines = doc_results(doc)
-            self.assertTrue(lines, f"no candidate Example found in {doc}")
-            for line in lines:
+            if doc == "README.md":
+                self.assertTrue(lines, f"no candidate Example found in {doc}")
+            for line in lines:  # the newest CHANGELOG entry may have no candidate Example (0.3.0 shows `sort`)
                 self.assertEqual(line, m.group(1), f"the Example in {doc} is out of date")
+
+
+def newest_changelog():
+    with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
+        return re.split(r"^## ", f.read(), flags=re.M)[1]
+
+
+class SortExample(unittest.TestCase):
+    def make(self, t):
+        """The made-up load order of the `sort` Example (ExampleQuestsPatch.esm listed before its master)."""
+        plugins = {
+            "ExampleLights.esm": {}, "ExampleArmorRetexture.esm": {}, "ExampleArmor.esm": {},
+            "ExampleQuestsPatch.esm": {"masters": ("ExampleQuests.esm",)}, "ExampleQuests.esm": {}}
+        data, pt = fixtures.game(t, plugins)
+        rules = os.path.join(t, "my-rules.json")
+        with open(rules, "w", encoding="utf-8") as f:
+            json.dump({"schema": 1, "kind": "user", "rules": [
+                {"plugin": "ExampleArmorRetexture.esm", "after": ["ExampleArmor.esm"]},
+                {"plugin": "ExampleQuests.esm", "after": ["ExampleQuestsPatch.esm"]}]}, f)
+        return data, pt, rules
+
+    def test_sort_example_matches_docs(self):
+        with tempfile.TemporaryDirectory() as t:
+            data, pt, rules = self.make(t)
+            out_dir = os.path.join(t, "out")
+            code, out, err = run_cli("sort", "--plugins-txt", pt, "--data", data, "--depth", "light", "--no-state",
+                                     "--no-loot", "--rules", rules, "--out", out_dir)
+            self.assertEqual(code, 0, err)
+            with open(os.path.join(out_dir, "report.txt"), encoding="utf-8") as f:
+                report = f.read()
+        m = RESULT_RE.search(out)
+        self.assertTrue(m, out)
+        part = report.split("Sorted order\n------------\n", 1)[1].split("Rules checks", 1)[0]
+        lines = [ln.strip() for ln in part.splitlines() if ln.strip()]
+        self.assertGreaterEqual(len(lines), 6, part)
+        for doc, text in (("README.md", open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()),
+                          ("CHANGELOG.md", newest_changelog())):
+            self.assertIn(m.group(1), text, f"the sort Example in {doc} has an old RESULT line")
+            flat = " ".join(text.split())
+            for ln in lines:
+                self.assertIn(" ".join(ln.split()), flat, f"the sort Example in {doc} is out of date: {ln}")
+
+    def test_example_rules_file_is_clean(self):
+        from sf_load_order import rulesfile
+        path = os.path.join(ROOT, "examples", "sf-load-order-rules.example.json")
+        rf = rulesfile.read(path, "user")
+        self.assertEqual(rf.problems, [])
+        self.assertEqual(len(rf.rules), 3)
+        code, out, err = run_cli("rules", "check", "--rules", path)
+        self.assertEqual(code, 0, out + err)
 
 
 if __name__ == "__main__":

@@ -14,9 +14,10 @@ import sys
 import traceback
 
 from . import BYLINE, CREDITS, URL, __version__, log
-from .model import SECTIONS, Report
+from .model import SECTIONS, Finding, Report
 
-MAIN_SECTIONS = tuple(s for s in SECTIONS if s != "candidate")
+MAIN_SECTIONS = tuple(s for s in SECTIONS if s not in ("candidate", "sort"))
+SORT_SECTIONS = tuple("sort" if s == "recommend" else s for s in MAIN_SECTIONS)  # `sort`: recommend replaced
 
 # (section, module) in run order. Each module has run(ctx) -> None or a section status dict.
 PIPELINE = [
@@ -29,11 +30,12 @@ PIPELINE = [
     ("records", "records"),    # sf-mod-check conflict (depth medium and heavy)
     ("recommend", "recommend"),  # score, moves, files to apply
 ]
+SORT_PIPELINE = [("sort", "sort") if s == "recommend" else (s, m) for s, m in PIPELINE]
 DEPTHS = ("light", "medium", "heavy")
 SKIPPED_AT_LIGHT = {"records"}
 # The checks that read the profile's plugin, archive or loose files. When Data holds another Vortex profile they are
 # skipped (one caution from inputs.from_vortex_profile says so); only inputs and clashes work from the lists.
-NEEDS_DEPLOYED = {"order", "patches", "archives", "loose", "rules", "records", "recommend"}
+NEEDS_DEPLOYED = {"order", "patches", "archives", "loose", "rules", "records", "recommend", "sort"}
 CANDIDATE_SECTIONS = ("inputs", "candidate")  # the sections a `candidate` run reports
 
 
@@ -66,10 +68,48 @@ def parser():
         description="Check a Starfield load order: masters, missing files, clashes, archive overlap, patches built "
                     "against an older version of a mod, then rate it and suggest a better order. Reads only; "
                     "writes only to --out.",
-        epilog="To check a new mod's zip against this load order before installing it: sf-load-order candidate "
-               "<zip> [<zip> ...] (sf-load-order candidate --help shows its options).",
+        epilog="To build a whole load order from the game's rules, your rules, a community rules file and LOOT's "
+               "rules: sf-load-order sort (sf-load-order sort --help). To check a new mod's zip against this load "
+               "order before installing it: sf-load-order candidate <zip> [<zip> ...] (sf-load-order candidate "
+               "--help shows its options). For your own ordering rules: sf-load-order rules "
+               "list|explain|check|accept|propose (sf-load-order rules --help).",
         allow_abbrev=False)
     _source_options(p)
+    _main_checks(p)
+    _output_options(p, "the report and the files to apply")
+    return p
+
+
+def sort_parser():
+    p = argparse.ArgumentParser(
+        prog="sf-load-order sort",
+        description="Build a whole, valid load order from the enabled plugins: the game's rules (masters, master "
+                    "plugins first), your picks and rules file, a community rules file, the patches' targets and, "
+                    "when found, LOOT's masterlist and userlist. It keeps your current order wherever it can, explains "
+                    "every move, runs every check of the main run, and writes the order files, HOW-TO-APPLY.txt and "
+                    "rules-proposed.json. It never applies an order. Reads only; writes only to --out.",
+        allow_abbrev=False)
+    _source_options(p)
+    chk = _main_checks(p, loot_order=False)
+    chk.add_argument("--no-loot", action="store_true",
+                     help="don't read LOOT's masterlist or userlist (for the known-clashes check or the sort)")
+    chk.add_argument("--loot-groups", action="store_true", help="also use LOOT's groups (off by default)")
+    rules = p.add_argument_group("sorting")
+    rules.add_argument("--rules", metavar="FILE",
+                       help="your rules file (default: sf-load-order-rules.json in the state folder, "
+                            "%%LOCALAPPDATA%%\\sf-load-order; a missing default file is fine)")
+    rules.add_argument("--no-rules", action="store_true", help="don't read your rules file")
+    rules.add_argument("--community-rules", metavar="FILE",
+                       help="a community rules file (a local file; nothing is downloaded)")
+    rules.add_argument("--tie-break", choices=("current", "name"), default="current",
+                       help="current: keep the current order wherever the rules allow (default); name: order by "
+                            "file name, the same on any PC (moves many plugins)")
+    _output_options(p, "the report, the files to apply and rules-proposed.json")
+    p.set_defaults(loot_order=None, command="sort")
+    return p
+
+
+def _main_checks(p, loot_order=True):
     chk = p.add_argument_group("checks")
     chk.add_argument("--depth", choices=DEPTHS, default=None,
                      help="light: order, headers, archives (seconds). medium: adds record conflicts via sf-mod-check "
@@ -83,13 +123,13 @@ def parser():
     chk.add_argument("--clashes", metavar="FILE", help="your own known-clashes file (format in the README)")
     chk.add_argument("--accept", metavar="FILE", help="clashes you have accepted, pinned to the files' hashes")
     chk.add_argument("--picks", metavar="FILE", help="your own order picks: plugin X loads right after plugin Y")
-    chk.add_argument("--loot-order", metavar="FILE", help="a Plugins.txt sorted by LOOT, to compare with")
+    if loot_order:
+        chk.add_argument("--loot-order", metavar="FILE", help="a Plugins.txt sorted by LOOT, to compare with")
     chk.add_argument("--patch-sources", metavar="FILE|FOLDER", action="append",
                      help="a patch-sources.json (or a folder of them) from sf-mod-check patch, checked with sf-mod-check "
                           "patch check besides those found next to the enabled plugins (may be given more than once)")
     _state_options(chk)
-    _output_options(p, "the report and the files to apply")
-    return p
+    return chk
 
 
 def candidate_parser():
@@ -216,8 +256,25 @@ def run(args):
     vp = getattr(lo, "_vortex_profile", None)
     report.vortex_profile = vp
     ctx = Context(args, lo, report)
+    pipeline = PIPELINE
+    if getattr(args, "command", None) == "sort":
+        pipeline, ctx.sections = SORT_PIPELINE, SORT_SECTIONS
+        rc = _module("rules_cmd")
+        try:  # a --rules or --community-rules file that can't be read stops the run (exit 2), before any check
+            ctx.results["sort_files"] = rc.read_files(args)
+        except rc.Stop as e:
+            print(f"RESULT: CANNOT CHECK: {e}")
+            return 2, report
+        for source in ("user", "community"):
+            rf = ctx.results["sort_files"].get(source)
+            for w in (rf.warnings if rf else []):
+                report.add(Finding("caution", "sort", w, None, [], {"file": rf.path}))
+            for pr in (rf.problems if rf else []):
+                report.add(Finding("caution", "sort", f"{rf.path}: {pr['what']} entry {pr['entry']}: {pr['why']}. "
+                                   "The entry is skipped.", "Fix the entry (sf-load-order rules check lists every "
+                                   "problem).", [], {"file": rf.path, "entry": pr["entry"]}))
     depth = args.depth or "medium"
-    for section, modname in PIPELINE:
+    for section, modname in pipeline:
         if depth == "light" and section in SKIPPED_AT_LIGHT:
             report.sections[section] = {"status": "skipped", "why": "--depth light"}
             continue
@@ -262,8 +319,12 @@ def _utf8_console():
 def main(argv=None):
     _utf8_console()
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "rules":  # its own parser and output (plain text, no report folder)
+        return _module("rules_cmd").main(argv[1:])
     if argv and argv[0] == "candidate":  # read before the main parser, so `sf-load-order [options]` is unchanged
         args = candidate_parser().parse_args(argv[1:])
+    elif argv and argv[0] == "sort":
+        args = sort_parser().parse_args(argv[1:])
     else:
         args = parser().parse_args(argv)  # unknown option or a missing value: argparse prints why and exits 2
     out_err = None

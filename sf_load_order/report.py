@@ -46,6 +46,7 @@ TITLES = {
     "rules": "Vortex mod rules",
     "records": "Record conflicts (sf-mod-check)",
     "recommend": "Rating",
+    "sort": "Sorting",
     "candidate": "The new build against the installed mods",
 }
 LEVEL_WORD = {"problem": "Problem", "caution": "Caution", "note": "Note"}
@@ -58,7 +59,7 @@ KIND_WORD = {"F": "full", "M": "medium", "L": "light"}
 ROLE_WORD = {"txt": "this report, as text", "html": "this report, as a web page", "json": "this report, as data",
              "plugins_txt": "the order as a Plugins.txt", "loadorder_txt": "the order as MO2's loadorder.txt",
              "vortex_json": "the order for Vortex's Import button",
-             "how_to": "how to apply the order"}
+             "how_to": "how to apply the order", "rules_proposed": "the proposed rules (rules accept)"}
 INPUT_WORD = {"plugins_txt": "the plugin list", "vortex_loadorder": "Vortex's load order export",
               "vortex_staging": "Vortex's staging folder", "vortex_deployment": "Vortex's deployment record",
               "modorganizer_ini": "MO2's settings", "modlist": "MO2's mod list", "loadorder_txt": "MO2's load order"}
@@ -95,7 +96,7 @@ def top_findings(report):
 
 def _shown(ctx):
     """The sections this run's report shows: every check, or inputs and candidate for `candidate`."""
-    return getattr(ctx, "sections", None) or tuple(s for s in SECTIONS if s != "candidate")
+    return getattr(ctx, "sections", None) or tuple(s for s in SECTIONS if s not in ("candidate", "sort"))
 
 
 def _section_findings(report, section):
@@ -410,6 +411,77 @@ def _suggested(ctx):
     return paras, moves, folds
 
 
+SOURCE_LABEL = {"game": "the game (masters, master plugins first)", "mod": "mods' own plugin order",
+                "picks": "your picks", "user": "your rules file", "patch": "patch targets",
+                "community": "the community rules file", "loot_userlist": "LOOT's userlist",
+                "loot_masterlist": "LOOT's masterlist", "loot_groups": "LOOT's groups", "vortex": "Vortex's mod rules"}
+
+
+def _sorted(ctx):
+    """[(part title or None, paragraphs, items)] for the "Sorted order" part of a `sort` run (DESIGN 1.10), or None
+    when the run has no such part."""
+    if "sort" not in _shown(ctx):
+        return None
+    res = ctx.results.get("sort")
+    st = _status(ctx.report, "sort")
+    if not res:
+        return [(None, [f"No order was sorted. {status_text(st)}"], [])]
+    parts = []
+    if res.get("order") is None:
+        head = ["No valid order exists: the plugins' own masters form a loop (see the problem under Sorting), so "
+                "no order files were written."]
+    else:
+        head = [f"Sorting moves {_plural(len(res.get('moves') or []), 'plugin')}"
+                + (f"; loss score current {_n(res.get('score_current'))}, sorted {_n(res.get('score_sorted'))}"
+                   if res.get("rated") else "; the order wasn't rated (no record-conflict data)") + "."]
+        if res.get("estimate"):
+            head.append(f"The sorted score is {recommend.ESTIMATE_WHY}.")
+        if res.get("tie_break") == "name":
+            head.append("--tie-break name: plugins are in file-name order wherever the rules allow.")
+        if res.get("same_as_current"):
+            head.append("The sorted order is the same as your current order, so there is nothing to change.")
+    parts.append((None, head, []))
+    mv = []
+    for m in res.get("moves") or []:
+        where = f"after {m['after']}" if m.get("after") else "at the top"
+        mv.append(f"Load {m['plugin']} {where}. Why: {_sentence(m.get('reason'))}")
+    if mv:
+        parts.append(("Moves", [], mv))
+    rej = [r.get("text") for r in res.get("rejected") or []]
+    parts.append(("Rules not met", [] if rej else ["Every rule that applies to this load order was met."], rej))
+    checks = ([f"{x['plugin']} needs {x['needs']}, which isn't enabled." for x in res.get("requires_missing") or []]
+              + [f"{x['plugin']} and {x['with']} are both enabled, but they don't work together."
+                 for x in res.get("incompatible") or []])
+    parts.append(("Rules checks (requires and incompatible)", [] if checks else ["Nothing to fix."], checks))
+    used = [f"{SOURCE_LABEL.get(k, k)}: {_n(v)}" for k, v in (res.get("sources") or {}).items() if v]
+    paras = ["Rules used, by source: " + (", ".join(used) if used else "none") + "."]
+    if res.get("inactive_rules"):
+        paras.append(f"{_plural(res['inactive_rules'], 'rule')} name a plugin that isn't enabled, so they don't "
+                     "apply here (sf-load-order rules list shows them).")
+    lf = res.get("loot_files") or {}
+    paras.append("LOOT files read: " + (", ".join(lf.values()) if lf else "none") + ".")
+    parts.append(("Rules used", paras, []))
+    prop = (res.get("files") or {}).get("rules_proposed")
+    n = res.get("proposed") or 0
+    parts.append(("Proposed rules", [f"{_plural(n, 'proposed rule')} in {prop or 'rules-proposed.json'}."
+                                     + (f" To keep them, so later sorts make the same choice: sf-load-order rules "
+                                        f"accept \"{prop}\" --all (or --id <id> for one)." if n and prop else "")], []))
+    stale = res.get("stale") or []
+    if stale:
+        parts.append(("Stale rules", ["These rules are still used, but a plugin they name changed since they were "
+                                      "pinned. Run sf-load-order sort again, look at the new proposals, and accept "
+                                      "or delete the old rule."],
+                      [f"{x['plugin']} ({os.path.basename(x['file'])} entry {x['entry']}): "
+                       f"{', '.join(x['changed'])} changed" for x in stale]))
+    files = {k: v for k, v in (res.get("files") or {}).items() if k != "rules_proposed"}
+    if files:
+        how = files.get("how_to")
+        parts.append((None, ["Files to apply the order: " + ", ".join(os.path.basename(p) for p in files.values())
+                             + "." + (f" Follow {how} to apply them, after backing up your current order." if how
+                                      else "")], []))
+    return parts
+
+
 # ---------------------------------------------------------------- report.txt
 
 _WRAP = {}
@@ -497,6 +569,18 @@ def render_text(ctx, paths):
             L.append(_wrap(_item_text(x), "        ", "      - "))
         if len(items) > 20:
             L.append(_wrap(f"and {_n(len(items) - 20)} more in report.html.", "        ", "      "))
+    srt = _sorted(ctx)
+    if srt is not None:
+        L += ["", "Sorted order", "-" * 12]
+        for title_, ps, items in srt:
+            if title_:
+                L.append(f"{title_}" + (f" ({_n(len(items))}):" if items else ":"))
+            for p in ps:
+                L.append(_wrap(p, "    " if title_ else "", "  " if title_ else None))
+            for i, x in enumerate(items[:200], 1):
+                L.append(_wrap(x, "      ", f"  {i:>2}. "))
+            if len(items) > 200:
+                L.append(_wrap(f"and {_n(len(items) - 200)} more in report.json.", "      ", "      "))
     L += ["", "Files written", "-" * 13]
     for role, p in _outputs(ctx, paths).items():
         L.append(_wrap(f"{p} ({ROLE_WORD.get(role, role)})", "    ", "  - "))
@@ -650,6 +734,19 @@ def render_html(ctx, paths):
     for title, items in folds:
         P.append(_fold(title, items))
     if paras is not None:
+        P.append("</section>")
+    srt = _sorted(ctx)
+    if srt is not None:
+        P.append('<section id="sorted"><h2>Sorted order</h2>')
+        for title, ps, items in srt:
+            if title:
+                P.append(f"<h3>{_e(title)}</h3>")
+            P += [f"<p>{_e(p)}</p>" for p in ps]
+            if items:
+                shown = items[:LIST_MAX]
+                P.append("<ol>" + "".join(f"<li>{_e(x)}</li>" for x in shown) + "</ol>")
+                if len(items) > LIST_MAX:
+                    P.append(f'<p class="muted">{_e(f"and {_n(len(items) - LIST_MAX)} more in report.json.")}</p>')
         P.append("</section>")
 
     P.append('<section id="files"><h2>Files written</h2><dl class="facts">')

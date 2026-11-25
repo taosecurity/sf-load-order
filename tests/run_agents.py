@@ -222,6 +222,46 @@ def version_lines_quoted(r):
     return None if block == lines else f"AGENTS.md quotes {block}, but --version prints {lines}"
 
 
+def sort_ran(r):
+    d = report_json(r["out"])
+    if "sort" not in d or d["sections"]["sort"]["status"] != "done":
+        return "report.json has no finished sort section"
+    if not os.path.isfile(os.path.join(r["out"], "rules-proposed.json")):
+        return "rules-proposed.json wasn't written"
+    return None
+
+
+def sort_used_rules(r):
+    why = sort_ran(r)
+    if why:
+        return why
+    if report_json(r["out"])["sort"]["sources"].get("user", 0) < 1:
+        return "the rules file wasn't used"
+    return None
+
+
+def sort_used_community(r):
+    why = sort_ran(r)
+    if why:
+        return why
+    if report_json(r["out"])["sort"]["sources"].get("community", 0) < 1:
+        return "the community rules file wasn't used"
+    return None
+
+
+def rules_added(r):
+    path = os.path.join(r["subs"]["<folder>"], "sf-load-order-rules.json")
+    with open(path, encoding="utf-8") as f:
+        rules = json.load(f)["rules"]
+    if [x["plugin"] for x in rules] != ["ExampleAddon.esm"] or rules[0]["id"] != "u-0001":
+        return f"the rules file holds {rules}"
+    return None
+
+
+def proposed_written(r):
+    return None if os.path.isfile(os.path.join(r["out"], "rules-proposed.json")) else "rules-proposed.json wasn't written"
+
+
 # ---------------------------------------------------------------- the commands (keep in step with AGENTS.md)
 # text: exactly as in AGENTS.md. expect: exit code. checks: run after it. game: "ok" or "broken" (a plugin whose
 # master is missing), used for the fake LOCALAPPDATA Plugins.txt and the added --data. report: False for commands
@@ -259,6 +299,17 @@ COMMANDS = [
     dict(text=C + r" --clashes examples\clashes.example.json --accept examples\accept.example.json"
                   r" --picks examples\picks.example.json", checks=[own_files_read]),
     dict(text=C + ' --loot-order "<LOOT-sorted Plugins.txt>"', checks=[loot_order_compared]),
+    dict(text=C + " sort", checks=[sort_ran]),
+    dict(text=C + ' sort --rules "<rules file>"', checks=[sort_used_rules]),
+    dict(text=C + ' sort --community-rules "<community rules file>"', checks=[sort_used_community]),
+    dict(text=C + ' rules explain ExampleAddon.esm --data "<Data folder>"', report=False,
+         checks=[prints("ExampleAddon.esm is number")]),
+    dict(text=C + ' rules list --derived --data "<Data folder>"', report=False, checks=[prints("The game's rules")]),
+    dict(text=C + ' rules check --rules "<rules file>" --data "<Data folder>"', report=False,
+         checks=[prints("usable rule(s)")]),
+    dict(text=C + ' rules accept "<rules-proposed.json>" --all --state "<folder>"', report=False,
+         checks=[rules_added]),
+    dict(text=C + ' rules propose --out "<report folder>"', report=False, checks=[proposed_written]),
     dict(text=C + ' --state "<folder>"', checks=[state_written]),
     dict(text=C + " --no-state", checks=[no_state]),
     dict(text=C + ' --out "<report folder>"', checks=[]),
@@ -402,6 +453,16 @@ def build(t):
                            "        content: 'Made-up userlist warning.'\n")
     fx["loot_order"] = fixtures.plugins_txt(os.path.join(t, "loot-sorted", "Plugins.txt"),
                                             [(n, True) for n in reversed(list(OK_PLUGINS))])
+
+    # the ordering rules: the person's file (the add-on loads after the retexture), a community file and a proposal
+    fx["rules"] = write(os.path.join(t, "rules", "my-rules.json"), json.dumps({"schema": 1, "kind": "user", "rules": [
+        {"id": "u-0001", "plugin": "ExampleAddon.esm", "after": ["ExampleRetexture.esm"], "note": "Made up."}]}))
+    fx["community"] = write(os.path.join(t, "rules", "community.json"), json.dumps({
+        "schema": 1, "kind": "community", "about": {"name": "Made-up community rules"}, "rules": [
+            {"plugin": "ExampleAddon.esm", "after": ["ExampleRetexture.esm"]}]}))
+    fx["proposed"] = write(os.path.join(t, "rules", "rules-proposed.json"), json.dumps({"schema": 1, "kind": "user",
+        "rules": [{"id": "p-0123456789", "plugin": "ExampleAddon.esm", "after": ["ExampleRetexture.esm"],
+                   "evidence": {"kind": "choice", "text": "Made up."}}]}))
     return fx
 
 
@@ -502,7 +563,9 @@ def run_one(i, cmd, fx, t):
             "<masterlist.yaml>": fx["masterlist"], "<userlist.yaml>": fx["userlist"],
             "<LOOT-sorted Plugins.txt>": fx["loot_order"], "<folder>": os.path.join(t, "state-" + str(i)),
             "<report folder>": os.path.join(t, "report-" + str(i)), "<exports folder>": fx["exports"],
-            "<patch-sources.json>": fx["patch_sources"], "<build zip>": fx["build_zip"]}
+            "<patch-sources.json>": fx["patch_sources"], "<build zip>": fx["build_zip"],
+            "<rules file>": fx["rules"], "<community rules file>": fx["community"],
+            "<rules-proposed.json>": fx["proposed"]}
     head, args = argv_for(text, subs)
     notes = []
     if cmd.get("report", True):

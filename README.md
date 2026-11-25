@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -62,6 +62,9 @@ Top 10
   different content, with the winner Vortex deployed.
 - A new mod's `.zip`, before you install it (`sf-load-order candidate`, see
   [Checking a new mod build](#checking-a-new-mod-build)).
+- A whole sorted load order, with every move explained, without LOOT (`sf-load-order sort`, see
+  [Sorting a load order](#sorting-a-load-order-sort)), from the game's own rules, your rules and, when it is there,
+  LOOT's masterlist.
 
 It then rates your order, suggests a better one when the data supports it, and writes the files to apply it, with
 step-by-step instructions. You decide whether to apply anything.
@@ -82,7 +85,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -108,12 +111,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.2.3.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.2.3.zip SHA256`.
+2. Download `sf-load-order-0.3.0.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.0.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.2.3 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.0 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -499,7 +502,7 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.2.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -546,6 +549,151 @@ a file that isn't an archive, the run stops with exit 2 and the message names th
 `--strict` exits 1 when there is a problem.
 `report.json` has a `candidate` key (see below) and shows only the inputs and candidate sections.
 
+## Sorting a load order (`sort`)
+
+`sf-load-order sort` builds a whole, valid load order from the plugins you have enabled. The main run checks your
+order and suggests the fewest moves that fix it; `sort` also applies your rules, a community rules file and LOOT's
+rules, and explains every placement. It starts from your current order, moves as few plugins as it can, and never
+applies anything: you copy the files it writes, as `HOW-TO-APPLY.txt` says, after backing up your order.
+
+```
+.\sf-load-order.cmd sort
+```
+
+It reads the same load order options as a normal run (`--plugins-txt`, `--mo2`, `--vortex-*`, `--data`), runs every
+check of a normal run (`--depth light` makes it quick), and takes the same `--picks`, `--clashes`, `--accept`,
+`--loot-masterlist` and `--loot-userlist`. It writes, to `--out`: `plugins.txt`, `loadorder.txt` (MO2), the Vortex
+import file, `HOW-TO-APPLY.txt`, `rules-proposed.json` (see [Your own ordering rules](#your-own-ordering-rules)) and
+the report, which has a "Sorted order" part instead of the "Suggested order" one.
+
+### What decides the order
+
+The rules, from the strongest down. A rule that contradicts a stronger one is left out and the report says which
+rule won and why; nothing is silently dropped.
+
+1. **The game's own rules**, read from the plugins on every run: the official plugins load first in their own order,
+   BlueprintShips files last, a plugin loads after each of its masters, and master plugins load before the others.
+   A plugin is a master when it has the master flag or its name ends in `.esm` or `.esl` (source: esplugin 6.1.4,
+   the library LOOT uses); the light and medium flags never change a plugin's place.
+2. **Your picks** (`--picks`), **your rules file**, **the patches' targets** (a patch loads after the plugins it
+   changes, from `--clashes` `fixed_by` entries and `patch-sources.json` files), **a community rules file**
+   (`--community-rules`), and **LOOT's userlist and masterlist** `after` rules (used whenever the masterlist is
+   found; LOOT's groups only with `--loot-groups`; `--no-loot` leaves LOOT out).
+3. **Record conflicts** (at `--depth medium`, with sf-mod-check): where the rules leave a choice, the plugin that
+   loses fields loads after the one that wins them, when that lowers the loss score. The order stays as it is when
+   the gain is small.
+4. **Vortex mod rules** are only a tie-break: a Vortex rule the sort breaks is kept when the order stays valid, and
+   otherwise gets one note.
+5. **Your current order** breaks every tie (`--tie-break name` orders by file name instead, the same on any PC; it
+   moves many plugins).
+
+### Example
+
+A real run on a made-up load order: five mod plugins and the official ones. `ExampleQuestsPatch.esm` has
+`ExampleQuests.esm` as a master but is listed before it, and the rules file says `ExampleArmorRetexture.esm` loads
+after `ExampleArmor.esm`. Its second rule, that `ExampleQuests.esm` loads after its own patch, can't be met.
+
+```
+> .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
+sf-load-order 0.3.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+```
+
+The "Sorted order" part of `out\report.txt`:
+
+```
+Sorted order
+------------
+Sorting moves 2 plugins; the order wasn't rated (no record-conflict data).
+Moves (2):
+   1. Load ExampleArmor.esm after ExampleLights.esm. Why: Your rule (my-rules.json, entry 1) says
+      ExampleArmorRetexture.esm loads after ExampleArmor.esm.
+   2. Load ExampleQuests.esm after ExampleArmorRetexture.esm. Why: ExampleQuestsPatch.esm has ExampleQuests.esm as a
+      master.
+Rules not met (1):
+   1. Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but
+      ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+Rules checks (requires and incompatible):
+  Nothing to fix.
+Rules used:
+  Rules used, by source: the game (masters, master plugins first): 1, your rules file: 1.
+  LOOT files read: none.
+Proposed rules:
+  0 proposed rules in out\rules-proposed.json.
+```
+
+(The one problem in the run's top 10 is the current order, with the patch above its master; the caution is the rule
+that wasn't used.) To see why one plugin is where it is:
+
+```
+> .\sf-load-order.cmd rules explain ExampleQuests.esm --plugins-txt Plugins.txt --data Data --no-loot --rules my-rules.json
+ExampleQuests.esm is number 11 in the sorted order (number 12 now): the sort moves it.
+Something loads after it because:
+  - ExampleQuestsPatch.esm has ExampleQuests.esm as a master
+The nearest plugin above it that the sort doesn't move: ExampleArmorRetexture.esm.
+Rules about it that weren't used:
+  - Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+```
+
+### What `sort` does not do
+
+- It never applies the order, and it never downloads a rules file or LOOT's masterlist (it reads your own copy).
+- Two rules that can't both hold are not both applied: the report names the one that was left out. A loop among the
+  game's own rules (plugins that are each other's masters) is a problem, and then only the report and
+  `rules-proposed.json` are written, with no order files.
+- LOOT's `req` and `inc` entries stay in the known-clashes section; `sort`'s own requires and incompatible checks
+  come from the rules files.
+- It doesn't rate an order without record-conflict data: without sf-mod-check, the report says so and no record-based
+  move is made.
+
+## Your own ordering rules
+
+Your rules live in one file, `sf-load-order-rules.json`, in the state folder (`%LOCALAPPDATA%\sf-load-order`), or in
+the file you give with `--rules`. A missing default file is fine; a file given with `--rules` that doesn't exist stops
+the run with exit 2. `--no-rules` ignores it. `examples\sf-load-order-rules.example.json` is a sample with made-up
+names. Schema 1:
+
+```
+{
+  "schema": 1,
+  "kind": "user",
+  "about": {"name": "My rules"},
+  "groups": [{"name": "Late Patches", "after": ["default"]}],
+  "rules": [
+    {"id": "u-0001", "plugin": "ExampleArmorRetexture.esm", "after": ["ExampleArmor.esm"],
+     "note": "I want the retexture to win.", "evidence": {"kind": "manual", "date": "2026-11-25"}},
+    {"plugin": "ExampleQuestsPatch.esm", "group": "Late Patches", "requires": ["ExampleQuests.esm"]},
+    {"plugin": "ExampleLights.esm", "incompatible": ["ExampleOldLights.esp"]}
+  ]
+}
+```
+
+- Each rule names one `plugin` (an exact file name; no pattern, no wildcard) and at least one of `after`, `before`,
+  `requires`, `incompatible` and `group`. `note` and `evidence` are optional. `evidence.kind` is `master`, `patch`,
+  `choice`, `clash`, `manual` or `link`; `evidence.files` pins the plugins' SHA-256 hashes.
+- `kind` is `user` for your file and `community` for a file you got from someone else (given with
+  `--community-rules`; nothing is downloaded, and a community rule ranks below yours).
+- A rule with an unknown field, a bad name or a list that is too long is skipped with a caution naming it. A file
+  over 5 MB or with more than 10,000 rules is refused. Keys that start with `_` are comments.
+- A rule whose pinned hashes no longer match the installed plugins is **stale**: it is still applied, and one caution
+  says to run `sort` again and accept or delete the old rule.
+
+### The `rules` command
+
+| Command | What it does |
+|---|---|
+| `rules list` | Every rule from your file, the community file and LOOT, and whether it is active in this load order (given a source option). `--derived` adds the game's own rules. |
+| `rules explain PLUGIN` | Why the plugin is where it is in the sorted order: every rule into and out of it, and any rule about it that wasn't used. |
+| `rules check` | Checks the files: schema, names, limits and loops among a file's own rules; with a source option also rules the game contradicts and stale rules. Exit 0 clean, 1 something to fix, 2 a file couldn't be read. |
+| `rules propose` | Writes `rules-proposed.json` into `--out`, as `sort` does, without the order files. `--kind patch` proposes each patch's targets from `--clashes`, for sharing. |
+| `rules accept PROPOSED.json` | Copies proposals (`--id ID`, or `--all`) into your rules file. |
+
+`sort` always writes `rules-proposed.json`: the record-conflict choices it made, each as a rule ("the loser loads
+after the winner") with the record counts and the plugins' hashes, so the same choice isn't worked out again.
+`rules accept` is the only command that writes outside `--out`, and it writes only your rules file and its `.bak`
+copy (the old file), in one step, so a crash never leaves half a file. It refuses a proposal that contradicts a rule
+already in your file and writes nothing. Each command takes `--json FILE` to write its result as JSON.
+
 ## Depth
 
 | Depth | What runs | Time |
@@ -564,7 +712,8 @@ stopped if `conflict` runs longer than 30 minutes; for a very large load order, 
 
 ## All options
 
-These are the options `.\sf-load-order.cmd --help` lists. `.\sf-load-order.cmd candidate --help` lists the ones
+These are the options `.\sf-load-order.cmd --help` lists, and the ones marked `sort` or `rules`, which
+`.\sf-load-order.cmd sort --help` and `.\sf-load-order.cmd rules <command> --help` list. `.\sf-load-order.cmd candidate --help` lists the ones
 `candidate` takes: the zips, the load order and `--vortex-*` options, `--data`, `--depth`, `--sf-mod-check`,
 `--max-memory`, `--state`, `--no-state` and the output options, with the same meanings.
 
@@ -590,6 +739,12 @@ These are the options `.\sf-load-order.cmd --help` lists. `.\sf-load-order.cmd c
 | `--accept FILE` | Clashes you have accepted, pinned to the files' hashes. |
 | `--picks FILE` | Your own order picks: plugin X loads right after plugin Y. |
 | `--loot-order FILE` | A Plugins.txt sorted by LOOT, to compare with. |
+| `--no-loot` | (`sort` and `rules`) Don't read LOOT's masterlist or userlist; `sort` also leaves LOOT out of the known-clashes section. |
+| `--loot-groups` | (`sort` and `rules`) Also use LOOT's groups (off by default). |
+| `--rules FILE` | (`sort` and `rules`) Your rules file (default: `sf-load-order-rules.json` in the state folder). |
+| `--no-rules` | (`sort` and `rules`) Don't read your rules file. |
+| `--community-rules FILE` | (`sort` and `rules`) A community rules file (a local file; nothing is downloaded). |
+| `--tie-break {current,name}` | (`sort`) `current` keeps your order wherever the rules allow (default); `name` orders by file name. |
 | `--patch-sources FILE\|FOLDER` | A `patch-sources.json` (or a folder of them) from `sf-mod-check patch`, checked with `sf-mod-check patch check` besides those found next to the enabled plugins (may be given more than once). A manifest from the old `patch_sources.py` gives a note asking for a rebuild with sf-mod-check 0.15.0 or later. |
 | `--state FOLDER` | Where to keep the snapshot used for "changed since the last run", and the archive and loose-file cache (default: `%LOCALAPPDATA%\sf-load-order`; on Linux `~/.local/state/sf-load-order`). |
 | `--no-state` | Don't read or write the snapshot or the cache. |
@@ -627,7 +782,7 @@ Schema 1. Top-level keys:
 | `author`, `license`, `url` | Who made the tool, its license (`GPL-3.0`) and its project page. |
 | `generated` | When, as local time (`2026-11-19T21:30:00`). |
 | `counts` | `{"problem": n, "caution": n, "note": n}`. |
-| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `masters`; both `null` for a file that wasn't read, such as a mod plugin of a Vortex profile that isn't deployed), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
+| `load_order` | What was read: `source` (`plugins.txt`, `vortex` or `mo2`), `profile`, `files` (each input file by role), `data` (the Data folder), `plugins` (in load order: `name`, `enabled`, `official`, `listed`, `path`, `dropped`, `kind` F/M/L or `?`, `master` (0.3.0: true when the plugin counts as a master, see [Sorting](#sorting-a-load-order-sort)), `masters`; `kind` and `masters` are `null` for a file that wasn't read, such as a mod plugin of a Vortex profile that isn't deployed), `mods` (`name`, `enabled`, `path`, `plugins`, `priority`, `id`, `files_count`; `null` for a plain Plugins.txt) and `mods_note`. |
 | `findings` | Worst first. Each: `level` (`problem`, `caution`, `note`), `section`, `text` (what is wrong), `fix` (what to do, or `null`), `plugins` (names it is about) and `data` (extra detail: counts, FormIDs, paths, a ready `accept_entry`). |
 | `sections` | Per section (`inputs`, `order`, `patches`, `clashes`, `archives`, `loose`, `rules`, `records`, `recommend`; a `candidate` run has `inputs` and `candidate`): `status` (`done`, `skipped`, `failed` or `missing`), `why` when it didn't run, and a few counts (for example `patches.built_for_old`, the plugins still built for an older kind of a master). |
 | `recommended` | The suggested order as plugin names, or `null` when none was worked out. |
@@ -643,6 +798,12 @@ New in 0.2.0 (nothing was renamed):
 | `patches` | Merged patches: a list of `{patch, manifest, state, level, rebuild, reasons, checked, result, findings}` (`state` is `up to date`, `rebuild`, `not enabled` or `cannot check`; `smc_state` is sf-mod-check's own word), `[]` when no manifest was found, or `{"not_checked": why}`. |
 | `rules` | The Vortex rules check: `has_rules`, `pairs` (each `{mods, paths, same, differ, unknown, winner, deployed, deployed_from, rule, overrides, sample}`; `deployed_from` is `record`, `data` or null), `no_shared`, `unmatched` and `findings` (counts). |
 | `candidate` | `candidate` runs: `zips` (each with `path`, `format` (0.2.3: `zip`, `7z` or `rar`), `files`, `loose`, `archives`, `plugins`, `fomod` and `not_compared`), `plugins`, `masters`, `depth`, `replaced`, `mods_checked`, `build_paths`, `shared`, `findings` (counts by level; the findings themselves are in the top-level `findings`, section `candidate`), `heavy` and `records` (0.2.3; `null` at `--depth light`: `status` `done`, `skipped` or `failed`, `why`, `program`, `exit`, `result_line`, `file` (the conflicts.json), `shared_records`, `not_loaded` (when the check ran: the build's plugins sf-mod-check didn't load), and `mods`, each with `mod`, `plugin`, `records`, `forwardable`, `choice`, `no_effect`, `build_wins`, `build_loses` (how many of the records the build wins, and how many the installed mod wins) and up to five `examples` with `fk`, `edid` and `type`). `null` in a normal run. |
+
+New in 0.3.0 (nothing was renamed or removed; a normal run's file is the same as before except `load_order.plugins[].master`):
+
+| Key | Meaning |
+|---|---|
+| `sort` | `sort` runs only: `tie_break`, `order` (plugin names), `moved`, `moves` (each `plugin`, `after`, `reason`, `source`), `score_current`, `score_sorted`, `estimate`, `rated`, `same_as_current`, `sources` (rules used, by source: `game`, `mod`, `picks`, `user`, `patch`, `community`, `loot_userlist`, `loot_masterlist`, `loot_groups`, `vortex`), `rejected` (each rule left out, with the `why` and the `path` of rules that beat it), `inactive_rules`, `requires_missing`, `incompatible`, `proposed`, `stale`, `vortex_broken`, `loot_files`, `decided`, `loop` and `files` (by role). Its section is `sections.sort`; the findings have section `sort`. |
 
 The "files its records use aren't installed" findings count the files by kind (script, model, mesh, material,
 texture, sound) in their text, and their `data` has a `kinds` count.
@@ -693,6 +854,9 @@ before you post it.
   Windows a mod id like `Mod9.` finds the folder `Mod9`. On Linux and macOS, `Mod9.` and `Mod9` can be two
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,
   run sf-load-order on Windows, or such a mod shows no folder and its loose files aren't checked.
+- **LOOT's regular-expression names are checked before use.** A pattern over 256 characters, a back-reference, a
+  look-behind or a repeat of a group that holds a repeat (`(a+)+`) is refused with one caution, because it could make
+  the match run for hours. A masterlist's real patterns all pass. Our own rules files take no pattern at all.
 - **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
   after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an
   update of the mod made for that file does. The report says so instead of suggesting a patch (see
@@ -700,9 +864,11 @@ before you post it.
 
 ## Similar tools
 
-- **LOOT** (https://loot.github.io) sorts plugins by rules and its community masterlist. sf-load-order doesn't sort
-  by rules: it reads LOOT's masterlist for warnings, and scores LOOT's order (`--loot-order`) by the changes it
-  throws away. Use both: sort with LOOT, then check the result here.
+- **LOOT** (https://loot.github.io) sorts plugins by rules and its community masterlist. `sf-load-order sort` builds
+  an order from the game's rules, your own rules file and, when it is there, LOOT's masterlist, keeps your current
+  order wherever it can, and explains every move; it needs no LOOT install. LOOT's masterlist is far larger than
+  anything here (there is no community rules file yet), so use both if you like: sort with LOOT, then score LOOT's
+  order here with `--loot-order`.
 - **xEdit** (SF1Edit) shows every record conflict in full and can build patches. sf-load-order shows the same kind of
   conflict as a summary with a suggested order, and points you to xEdit (or a patch) for the ones that need a merge.
 - **Vortex's and MO2's conflict views** show loose files that overwrite each other. Vortex's view doesn't look

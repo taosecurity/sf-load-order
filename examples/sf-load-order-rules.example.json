@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "kind": "user",
+  "about": {"name": "My ordering rules (made-up plugin names)", "version": "1"},
+  "groups": [
+    {"name": "Late Patches", "after": ["default"], "note": "Patches that must win over the mods they change."}
+  ],
+  "rules": [
+    {
+      "id": "u-0001",
+      "plugin": "ExampleArmorRetexture.esm",
+      "after": ["ExampleArmor.esm"],
+      "note": "I want the retexture to win over the armor mod.",
+      "evidence": {"kind": "manual", "text": "My own choice.", "date": "2026-11-25"}
+    },
+    {
+      "id": "u-0002",
+      "plugin": "ExampleQuestsPatch.esm",
+      "group": "Late Patches",
+      "requires": ["ExampleQuests.esm"]
+    },
+    {
+      "id": "u-0003",
+      "plugin": "ExampleLights.esm",
+      "incompatible": ["ExampleOldLights.esp"],
+      "note": "The old lights mod does the same job."
+    }
+  ]
+}
