@@ -553,6 +553,8 @@ def _mo2_dir(ini, key, instance, default):
     (or the instance folder), and a relative path is read from the instance folder."""
     base = ini.get("base_directory") or instance
     v = ini.get(key)
+    if v and os.name != "nt":
+        v = v.replace("\\", "/")  # an ini copied from Windows: its backslashes are folder separators (0.3.2)
     v = os.path.join(base, default) if not v else re.sub("%BASE_DIR%", lambda _m: base, v, flags=re.I)
     return os.path.normpath(os.path.join(instance, v))
 
@@ -601,7 +603,7 @@ def from_mo2(instance, args, env, drives, registry):
     data, extra = _find_data(args, env, drives, registry, os.path.join(game, "Data") if game else None,
                              "MO2's gamePath")
     log.info(SECTION, f"mo2 {instance} profile {profile}; mods {mods_dir}")
-    lo = LoadOrder("mo2", profile=profile, files={"plugins_txt": ptxt}, data=data)
+    lo = LoadOrder("mo2", profile=profile, files={"plugins_txt": ptxt}, data=data, mo2_instance=instance)
     if os.path.isfile(ini_path):
         lo.files["modorganizer_ini"] = ini_path
     mlpath = os.path.join(pdir, "modlist.txt")

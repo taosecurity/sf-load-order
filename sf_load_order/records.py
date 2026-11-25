@@ -677,6 +677,12 @@ def _exe_note(ctx, prog):
                                "--sf-mod-check the full path of the right sf-mod-check.exe.", data={"exe": prog.path}))
 
 
+def _mo2_run(lo, prog):
+    """True when conflict can take the MO2 instance (--mo2 --profile): an MO2 load order and sf-mod-check 0.16.0+."""
+    return bool(lo.source == "mo2" and lo.mo2_instance and prog.version is not None
+                and prog.version >= sfmodcheck.MO2_VERSION)
+
+
 def _not_visible(lo):
     return [p.name for p in _mod_plugins(lo) if not os.path.isfile(os.path.join(lo.data, p.name))]
 
@@ -709,19 +715,25 @@ def run(ctx):
         if not lo.data:
             return _skip("no Data folder was found, so sf-mod-check has nothing to read. Fix: pass --data.")
         hidden = _not_visible(lo)
-        if hidden and lo.source == "mo2":
+        # under MO2 sf-mod-check reads the instance itself (--mo2 --profile, 0.16.0), so the mod folders are seen
+        mo2 = _mo2_run(lo, prog)
+        if mo2:
+            log.info(SECTION, f"MO2 instance {lo.mo2_instance}, profile {lo.profile}: sf-mod-check conflict gets "
+                              "--mo2 and --profile")
+        if hidden and lo.source == "mo2" and not mo2:
             why = (f"{len(hidden)} enabled plugin(s) aren't in {lo.data} (MO2 keeps mods in their own folders, and "
-                   "only programs started from MO2 see them in Data). Fix: start sf-load-order from MO2 (add it as "
-                   "an executable), or run sf-mod-check conflict from MO2 with --plugins set to the profile's "
-                   "plugins.txt and pass its conflicts.json with --conflicts.")
+                   "only programs started from MO2 see them in Data). Fix: update sf-mod-check to 0.16.0 or later "
+                   "(it reads the MO2 folder itself), start sf-load-order from MO2 (add it as an executable), or "
+                   "run sf-mod-check conflict with --mo2 and pass its conflicts.json with --conflicts.")
             ctx.report.add(Finding("note", SECTION, "Record conflicts weren't checked: " + why.split(" Fix: ")[0] + ".",
                                    fix=why.split(" Fix: ")[1], plugins=hidden[:20]))
             return _skip(why, program=prog.to_dict())
         os.makedirs(ctx.work, exist_ok=True)
-        ptxt = sfmodcheck.write_plugins_txt(os.path.join(ctx.work, "sf-mod-check-plugins.txt"), lo)
+        ptxt = None if mo2 else sfmodcheck.write_plugins_txt(os.path.join(ctx.work, "sf-mod-check-plugins.txt"), lo)
         r = sfmodcheck.run_conflict(prog, ptxt, lo.data, os.path.join(ctx.work, "conflict"),
                                     getattr(args, "max_memory", None),
-                                    timeout=getattr(args, "sf_mod_check_timeout", None) or sfmodcheck.CONFLICT_TIMEOUT)
+                                    timeout=getattr(args, "sf_mod_check_timeout", None) or sfmodcheck.CONFLICT_TIMEOUT,
+                                    mo2=lo.mo2_instance if mo2 else None, profile=lo.profile if mo2 else None)
         result_line, exit_code = r.result, r.exit
         failed = None
         if getattr(r, "refused", False):
@@ -784,7 +796,7 @@ def run(ctx):
         if prog is not None:
             if not lo.data:
                 status["heavy"] = "skipped: no Data folder (pass --data)"
-            elif _not_visible(lo) and lo.source == "mo2":
+            elif _not_visible(lo) and lo.source == "mo2" and not _mo2_run(lo, prog):
                 status["heavy"] = "skipped: MO2's mods aren't in the Data folder (start sf-load-order from MO2)"
             else:
                 done, bad = heavy(ctx, prog, res)

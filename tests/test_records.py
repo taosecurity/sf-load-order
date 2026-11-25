@@ -47,9 +47,10 @@ FAKE = textwrap.dedent(r'''
     if a and a[0] == "conflict":
         time.sleep(cfg.get("sleep", 0))
         out = a[a.index("--out") + 1]
-        plugins = a[a.index("--plugins") + 1]
-        with open(os.path.join(here, "plugins-seen.txt"), "w", encoding="utf-8") as f:
-            f.write(open(plugins, encoding="utf-8").read())
+        if "--plugins" in a:
+            plugins = a[a.index("--plugins") + 1]
+            with open(os.path.join(here, "plugins-seen.txt"), "w", encoding="utf-8") as f:
+                f.write(open(plugins, encoding="utf-8").read())
         if cfg.get("conflicts") is not None:
             os.makedirs(out, exist_ok=True)
             json.dump(cfg["conflicts"], open(os.path.join(out, "conflicts.json"), "w", encoding="utf-8"))
@@ -927,6 +928,27 @@ class Program(unittest.TestCase):
         self.assertIn("MO2", st["why"])
         self.assertTrue(any("OnlyInMO2.esm" in f.plugins for f in ctx.report.findings))
         self.assertEqual(self.calls(), [["--version"]])
+
+    def test_mo2_passes_instance_and_profile(self):
+        """0.3.2: with sf-mod-check 0.16.0 or later, an MO2 load order runs conflict with --mo2 and --profile (no
+        --plugins), so plugins in MO2's mod folders are read and --conflicts isn't needed."""
+        exe = self.fake(version="sf-mod-check 0.17.0 by someone - GPL-3.0")
+        lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        st = records.run(ctx_for(self.t, lo, sf_mod_check=exe))
+        self.assertEqual(st["status"], "done")
+        conflict = [c for c in self.calls() if c[0] == "conflict"][0]
+        self.assertEqual(conflict[conflict.index("--mo2") + 1], lo.mo2_instance)
+        self.assertEqual(conflict[conflict.index("--profile") + 1], "Default")
+        self.assertNotIn("--plugins", conflict)
+
+    def test_mo2_old_sf_mod_check_still_skips(self):
+        exe = self.fake(version="sf-mod-check 0.15.0 by someone - GPL-3.0")
+        lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        st = records.run(ctx_for(self.t, lo, sf_mod_check=exe))
+        self.assertEqual(st["status"], "skipped")
+        self.assertIn("0.16.0", st["why"])
 
     def test_no_data(self):
         exe = self.fake()

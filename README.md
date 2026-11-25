@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -85,7 +85,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -111,12 +111,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.3.1.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.1.zip SHA256`.
+2. Download `sf-load-order-0.3.2.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.2.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.1 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.2 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -430,7 +430,8 @@ aren't installed" (kinds: script, model, mesh, material, texture, sound; "mesh" 
 a note. The kinds come from a conflicts.json whose entries name them (newer sf-mod-check versions do); an entry with no kind
 counts as a model.
 
-sf-mod-check reads plugins from the Data folder. Under MO2 it only sees your mods when it is started from MO2 (see
+sf-mod-check reads plugins from the Data folder. Under MO2, with sf-mod-check 0.16.0 or newer, sf-load-order passes the MO2
+folder and profile (`--mo2`, `--profile`) so it sees your mods; older versions see them only when started from MO2 (see
 [Traps](#traps)).
 
 ### Suggested order
@@ -502,14 +503,14 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
 The note names OldShipMod as the older copy left out. One caution says the build overrides two files of CoreTools
 with different content; it is a caution, not a problem, because overriding the mod a build is built on is usual. The
 other caution says the records weren't checked: run from the command line, sf-mod-check can't see MO2's mods
-(start sf-load-order from MO2 for that check).
+(update sf-mod-check to 0.16.0 or newer, or start sf-load-order from MO2, for that check).
 
 | Finding | Level |
 |---|---|
@@ -595,7 +596,7 @@ after `ExampleArmor.esm`. Its second rule, that `ExampleQuests.esm` loads after 
 
 ```
 > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
-sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -849,10 +850,12 @@ before you post it.
   the real Data folder, each enabled mod and Overwrite, and also the real `Documents\My Games\Starfield\Data`
   folder. sf-load-order doesn't read that last one (most setups keep nothing in it), so a file kept only there is
   missing from its loose-file and record checks.
-- **MO2 record checks need sf-mod-check started from MO2.** MO2 keeps each mod in its own folder and shows them to
-  the programs it starts through a virtual Data folder. Run from outside MO2, sf-mod-check can't see your mods, and
-  the record section says so. Either add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and start it
-  from there, or run `sf-mod-check conflict` from MO2 yourself and give its `conflicts.json` with `--conflicts`.
+- **MO2 record checks need sf-mod-check 0.16.0 or newer** (0.3.2). MO2 keeps each mod in its own folder and shows
+  them to the programs it starts through a virtual Data folder. With `--mo2` and sf-mod-check 0.16.0 or newer,
+  sf-load-order runs `sf-mod-check conflict --mo2 <folder> --profile <name>`, which reads those folders itself, so
+  nothing has to be started from MO2 and `--conflicts` isn't needed. With an older sf-mod-check the record section
+  says it can't see your mods: update it, or add sf-load-order (`sf-load-order.cmd`) as an executable in MO2 and
+  start it from there, or run `sf-mod-check conflict` yourself and give its `conflicts.json` with `--conflicts`.
 - **A Vortex staging folder copied off Windows.** Windows drops trailing spaces and dots from folder names, so on
   Windows a mod id like `Mod9.` finds the folder `Mod9`. On Linux and macOS, `Mod9.` and `Mod9` can be two
   different mods, so sf-load-order doesn't make that match there. If you copied your staging folder from Windows,

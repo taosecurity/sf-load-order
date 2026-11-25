@@ -30,6 +30,7 @@ from . import log
 
 SECTION = "records"
 MIN_VERSION = (0, 8, 0)
+MO2_VERSION = (0, 16, 0)  # first sf-mod-check whose conflict command takes --mo2 and --profile
 NAMES = ("sf-mod-check", "sfmodcheck")  # 0.8.0 renamed the command; its zip still holds sfmodcheck.cmd
 RELEASES = "https://github.com/taosecurity/sf-mod-check/releases"
 CONFLICT_TIMEOUT = 1800   # seconds; a 150-plugin order takes about 2 minutes on the author's PC
@@ -264,15 +265,20 @@ def _num(x):
 
 
 def run_conflict(prog, plugins_txt, data, out_dir, max_memory=None, timeout=CONFLICT_TIMEOUT, extra=None,
-                 no_assets=False):
+                 no_assets=False, mo2=None, profile=None):
     """Run `conflict` into out_dir. An old conflicts.json there is removed first, so a failed run is never mistaken
     for a finished one. extra: an --extra-data folder (plugins read before Data; `candidate` puts the build's plugins
-    there). no_assets: pass --no-assets (records only)."""
+    there). no_assets: pass --no-assets (records only). mo2 (+ profile): the MO2 instance folder, passed as
+    --mo2 --profile instead of --plugins, so sf-mod-check sees MO2's mod folders (0.16.0)."""
     os.makedirs(out_dir, exist_ok=True)
     cj = os.path.join(out_dir, "conflicts.json")
     if os.path.exists(cj):
         os.remove(cj)
-    cmd = [prog.path, "conflict", "--plugins", plugins_txt, "--data", data, "--out", out_dir]
+    if mo2:
+        cmd = [prog.path, "conflict", "--mo2", mo2] + (["--profile", profile] if profile else [])
+        cmd += ["--data", data, "--out", out_dir] if data else ["--out", out_dir]
+    else:
+        cmd = [prog.path, "conflict", "--plugins", plugins_txt, "--data", data, "--out", out_dir]
     if extra:
         cmd += ["--extra-data", extra]
     if no_assets:

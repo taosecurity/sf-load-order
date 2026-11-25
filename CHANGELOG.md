@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.2 (unreleased)
+
+### What's new
+
+A small release. No option was removed or renamed, the exit codes are the same, and report.json has the same keys.
+
+- **MO2 record check without `--conflicts`.** With `--mo2` and sf-mod-check 0.16.0 or newer, the record check runs `sf-mod-check conflict --mo2 <instance folder> --profile <profile>` (and `--data` when one was found), so sf-mod-check reads MO2's mod folders itself. Before, plugins kept in MO2's mod folders made the check skip unless you started sf-load-order from MO2 or passed `--conflicts` by hand. With an older sf-mod-check the check still skips, and the message now says to update it. `candidate` is unchanged (still start it from MO2).
+- **A `ModOrganizer.ini` copied from Windows works on Linux.** Folder settings such as `mod_directory=..\\MO2\\mods` are split at the backslashes on Linux, where 0.3.1 read them as one odd folder name.
+
+### Example
+
+The same made-up `sort` run as 0.3.1's; only the version in the byline differs. (The MO2 change shows in the log: with `--verbose`, a run under MO2 logs the `sf-mod-check conflict --mo2 <instance folder> --profile <profile>` command line it starts.)
+
+    > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
+    sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+
+The "Sorted order" part of the report:
+
+    Sorting moves 2 plugins; the order wasn't rated (no record-conflict data).
+    Moves (2):
+       1. Load ExampleArmor.esm after ExampleLights.esm. Why: Your rule (my-rules.json, entry 1) says
+          ExampleArmorRetexture.esm loads after ExampleArmor.esm.
+       2. Load ExampleQuests.esm after ExampleArmorRetexture.esm. Why: ExampleQuestsPatch.esm has ExampleQuests.esm as a
+          master.
+    Rules not met (1):
+       1. Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but
+          ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+
+### How it works
+
+Nothing changed in the design: under MO2 the record check hands the instance folder and profile to sf-mod-check instead of a written Plugins.txt, and a folder value from an ini is read with backslashes as separators on every system.
+
 ## 0.3.1 (2026-11-25)
 
 ### What's new

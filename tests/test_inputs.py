@@ -422,6 +422,16 @@ class MO2(Base):
         lo = self.ok("--mo2", inst, "--data", self.data)
         self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
 
+    def test_backslash_ini_on_any_system(self):
+        """0.3.2: a ModOrganizer.ini copied from Windows (backslashes in its folder values) is split into folders on
+        Linux too; 0.3.1 read '..\\MO2\\mods' there as one odd folder name."""
+        inst = os.path.join(self.t, "Instance")
+        os.makedirs(inst)
+        write(os.path.join(inst, "ModOrganizer.ini"), "[General]\nselected_profile=@ByteArray(Default)\n[Settings]\n"
+              "mod_directory=..\\\\MO2\\\\mods\nprofiles_directory=..\\\\MO2\\\\profiles\n")
+        lo = self.ok("--mo2", inst, "--data", self.data)
+        self.assertEqual(self.by_name(lo, "Shared.esm").path, os.path.join(self.inst, "mods", "High Mod", "Shared.esm"))
+
     def test_no_modlist(self):
         os.remove(os.path.join(self.inst, "profiles", "Default", "modlist.txt"))
         lo = self.ok("--mo2", self.inst, "--data", self.data)

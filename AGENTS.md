@@ -55,7 +55,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.3.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -280,8 +280,8 @@ credits and writes nothing. Screen output keeps the console's character set and 
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
   and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
   names who won; it says so. Install extension 0.6.2 or later for the rules.
-- Record conflicts need sf-mod-check 0.8.0 or newer. Under MO2, sf-mod-check sees the mods only when started from MO2;
-  otherwise use `--conflicts`.
+- Record conflicts need sf-mod-check 0.8.0 or newer. Under MO2, sf-load-order passes `--mo2` and `--profile` to sf-mod-check 0.16.0
+  or newer, which reads the MO2 folders itself; with an older one it sees the mods only when started from MO2, otherwise use `--conflicts`.
 - A suggested order with "estimate" in its score is based on partial data: the moved mods should be checked in game.
 - When the suggested order saves less than 10 points or 3% (whichever is more), the current order is kept.
 - Don't use it while the game or the mod manager is changing the load order; run it after deploying.

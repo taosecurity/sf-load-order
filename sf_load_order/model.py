@@ -48,6 +48,7 @@ class LoadOrder:
     plugins: list = field(default_factory=list)  # [Plugin] in load order, enabled and disabled
     mods: list = None                            # [Mod] or None when the source has no mod manager
     mods_note: str = None                        # why mods is None
+    mo2_instance: str = None                     # the MO2 instance folder (source "mo2")
 
     def enabled(self):
         """Names of the plugins that load, in load order (official masters included)."""
