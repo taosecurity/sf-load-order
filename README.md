@@ -861,7 +861,8 @@ before you post it.
   `(?` form other than `(?:` and `(?i)` (look-behinds, inline flags, named groups), a group followed by `*`, `+` or
   `{..}` (`(a+)+`, `(ab)+`; only `?` may follow a group), more than six choices in all (`*`, `+`, `?`, `{..}` and
   `|` together) or more than two open-ended repeats (`*`, `+`, `{n,}` or `{n,m}` with m over 10, as in
-  `.*.*.*\.esm`) is refused and its entry skipped, because it could make the match run for hours (the log, `rules list` and report.json's clashes `loot` part, as `unsafe_patterns`, say how many). A masterlist's real patterns all pass. Our own rules files take no pattern at all.
+  `.*.*.*\.esm`), or repeats whose choices multiply past a budget (as in `[a-z]*[a-z]*` followed by four
+  `[a-z]{0,10}`), is refused and its entry skipped, because it could make the match run for hours (the log, `rules list` and report.json's clashes `loot` part, as `unsafe_patterns`, say how many). A masterlist's real patterns all pass. Our own rules files take no pattern at all.
 - **A mod's ship change can't beat a BlueprintShips file.** The game loads the official `BlueprintShips-*.esm` files
   after every mod, so moving a mod lower or adding a patch doesn't bring its change to those ships back. Only an
   update of the mod made for that file does. The report says so instead of suggesting a patch (see

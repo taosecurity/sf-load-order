@@ -76,6 +76,14 @@ class Guard(unittest.TestCase):
         for p in (r"(?:blueprintships-)?sfta0[1-6]\.esm", r"(?i)abc\.esm", r"(foo|bar)?\.esm", r"a?b?c?\.es[mp]"):
             self.assertIsNone(clashes.regex_refusal(p), p)
 
+    def test_choice_work_budget(self):
+        # code review round 8: two open-ended repeats plus four {0,10} (11**4 more paths) took 3.0 s on a 255-character
+        # name; each {n,m} now weighs m-n+1 against MAX_WORK, together with ?, | and the open-ended repeats
+        p = r"[a-z]*[a-z]*[a-z]{0,10}[a-z]{0,10}[a-z]{0,10}[a-z]{0,10}\.esm"
+        self.assertIn("work multiplies", clashes.regex_refusal(p))
+        for p in (r"[a-z]*[a-z]*[a-z]{0,10}\.esm", r"a*b*c?d?e?\.esm", r".{0,9}" * 6 + r"\.esm"):
+            self.assertIsNone(clashes.regex_refusal(p), p)
+
     def test_long_backrefs_lookbehinds_and_flags_are_refused(self):
         self.assertIn("256", clashes.regex_refusal("a" * 300))
         self.assertIn("back-reference", clashes.regex_refusal(r"(a)\1"))

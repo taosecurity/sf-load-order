@@ -561,6 +561,7 @@ MAX_LOOT_BYTES = 20 * 1024 * 1024
 MAX_CHOICES = 6               # *, +, ?, {..} and | per pattern: each one can double the work of a failed match
 MAX_UNBOUNDED = 2             # of those, open-ended repeats (*, +, {n,} or {n,m} with m over MAX_BOUND)
 MAX_BOUND = 10
+MAX_WORK = 1_000_000          # product budget: each ? or | counts 2, each {n,m} m-n+1, each open-ended repeat MAX_MATCH
 _QUANT = re.compile(r"\{(\d*)(,(\d*))?\}")
 _GROUP_OPEN = ("(?:", "(?i)")  # the only (? forms allowed; any other (look-behind, inline flags such as (?x),
                                # named groups and their back-references) is refused
@@ -569,12 +570,14 @@ _GROUP_OPEN = ("(?:", "(?i)")  # the only (? forms allowed; any other (look-behi
 def regex_refusal(text):
     """Why a pattern is refused, or None when it is safe to compile: longer than MAX_PATTERN characters, a
     back-reference, a (? form other than (?: and (?i), a group followed by *, + or {..} (only ? may follow a group),
-    more than MAX_CHOICES choices (*, +, ?, {..} and | together) or more than MAX_UNBOUNDED open-ended repeats."""
+    more than MAX_CHOICES choices (*, +, ?, {..} and | together), more than MAX_UNBOUNDED open-ended repeats, or a
+    product of choice weights over MAX_WORK (? and | weigh 2, {n,m} weighs m-n+1, an open-ended repeat MAX_MATCH)."""
     if not isinstance(text, str):
         return "not text"
     if len(text) > MAX_PATTERN:
         return f"longer than {MAX_PATTERN} characters"
     choices = unbounded = 0
+    work = 1
     after_group = False
     i, n = 0, len(text)
     while i < n:
@@ -620,6 +623,15 @@ def regex_refusal(text):
                 if unbounded > MAX_UNBOUNDED:
                     return (f"more than {MAX_UNBOUNDED} open-ended repeats (*, +, {{n,}} or {{n,m}} with m over "
                             f"{MAX_BOUND}; it can take very long to match)")
+                work *= MAX_MATCH
+            elif q:
+                lo = int(q.group(1) or 0)
+                hi = int(q.group(3)) if q.group(2) is not None else lo
+                work *= max(hi - lo + 1, 1)
+            else:
+                work *= 2  # ? or |
+            if work > MAX_WORK:
+                return "too many choices for the repeats it has (the work multiplies; it can take very long to match)"
             i = q.end() if q else i + 1
             if c != "|" and i < n and text[i] in "?+":
                 i += 1  # lazy or possessive form of the same repeat

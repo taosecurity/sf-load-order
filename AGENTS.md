@@ -275,7 +275,7 @@ credits and writes nothing. Screen output keeps the console's character set and 
   says why: a caution for your own rules and picks, a note for community, LOOT and default-group rules, and a
   problem for a master plugin that needs a non-master. LOOT's regular-expression names are checked before use: a pattern over 256 characters, a
   back-reference, a `(?` form other than `(?:` and `(?i)`, a group followed by `*`, `+` or `{..}`, more than six
-  choices in all (`*`, `+`, `?`, `{..}` and `|`) or more than two open-ended repeats is refused and its entry skipped (the log and `unsafe_patterns` count them).
+  choices in all (`*`, `+`, `?`, `{..}` and `|`) more than two open-ended repeats, or repeats whose choices multiply past a budget (each `?` and `|` weighs 2, `{n,m}` m-n+1, an open-ended repeat 260; product at most 1,000,000) is refused and its entry skipped (the log and `unsafe_patterns` count them).
 - Our own rules files take exact plugin file names only: no regex, no wildcard (`( ) [ ] +` are plain name characters).
 - Merged-patch checks need sf-mod-check 0.15.0 or newer. `candidate`'s record check needs sf-mod-check 0.8.0 or newer
   and, under MO2, sf-load-order started from MO2. Modlist Backup exports before 0.6.2 hold no mod rules, so the Vortex rules section only
