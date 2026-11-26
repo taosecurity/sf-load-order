@@ -79,15 +79,29 @@ jobs:
       - name: Release notes from CHANGELOG.md
         run: |
           version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '$0 ~ "^## "v"( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > release-notes.md
-          test -s release-notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
-      - name: Publish the GitHub release (safe to rerun)
+          awk -v v="$version" '$0 ~ "^## "v"( |$)" {on=1; next} /^## [0-9]+\.[0-9]+\.[0-9]+/ {on=0} on' CHANGELOG.md > release-notes.md
+          grep -q '[^[:space:]]' release-notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          printf '\nCheck each download against its .sha256 file.\n' >> release-notes.md
+      - name: Publish the GitHub release (safe to rerun, never replaces a file)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
-            gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md --draft=false
+          title="sf-load-order ${GITHUB_REF_NAME#v}"
+          if out=$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets[].name' 2>&1); then
+            have=0; missing=0
+            for f in dist/*; do
+              if printf '%s\n' "$out" | grep -qxF "$(basename "$f")"; then have=$((have+1)); else missing=$((missing+1)); fi
+            done
+            if [ "$missing" -gt 0 ] && [ "$have" -gt 0 ]; then
+              echo "The release has $have of the files and lacks $missing. Fix it by hand; a rerun never replaces a published file."; exit 1
+            fi
+            if [ "$missing" -gt 0 ]; then   # an earlier run made the release, then failed: upload everything, checksums last
+              gh release upload "$GITHUB_REF_NAME" $(ls dist/* | grep -v '\.sha256$')
+              gh release upload "$GITHUB_REF_NAME" dist/*.sha256
+            fi
+            gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file release-notes.md --draft=false
+          elif printf '%s' "$out" | grep -q 'release not found'; then
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$title" --notes-file release-notes.md --verify-tag
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --title "sf-load-order ${GITHUB_REF_NAME#v}" --notes-file release-notes.md --verify-tag
+            echo "gh release view failed: $out"; exit 1
           fi
