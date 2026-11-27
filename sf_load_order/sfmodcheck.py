@@ -74,6 +74,11 @@ def find(args, path=None):
         if os.path.isfile(given):
             log.info(SECTION, f"sf-mod-check from --sf-mod-check: {given}")
             return _program(os.path.abspath(given), "--sf-mod-check"), None
+        if os.path.dirname(given):  # a path without .exe: C:\tools\sf-mod-check finds sf-mod-check.exe
+            hit = progfind.given_path(given)
+            if hit:
+                log.info(SECTION, f"sf-mod-check from --sf-mod-check {given}: {hit}")
+                return _program(hit, "--sf-mod-check"), None
         hit = progfind.which(given, path=path)
         if hit:
             log.info(SECTION, f"sf-mod-check from --sf-mod-check {given} on PATH: {hit}")

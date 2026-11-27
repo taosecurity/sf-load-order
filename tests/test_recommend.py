@@ -297,6 +297,16 @@ class GameRulesWin(Base):
         self.assertEqual(len(r["moves"]), 1)
         self.assertIn("the game loads master plugins", r["moves"][0]["reason"])
 
+    def test_master_order_fix_is_not_called_a_type_only_move(self):
+        # 0.3.3 code-review round 1: B.esm needs A.esm, listed below it with a plain X.esp between. A.esm's move is
+        # a real master fix (both are master plugins, so the game keeps the list's B-before-A order), not a move
+        # that "only lists it where the game loads it".
+        lo = make_lo(["B.esm", "X.esp", "A.esm"], masters={"B.esm": ["A.esm"]})
+        ctx, st, r = self.run_rec(lo)
+        self.assertEqual(mods_of(r["order"]), ["A.esm", "B.esm", "X.esp"])
+        for m in r["moves"]:
+            self.assertNotIn("the game loads master plugins", m["reason"], m)
+
     def test_master_flag_counts_not_just_the_extension(self):
         # a .esp with the master flag loads with the master plugins; a .esm never loads below a plain .esp
         lo = make_lo(["C.esp", "F.esp", "A.esm"])
@@ -325,6 +335,17 @@ class Topo(unittest.TestCase):
         self.assertEqual(recommend.topo(["B.esp", "A.esm", "C.esm"], edges), ["A.esm", "C.esm", "B.esp"])
         self.assertTrue(recommend._ok(["A.esm", "C.esm", "B.esp"], edges))
         self.assertFalse(recommend._ok(["A.esm", "B.esp", "C.esm"], edges))
+
+    def test_ok_matches_a_stable_sort_check(self):
+        # 0.3.3 code-review round 1: _ok is a position check again (it was a full sort per pick); it must agree with
+        # "a stable sort gives the order back unchanged" on every order of a small made-up list
+        import itertools
+        names = ["A.esm", "B.esm", "C.esp", "D.esp"]
+        edges = [("A.esm", "<masters-end>"), ("B.esm", "<masters-end>"), ("<masters-end>", "C.esp"),
+                 ("<masters-end>", "D.esp"), ("A.esm", "B.esm"), ("D.esp", "C.esp")]
+        for order in itertools.permutations(names):
+            self.assertEqual(recommend._ok(list(order), edges), recommend.topo(list(order), edges) == list(order),
+                             order)
 
     def test_cycle_through_a_virtual_node_is_none(self):
         edges = [("A.esm", "<masters-end>"), ("<masters-end>", "B.esp"), ("B.esp", "A.esm")]

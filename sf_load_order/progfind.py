@@ -34,6 +34,18 @@ def which(name, path=None):
     return None
 
 
+def given_path(path):
+    """A program path the user gave (it has a folder part): the path itself if it is a file, else on Windows the
+    path plus the first PATHEXT extension that is a file (C:\\tools\\sf-mod-check finds sf-mod-check.exe, as
+    shutil.which did). None when nothing matches."""
+    if os.path.isfile(path):
+        return os.path.abspath(path)
+    for ext in _exts(path):
+        if ext and os.path.isfile(path + ext):
+            return os.path.abspath(path + ext)
+    return None
+
+
 def system_tool(name):
     """A Windows system program (taskkill) by its full path under %SystemRoot%\\System32."""
     root = os.environ.get("SystemRoot") or os.environ.get("windir") or r"C:\Windows"

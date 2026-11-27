@@ -129,9 +129,21 @@ def topo(current, edges):
 
 
 def _ok(order, edges):
-    """True when order meets every edge (virtual nodes included): a stable sort of an order that already meets
-    them gives it back unchanged."""
-    return topo(order, edges) == list(order)
+    """True when order meets every edge. A virtual node (MASTERS_END, the only one _edges adds) is met when every
+    plugin before it sits above every plugin after it. A position check, not a sort: arrange calls this per pick."""
+    pos = {n.lower(): i for i, n in enumerate(order)}
+    lo_after, hi_before = {}, {}
+    for a, b in edges:
+        a, b = a.lower(), b.lower()
+        if is_virtual(b):
+            if a in pos:
+                hi_before[b] = max(hi_before.get(b, -1), pos[a])
+        elif is_virtual(a):
+            if b in pos:
+                lo_after[a] = min(lo_after.get(a, len(pos)), pos[b])
+        elif a in pos and b in pos and pos[a] >= pos[b]:
+            return False
+    return all(hi < lo_after.get(v, len(pos)) for v, hi in hi_before.items())
 
 
 def arrange(base, edges, picks):
@@ -255,6 +267,15 @@ def _edges(lo, movable):
         for n, m in is_master.items():
             why.setdefault(n.lower(), ("type", m))
     return edges, why
+
+
+def _type_only(low, before, after, is_mp):
+    """True when the move of plugin `low` from order `before` to `after` crosses only plugins of the other type
+    (master plugin or not): the game already loads it there, so the move only lists it where it loads."""
+    pb = {n.lower(): i for i, n in enumerate(before)}
+    pa = {n.lower(): i for i, n in enumerate(after)}
+    crossed = [x for x in pb if x != low and x in pa and (pb[x] < pb[low]) != (pa[x] < pa[low])]
+    return bool(crossed) and all(is_mp.get(x) != is_mp.get(low) for x in crossed)
 
 
 def _picks(ctx, movable, edges):
@@ -441,6 +462,7 @@ def run(ctx):
     moves = []
     mv = moved(order, movable)
     mv_low = {x.lower() for x in mv}
+    is_mp = {p.name.lower(): order_check.is_master_plugin(p) for p in lo.plugins}
     for n in mv:
         i = [x.lower() for x in full].index(n.lower())
         after = full[i - 1] if i else None
@@ -463,7 +485,7 @@ def run(ctx):
                       f"it must load after its master{'s' if len(ms) > 1 else ''} {', '.join(ms)}")
         elif low in edge_why and edge_why[low][0] == "mod":
             reason = f"it keeps its mod's own plugin order ({edge_why[low][1]})"
-        elif low in edge_why and edge_why[low][0] == "type":
+        elif low in edge_why and edge_why[low][0] == "type" and _type_only(low, movable, order, is_mp):
             reason = ("the game loads master plugins (.esm, .esl or the master flag) before the others whatever the "
                       "list says, so this only lists it where the game loads it")
         else:

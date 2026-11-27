@@ -50,6 +50,16 @@ class ProgramLookupTests(unittest.TestCase):
         prog, err = sfmodcheck.find(types.SimpleNamespace(sf_mod_check=full))
         self.assertEqual(os.path.normcase(prog.path), os.path.normcase(full))
 
+    def test_full_path_without_exe_still_works(self):
+        # 0.3.3 code-review round 1: shutil.which added PATHEXT to a given path; --sf-mod-check C:\tools\sf-mod-check
+        # must still find C:\tools\sf-mod-check.exe
+        if os.name != "nt":
+            return
+        given = os.path.join(self.planted, "sf-mod-check")
+        prog, err = sfmodcheck.find(types.SimpleNamespace(sf_mod_check=given))
+        self.assertIsNone(err)
+        self.assertEqual(os.path.normcase(prog.path), os.path.normcase(given + ".exe"))
+
     def test_taskkill_is_the_system_one(self):
         self.assertTrue(progfind.system_tool("taskkill.exe").lower().endswith(os.path.join("system32", "taskkill.exe")))
 
