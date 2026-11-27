@@ -431,6 +431,16 @@ class ArchivesAndLoot(Base):
         f = [f for f in ctx.report.findings if f.level == "caution" and "archived file" in f.text]
         self.assertEqual(len(f), 1)
 
+    def test_type_only_move_changes_no_archive_winner(self):
+        # X.esp is listed above A.esm, but the game loads A.esm first, so X.esp's texture wins both before and
+        # after the recommended order lists A.esm first: no "changes which mod's archived file" caution
+        lo = make_lo(["X.esp", "A.esm"])
+        arc = {"paths": {"textures/x.dds": ["X.esp", "A.esm"]}, "digests": {}}
+        ctx, st, r = self.run_rec(lo, archives=arc)
+        self.assertEqual(mods_of(r["order"]), ["A.esm", "X.esp"])
+        self.assertEqual(r["archive_flips"], [])
+        self.assertFalse([f for f in ctx.report.findings if "archived file" in f.text])
+
     def test_light_depth_no_records(self):
         lo = make_lo(["A.esm", "B.esm"])
         ctx, st, r = self.run_rec(lo)

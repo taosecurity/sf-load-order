@@ -505,8 +505,11 @@ def run(ctx):
             reason = "its master order needed fixing" if not rated else "it moves along with the moves above"
         moves.append({"plugin": n, "after": after, "reason": reason})
 
-    # archive winners that change
-    aflips = archives.flips(current, full, ctx.results.get("archives")) if not same else []
+    # archive winners that change, in the order the game loads each list (a type-only move changes no winner)
+    def as_loaded(names):
+        keys = order_check.load_keys(names, rules)
+        return sorted(names, key=lambda n: keys[n.lower()])
+    aflips = archives.flips(as_loaded(current), as_loaded(full), ctx.results.get("archives")) if not same else []
     if aflips:
         by = {}
         for x in aflips:
