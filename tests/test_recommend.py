@@ -278,6 +278,26 @@ class GameRulesWin(Base):
         self.assertLess(order.index("A1.esm"), order.index("P.esm"))   # the mod's order kept where it can be
         self.assertLess(order.index("B.esm"), order.index("A1.esm"))   # and the flip still happens
 
+    def test_mod_order_kept_across_a_dropped_pair(self):
+        # 0.3.3 code-review round 4: a mod lists A.esp, B.esm, C.esp and A.esp loses a record to C.esp. The pair
+        # A.esp-B.esm is dropped (the game loads B.esm first), but A.esp before C.esp is still the mod's order.
+        lo = make_lo(["A.esp", "B.esm", "C.esp"], mods={"ModA": ["A.esp", "B.esm", "C.esp"]})
+        lost_ = [entry("1", "A.esp", "C.esp", [("Keywords", "Forwardable")])]
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A.esp", "C.esp", [0], lost_)]))
+        order = mods_of(r["order"])
+        self.assertLess(order.index("A.esp"), order.index("C.esp"))
+        self.assertLess(order.index("B.esm"), order.index("A.esp"))
+
+    def test_mod_order_kept_across_a_dropped_master_pair(self):
+        # the same with a master edge: Patch.esm masters Base.esm and is listed above it, Patch.esm loses to Extra.esm
+        lo = make_lo(["Patch.esm", "Base.esm", "Extra.esm"], masters={"Patch.esm": ["Base.esm"]},
+                     mods={"ModA": ["Patch.esm", "Base.esm", "Extra.esm"]})
+        lost_ = [entry("1", "Patch.esm", "Extra.esm", [("Keywords", "Forwardable")])]
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("Patch.esm", "Extra.esm", [0], lost_)]))
+        order = mods_of(r["order"])
+        self.assertLess(order.index("Base.esm"), order.index("Patch.esm"))
+        self.assertLess(order.index("Patch.esm"), order.index("Extra.esm"))
+
     def test_master_plugin_never_moved_below_a_plain_plugin(self):
         # C2 (2a): A.esm loses to B.esp. The game loads A.esm first whatever the list says, so letting A.esm load
         # after B.esp changes nothing in game: the flip is rejected, not recommended with a better score.

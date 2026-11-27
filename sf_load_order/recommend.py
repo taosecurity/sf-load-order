@@ -264,18 +264,29 @@ def _edges(lo, movable):
     edges += [(e.before, e.after) for e in g.edges.values() if e.source == "type"]
     for m in lo.mods or []:
         mine = sorted({x.lower() for x in (m.plugins or []) if x.lower() in low}, key=pos.get)
-        for a, b in zip(mine, mine[1:]):
-            st = g.add(Edge(low[a], low[b], "mod", 2, f"{low[a]} and {low[b]} are both in the mod {m.name}"))
-            if st == "rejected":
-                log.info(SECTION, f"{m.name} lists {low[a]} above {low[b]}, which the game's rules (masters, master "
-                                  "plugins first) put the other way; that pair of its plugin order isn't kept")
-                continue
-            edges.append((low[a], low[b]))
-            why.setdefault(b, ("mod", m.name))
+        neighbours = list(zip(mine, mine[1:]))
+        dropped = [p for p in neighbours if not _mod_edge(g, low, m.name, p[0], p[1], edges, why)]
+        if dropped:
+            # a dropped neighbour pair (a, b) leaves a and the plugin after b unordered: keep every other pair of
+            # the mod's order that the game's rules allow
+            for i in range(len(mine)):
+                for j in range(i + 2, len(mine)):
+                    _mod_edge(g, low, m.name, mine[i], mine[j], edges, why)
     if any(is_master.values()) and not all(is_master.values()):
         for n, m in is_master.items():
             why.setdefault(n.lower(), ("type", m))
     return edges, why
+
+
+def _mod_edge(g, low, mod, a, b, edges, why):
+    """Add the mod-order edge a -> b (lower-case names) to g, edges and why. False when the game's rules reject it."""
+    if g.add(Edge(low[a], low[b], "mod", 2, f"{low[a]} and {low[b]} are both in the mod {mod}")) == "rejected":
+        log.info(SECTION, f"{mod} lists {low[a]} above {low[b]}, which the game's rules (masters, master plugins "
+                          "first) put the other way; that pair of its plugin order isn't kept")
+        return False
+    edges.append((low[a], low[b]))
+    why.setdefault(b, ("mod", mod))
+    return True
 
 
 def _type_only(low, before, after, is_mp):

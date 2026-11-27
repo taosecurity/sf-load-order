@@ -45,6 +45,15 @@ class ProgramLookupTests(unittest.TestCase):
             self.assertEqual(os.path.normcase(candidate.find_7z()), os.path.normcase(os.path.join(self.pathdir, "7z.exe")))
             self.assertIsNotNone(progfind.which("7z"))
 
+    def test_empty_pathext_uses_the_default(self):
+        # 0.3.3 code-review round 4: PATHEXT set but empty found nothing (shutil.which uses the default then)
+        if os.name != "nt":
+            return
+        open(os.path.join(self.pathdir, "7z.exe"), "wb").close()
+        os.environ["PATH"] = self.pathdir
+        os.environ["PATHEXT"] = ""
+        self.assertIsNotNone(progfind.which("7z"))
+
     def test_full_path_given_still_works(self):
         full = os.path.join(self.planted, "sf-mod-check.exe")
         prog, err = sfmodcheck.find(types.SimpleNamespace(sf_mod_check=full))

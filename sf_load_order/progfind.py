@@ -12,7 +12,7 @@ from . import log
 def _exts(name):
     if os.name != "nt":
         return [""]
-    pathext = [e.lower() for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";") if e]
+    pathext = [e.lower() for e in (os.environ.get("PATHEXT") or ".COM;.EXE;.BAT;.CMD").split(";") if e]
     if os.path.splitext(name)[1].lower() in pathext:
         return [""]
     return pathext
