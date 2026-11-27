@@ -38,6 +38,20 @@ def effective_order(load_order):
     return [p for p in load_order.plugins if p.enabled and not p.dropped]
 
 
+def is_master_plugin(p):
+    """Plugin p loads with the master plugins: its master flag when the header was read, else a .esm or .esl name
+    (plugin_header.is_master's rule)."""
+    return p.master if p.master is not None else p.name.lower().endswith((".esm", ".esl"))
+
+
+def game_order(plugins):
+    """plugins (effective_order) as the game really loads them: the master plugins first, then the others, each part
+    in list order; the BlueprintShips files stay at the end (the game appends them after every plugin)."""
+    bp = [p for p in plugins if is_blueprint(p.name)]
+    rest = [p for p in plugins if not is_blueprint(p.name)]
+    return [p for p in rest if is_master_plugin(p)] + [p for p in rest if not is_master_plugin(p)] + bp
+
+
 def _add(ctx, level, text, fix=None, plugins=(), **data):
     ctx.report.add(Finding(level, SECTION, text, fix, list(plugins), data))
 
@@ -47,6 +61,9 @@ def run(ctx):
     if any(p.path and p.kind is None for p in lo.plugins):
         plugin_header.fill(lo)
     order = effective_order(lo)
+    # "loads before its master" is judged where the game loads each plugin: master plugins before the others
+    game = game_order(order)
+    gpos = {p.name.lower(): i for i, p in enumerate(game)}
     pos = {p.name.lower(): i for i, p in enumerate(order)}
     by_name = {p.name.lower(): p for p in lo.plugins}
     counts = {"F": 0, "M": 0, "L": 0, "?": 0}
@@ -64,9 +81,16 @@ def run(ctx):
             ml = m.lower()
             if ml in pos:
                 q = order[pos[ml]]
-                if pos[ml] > i:
+                if gpos[ml] > gpos[p.name.lower()]:
                     if is_blueprint(m):
                         log.info(SECTION, f"{p.name} masters {m}, which the game always loads last; no order fixes it")
+                        continue
+                    if is_master_plugin(p) and not is_master_plugin(q):
+                        # the game puts p with the master plugins, above q, wherever the list has them
+                        _add(ctx, "problem", f"{p.name} loads before its master {q.name}: {p.name} is a master "
+                                             f"plugin and {q.name} isn't, and the game loads master plugins first.",
+                             f"No load order fixes this. Ask the author of {p.name} for a fixed release, or disable "
+                             f"{p.name}.", [p.name, q.name], master=q.name)
                         continue
                     _add(ctx, "problem", f"{p.name} loads before its master {q.name}.",
                          f"Move {p.name} below {q.name} in the load order.", [p.name, q.name], master=q.name)

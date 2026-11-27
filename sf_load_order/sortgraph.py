@@ -23,6 +23,7 @@ import os
 from dataclasses import dataclass, field
 
 from . import log, recommend
+from . import order as order_check
 from .graph import MASTERS_END, Edge, Graph, describe, group_end, group_start, is_virtual
 
 SECTION = "sort"
@@ -147,7 +148,7 @@ class _Builder:
         is_master = {}
         for p in lo.plugins:
             if p.name.lower() in movable_low:
-                is_master[p.name] = p.master if p.master is not None else p.name.lower().endswith((".esm", ".esl"))
+                is_master[p.name] = order_check.is_master_plugin(p)
         self.g.add_type_rule(is_master)
 
     def mods(self):

@@ -10,8 +10,11 @@ How the recommendation is made:
   4. For each pair whose advice is "patch candidate" or "pick a winner", try letting the losing plugin load after the
      winner. Keep the move only if the score of the WHOLE order drops. Climb until a pass finds nothing better, then
      restart the climb from its own result until a restart finds nothing better.
-Constraints: masters stay above the plugins that need them, a mod's plugins keep their order (Mod.plugins), and
-official plugins and BlueprintShips files stay where the game puts them.
+Constraints, the strongest first (as in sortgraph, ranks 1 and 2): masters stay above the plugins that need them,
+master plugins (master flag, or a .esm/.esl name) stay above the plugins that aren't (the game loads them first
+whatever the list says), and a mod's plugins keep their current relative order where that doesn't contradict the
+first two (a mod that lists a patch above the master it needs gets its master order fixed). Official plugins and
+BlueprintShips files stay where the game puts them.
 
 What the data can't tell: conflicts.json lists only the losses of the order it was run
 on. When a pair is flipped, the new loser's loss is known only in part: the "Choice" fields, where both plugins
@@ -36,6 +39,8 @@ import heapq
 import os
 
 from . import archives, inputs, log, records, writers
+from . import order as order_check
+from .graph import Edge, Graph, is_virtual
 from .model import Finding
 
 SECTION = "recommend"
@@ -93,32 +98,40 @@ def plain(fields):
 
 # ---------- ordering ----------
 def topo(current, edges):
-    """Stable topological sort: keep the current order wherever the edges (a before b) allow. None on a cycle."""
-    idx = {n.lower(): i for i, n in enumerate(current)}
+    """Stable topological sort: keep the current order wherever the edges (a before b) allow. None on a cycle.
+    An edge may name a virtual node (graph.is_virtual, such as MASTERS_END): it pops as soon as it is free and
+    isn't in the output. Edges naming a plugin that isn't in current are ignored."""
+    idx = {n.lower(): (0, i) for i, n in enumerate(current)}
     succ = {n: set() for n in idx}
     indeg = dict.fromkeys(idx, 0)
     for a, b in edges:
         a, b = a.lower(), b.lower()
+        for v in (a, b):
+            if v not in succ and is_virtual(v):
+                idx[v], succ[v], indeg[v] = (-1, 0), set(), 0
         if a in succ and b in succ and a != b and b not in succ[a]:
             succ[a].add(b)
             indeg[b] += 1
     heap = [(idx[n], n) for n, d in indeg.items() if d == 0]
     heapq.heapify(heap)
     names = {n.lower(): n for n in current}
-    out = []
+    out, done = [], 0
     while heap:
         _, n = heapq.heappop(heap)
-        out.append(names[n])
+        done += 1
+        if n in names:
+            out.append(names[n])
         for m in succ[n]:
             indeg[m] -= 1
             if indeg[m] == 0:
                 heapq.heappush(heap, (idx[m], m))
-    return out if len(out) == len(current) else None
+    return out if done == len(succ) else None
 
 
 def _ok(order, edges):
-    pos = {n.lower(): i for i, n in enumerate(order)}
-    return all(pos[a.lower()] < pos[b.lower()] for a, b in edges if a.lower() in pos and b.lower() in pos)
+    """True when order meets every edge (virtual nodes included): a stable sort of an order that already meets
+    them gives it back unchanged."""
+    return topo(order, edges) == list(order)
 
 
 def arrange(base, edges, picks):
@@ -203,24 +216,44 @@ def _fixed(lo, name):
 
 
 def _edges(lo, movable):
-    """Constraint edges among the movable plugins: (master, plugin) and (earlier, later) within each mod."""
+    """Constraint edges among the movable plugins, ranked as sortgraph ranks them: (master, plugin) edges (forced),
+    the type rule (every master plugin before MASTERS_END, MASTERS_END before every plugin that isn't one; a type
+    edge that contradicts a master edge is left out), then (earlier, later) within each mod in the current order,
+    each left out when it contradicts the edges above (a mod that lists Patch.esm above its master Base.esm).
+    Returns (edges, why): why[plugin lower] = ("master", [movable masters]), ("mod", mod name) or ("type", bool
+    is master), the first that applies."""
     low = {n.lower(): n for n in movable}
     pos = {n.lower(): i for i, n in enumerate(movable)}
-    edges, why = [], {}
+    g = Graph(movable)
+    edges, why, masters_of, is_master = [], {}, {}, {}
     for p in lo.plugins:
         if p.name.lower() not in low:
             continue
+        is_master[low[p.name.lower()]] = order_check.is_master_plugin(p)
         for m in p.masters or []:
             if m.lower() in low:
+                # every master edge stays in the list, even one that closes a master loop (topo then gives None)
                 edges.append((low[m.lower()], p.name))
+                masters_of.setdefault(p.name, []).append(low[m.lower()])
                 w = why.setdefault(p.name.lower(), ("master", []))
                 if w[0] == "master":
                     w[1].append(low[m.lower()])  # every movable master; the move reason names one that moved
+    g.add_masters(masters_of)
+    g.add_type_rule(is_master)
+    edges += [(e.before, e.after) for e in g.edges.values() if e.source == "type"]
     for m in lo.mods or []:
         mine = sorted({x.lower() for x in (m.plugins or []) if x.lower() in low}, key=pos.get)
         for a, b in zip(mine, mine[1:]):
+            st = g.add(Edge(low[a], low[b], "mod", 2, f"{low[a]} and {low[b]} are both in the mod {m.name}"))
+            if st == "rejected":
+                log.info(SECTION, f"{m.name} lists {low[a]} above {low[b]}, which the game's rules (masters, master "
+                                  "plugins first) put the other way; that pair of its plugin order isn't kept")
+                continue
             edges.append((low[a], low[b]))
             why.setdefault(b, ("mod", m.name))
+    if any(is_master.values()) and not all(is_master.values()):
+        for n, m in is_master.items():
+            why.setdefault(n.lower(), ("type", m))
     return edges, why
 
 
@@ -232,7 +265,9 @@ def _picks(ctx, movable, edges):
         if a.lower() not in low or b.lower() not in low:
             why = "one of them isn't enabled (or is an official or BlueprintShips file the game places itself)"
         elif topo(movable, edges + [(b, a)]) is None:
-            why = "it would put a plugin above its own master (or break a mod's own plugin order)"
+            why = ("it would put a plugin above its own master, a plugin that isn't a master plugin above a master "
+                   "plugin (.esm, .esl or the master flag: the game loads those first), or break a mod's own plugin "
+                   "order")
         else:
             edges.append((b, a))
             applied.append(p)
@@ -265,7 +300,9 @@ def _read_loot(ctx, path):
     return [n for n, on in listed if on], None
 
 
-BLOCKED_WHY = "it would put a plugin above its own master, break a mod's own plugin order or undo one of your picks"
+BLOCKED_WHY = ("it would put a plugin above its own master, put a master plugin below a plugin that isn't one (the "
+               "game loads master plugins first, whatever the list says), break a mod's own plugin order or undo one "
+               "of your picks")
 
 
 def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BLOCKED_WHY, arranger=None):
@@ -424,8 +461,11 @@ def run(ctx):
             hit = next((m for m in ms if m.lower() in mv_low), None)
             reason = (f"it needs {hit} as a master, which moved" if hit else
                       f"it must load after its master{'s' if len(ms) > 1 else ''} {', '.join(ms)}")
-        elif low in edge_why:
+        elif low in edge_why and edge_why[low][0] == "mod":
             reason = f"it keeps its mod's own plugin order ({edge_why[low][1]})"
+        elif low in edge_why and edge_why[low][0] == "type":
+            reason = ("the game loads master plugins (.esm, .esl or the master flag) before the others whatever the "
+                      "list says, so this only lists it where the game loads it")
         else:
             reason = "its master order needed fixing" if not rated else "it moves along with the moves above"
         moves.append({"plugin": n, "after": after, "reason": reason})

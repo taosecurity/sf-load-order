@@ -140,6 +140,48 @@ class OrderTests(unittest.TestCase):
         # a mod mastering a BlueprintShips file isn't told to move: the game loads those last whatever the order
         self.assertEqual(self.findings(ctx), [])
 
+    def plain(self, ctx, *names):
+        """Read the headers, then clear the master flag of names (the fixture writes it on every plugin)."""
+        from sf_load_order import plugin_header
+        plugin_header.fill(ctx.load_order)
+        for p in ctx.load_order.plugins:
+            if p.name in names:
+                p.master = False
+
+    def test_plain_plugin_listed_above_its_master_plugin_is_fine(self):
+        # 0.3.3 (Round 3 C2, 2b): the game loads master plugins first, so X.esp listed above its master Y.esm still
+        # loads after it: no "loads before its master" problem
+        ctx = make_ctx(self.tmp, self.base() + [self.p("X.esp", masters=["Starfield.esm", "Y.esm"]),
+                                                self.p("Y.esm", masters=["Starfield.esm"])])
+        self.plain(ctx, "X.esp")
+        order.run(ctx)
+        self.assertEqual(self.findings(ctx), [])
+        self.assertEqual(ctx.results["order"]["effective"], ["Starfield.esm", "X.esp", "Y.esm"])  # the list's order
+
+    def test_plain_plugins_are_still_checked_among_themselves(self):
+        ctx = make_ctx(self.tmp, self.base() + [self.p("X.esp", masters=["Starfield.esm", "Y.esp"]),
+                                                self.p("Y.esp", masters=["Starfield.esm"])])
+        self.plain(ctx, "X.esp", "Y.esp")
+        order.run(ctx)
+        texts = [f.text for f in self.findings(ctx, "problem")]
+        self.assertEqual(texts, ["X.esp loads before its master Y.esp."])
+
+    def test_master_plugin_needing_a_plain_plugin_says_no_order_fixes_it(self):
+        ctx = make_ctx(self.tmp, self.base() + [self.p("Y.esp", masters=["Starfield.esm"]),
+                                                self.p("X.esm", masters=["Starfield.esm", "Y.esp"])])
+        self.plain(ctx, "Y.esp")
+        order.run(ctx)
+        fs = self.findings(ctx, "problem")
+        self.assertEqual(len(fs), 1)
+        self.assertIn("the game loads master plugins first", fs[0].text)
+        self.assertIn("No load order fixes this", fs[0].fix)
+
+    def test_game_order_keeps_blueprints_last(self):
+        ps = [Plugin("Starfield.esm", True, official=True), Plugin("B.esp", True), Plugin("A.esm", True),
+              Plugin("BlueprintShips-Starfield.esm", True, official=True)]
+        self.assertEqual([p.name for p in order.game_order(ps)],
+                         ["Starfield.esm", "A.esm", "B.esp", "BlueprintShips-Starfield.esm"])
+
     def test_effective_order_is_the_load_order(self):
         """No second ordering rule here: the plugins that load, as lo.plugins has them."""
         a, b = self.p("A.esm"), self.p("B.esm", enabled=False)

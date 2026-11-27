@@ -249,6 +249,88 @@ class Constraints(Base):
                                       "BlueprintShips-Starfield.esm"])
 
 
+class GameRulesWin(Base):
+    """0.3.3 (Round 3 C1, C2): the game's rules (masters, master plugins first) rank above a mod's own plugin order,
+    as in sortgraph."""
+
+    def pick(self, plugin, after):
+        return {"entry": 1, "plugin": plugin, "after": after, "why": None, "date": None, "active": True}
+
+    def test_mod_listing_a_patch_above_its_master_gets_fixed(self):
+        # C1: one mod ships Patch.esm and Base.esm, Patch masters Base and is listed first. Before 0.3.3 the mod's
+        # own order contradicted the master edge (a "master loop"): no change and every pick refused.
+        lo = make_lo(["Patch.esm", "Base.esm", "Other.esm", "Z.esm"], masters={"Patch.esm": ["Base.esm"]},
+                     mods={"ModA": ["Patch.esm", "Base.esm"], "ModO": ["Other.esm"], "ModZ": ["Z.esm"]})
+        ctx, st, r = self.run_rec(lo, picks=[self.pick("Other.esm", "Z.esm")])
+        self.assertEqual(mods_of(r["order"]), ["Base.esm", "Patch.esm", "Z.esm", "Other.esm"])
+        self.assertFalse(r["same_as_current"])
+        self.assertEqual(r["picks"]["not_applied"], [])
+        self.assertEqual(len(r["picks"]["applied"]), 1)
+
+    def test_mod_order_still_kept_where_the_masters_allow(self):
+        # the mod's own order still holds between plugins the masters don't decide
+        lo = make_lo(["A1.esm", "P.esm", "A2.esm", "B.esm"], masters={"P.esm": ["A2.esm"]},
+                     mods={"ModA": ["A1.esm", "P.esm", "A2.esm"], "ModB": ["B.esm"]})
+        lost_ = [entry("1", "A1.esm", "B.esm", [("Keywords", "Forwardable")])]
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A1.esm", "B.esm", [0], lost_)]))
+        order = mods_of(r["order"])
+        self.assertLess(order.index("A2.esm"), order.index("P.esm"))   # master wins over the mod's order
+        self.assertLess(order.index("A1.esm"), order.index("P.esm"))   # the mod's order kept where it can be
+        self.assertLess(order.index("B.esm"), order.index("A1.esm"))   # and the flip still happens
+
+    def test_master_plugin_never_moved_below_a_plain_plugin(self):
+        # C2 (2a): A.esm loses to B.esp. The game loads A.esm first whatever the list says, so letting A.esm load
+        # after B.esp changes nothing in game: the flip is rejected, not recommended with a better score.
+        lo = make_lo(["A.esm", "B.esp"])
+        lost_ = [entry("1", "A.esm", "B.esp", [("Keywords", "Forwardable")])]
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A.esm", "B.esp", [0], lost_)]))
+        self.assertEqual(mods_of(r["order"]), ["A.esm", "B.esp"])
+        self.assertTrue(r["same_as_current"])
+        self.assertEqual((r["score_current"], r["score_recommended"]), (3, 3))
+        self.assertEqual(len(r["rejected"]), 1)
+        self.assertIn("master plugin", r["rejected"][0]["why"])
+
+    def test_plain_plugin_listed_above_a_master_plugin_is_listed_where_the_game_loads_it(self):
+        lo = make_lo(["B.esp", "A.esm"])
+        ctx, st, r = self.run_rec(lo)
+        self.assertEqual(mods_of(r["order"]), ["A.esm", "B.esp"])
+        self.assertEqual(len(r["moves"]), 1)
+        self.assertIn("the game loads master plugins", r["moves"][0]["reason"])
+
+    def test_master_flag_counts_not_just_the_extension(self):
+        # a .esp with the master flag loads with the master plugins; a .esm never loads below a plain .esp
+        lo = make_lo(["C.esp", "F.esp", "A.esm"])
+        for p in lo.plugins:
+            if p.name == "F.esp":
+                p.master = True
+        ctx, st, r = self.run_rec(lo)
+        self.assertEqual(mods_of(r["order"]), ["F.esp", "A.esm", "C.esp"])
+
+    def test_pick_putting_a_master_plugin_below_a_plain_one_is_refused(self):
+        lo = make_lo(["A.esm", "B.esp"])
+        ctx, st, r = self.run_rec(lo, picks=[self.pick("A.esm", "B.esp")])
+        self.assertTrue(r["same_as_current"])
+        self.assertEqual(len(r["picks"]["not_applied"]), 1)
+        self.assertIn("master plugin", r["picks"]["not_applied"][0]["why"])
+
+    def test_master_loop_still_leaves_the_order_alone(self):
+        lo = make_lo(["A.esm", "B.esm", "C.esp"], masters={"A.esm": ["B.esm"], "B.esm": ["A.esm"]})
+        ctx, st, r = self.run_rec(lo)
+        self.assertTrue(r["same_as_current"])
+
+
+class Topo(unittest.TestCase):
+    def test_virtual_node_orders_its_two_sides(self):
+        edges = [("A.esm", "<masters-end>"), ("<masters-end>", "B.esp"), ("C.esm", "<masters-end>")]
+        self.assertEqual(recommend.topo(["B.esp", "A.esm", "C.esm"], edges), ["A.esm", "C.esm", "B.esp"])
+        self.assertTrue(recommend._ok(["A.esm", "C.esm", "B.esp"], edges))
+        self.assertFalse(recommend._ok(["A.esm", "B.esp", "C.esm"], edges))
+
+    def test_cycle_through_a_virtual_node_is_none(self):
+        edges = [("A.esm", "<masters-end>"), ("<masters-end>", "B.esp"), ("B.esp", "A.esm")]
+        self.assertIsNone(recommend.topo(["A.esm", "B.esp"], edges))
+
+
 class Picks(Base):
     def pick(self, plugin, after, why=None):
         return {"entry": 1, "plugin": plugin, "after": after, "why": why, "date": None, "active": True}
