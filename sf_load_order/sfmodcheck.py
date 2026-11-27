@@ -200,7 +200,8 @@ def _quote(a):
 def wrapper_command_line(cmd, comspec=None):
     """The cmd.exe command line for a wrapper with every part quoted: cmd /d /s /c ""<wrapper>" "<arg>" ...".
     Only for arguments that passed wrapper_refusal."""
-    comspec = comspec or os.environ.get("ComSpec") or "cmd.exe"
+    # never a bare "cmd.exe": Windows would also look for it in the current folder
+    comspec = comspec or os.environ.get("ComSpec") or progfind.system_tool("cmd.exe")
     return f'{_quote(comspec)} /d /s /c "' + " ".join(_quote(a) for a in cmd) + '"'
 
 

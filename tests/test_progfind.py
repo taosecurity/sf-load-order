@@ -53,6 +53,12 @@ class ProgramLookupTests(unittest.TestCase):
     def test_taskkill_is_the_system_one(self):
         self.assertTrue(progfind.system_tool("taskkill.exe").lower().endswith(os.path.join("system32", "taskkill.exe")))
 
+    def test_wrapper_without_comspec_uses_the_system_cmd(self):
+        os.environ.pop("ComSpec", None)
+        line = sfmodcheck.wrapper_command_line(["x.cmd", "a"])
+        self.assertTrue(line.lower().startswith('"' + os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                                                                     "System32", "cmd.exe").lower() + '"'), line)
+
 
 if __name__ == "__main__":
     unittest.main()
