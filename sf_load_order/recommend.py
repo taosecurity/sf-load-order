@@ -191,15 +191,17 @@ def _entry_weight(x):
     return sum(f.get("weight") or 0 for f in x.get("fields") or [])
 
 
-def scorer(rec):
+def scorer(rec, rules=None):
     """score(order) -> (score, flipped pair indexes). Pairs between two mods count their gain_if_flipped (what the
     loser loses now) while the loser loads first, and known_cost_if_flipped once it loads after the winner. Official
-    changes a mod undoes (official_undone) count always: no order of mods brings them back."""
+    changes a mod undoes (official_undone) count always: no order of mods brings them back. rules (order.load_rules):
+    "loads first" is judged in the order the game loads the list (master plugins first), not the list's own order."""
     pairs = rec.get("pairs") or []
     fixed = sum(_entry_weight(rec["lost"][i]) for i in rec.get("official_undone") or [])
 
     def score(order):
-        pos = {n.lower(): i for i, n in enumerate(order)}
+        pos = order_check.load_keys(order, rules) if rules is not None else {n.lower(): i for i, n in
+                                                                             enumerate(order)}
         total, flipped = fixed, []
         for k, p in enumerate(pairs):
             lw, ll = p["winner"].lower(), p["loser"].lower()
@@ -227,6 +229,11 @@ def _fixed(lo, name):
         p.official for p in lo.plugins if p.name.lower() == name.lower())
 
 
+def game_rules(lo):
+    """order.load_rules for the plugins that load: what decides the game's order besides the list."""
+    return order_check.load_rules(order_check.effective_order(lo))
+
+
 def _edges(lo, movable):
     """Constraint edges among the movable plugins, ranked as sortgraph ranks them: (master, plugin) edges (forced),
     the type rule (every master plugin before MASTERS_END, MASTERS_END before every plugin that isn't one; a type
@@ -236,12 +243,14 @@ def _edges(lo, movable):
     is master), the first that applies."""
     low = {n.lower(): n for n in movable}
     pos = {n.lower(): i for i, n in enumerate(movable)}
+    block = order_check.master_block(game_rules(lo))
     g = Graph(movable)
     edges, why, masters_of, is_master = [], {}, {}, {}
     for p in lo.plugins:
         if p.name.lower() not in low:
             continue
-        is_master[low[p.name.lower()]] = order_check.is_master_plugin(p)
+        # a plain plugin a master plugin needs loads with the master plugins (order.load_rules), so it counts as one
+        is_master[low[p.name.lower()]] = p.name.lower() in block
         for m in p.masters or []:
             if m.lower() in low:
                 # every master edge stays in the list, even one that closes a master loop (topo then gives None)
@@ -271,11 +280,13 @@ def _edges(lo, movable):
 
 def _type_only(low, before, after, is_mp):
     """True when the move of plugin `low` from order `before` to `after` crosses only plugins of the other type
-    (master plugin or not): the game already loads it there, so the move only lists it where it loads."""
+    (master plugin or not), in the game's direction (a master plugin moving up past plain ones, a plain one moving
+    down past master plugins): the game already loads it there, so the move only lists it where it loads."""
     pb = {n.lower(): i for i, n in enumerate(before)}
     pa = {n.lower(): i for i, n in enumerate(after)}
     crossed = [x for x in pb if x != low and x in pa and (pb[x] < pb[low]) != (pa[x] < pa[low])]
-    return bool(crossed) and all(is_mp.get(x) != is_mp.get(low) for x in crossed)
+    up = bool(is_mp.get(low))  # a master plugin may only move up past plain ones: the crossed were above it
+    return bool(crossed) and all(is_mp.get(x) != is_mp.get(low) and (pb[x] < pb[low]) == up for x in crossed)
 
 
 def _picks(ctx, movable, edges):
@@ -326,7 +337,7 @@ BLOCKED_WHY = ("it would put a plugin above its own master, put a master plugin 
                "of your picks")
 
 
-def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BLOCKED_WHY, arranger=None):
+def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BLOCKED_WHY, arranger=None, rules=None):
     """Arrange the movable plugins under the hard edges and picks, then run the score climb over the record-conflict
     pairs (the module docstring, steps 2 to 4, and the near-tie rule). The main run and `sort` share it.
 
@@ -336,6 +347,7 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
     skip(k, pair) -> True leaves a pair out of the climb (sort: a pair a hard edge already decides).
     blocked_why: the reason given for a pair whose move breaks a hard edge.
     arranger(base, edges, picks) -> order or None replaces arrange() (sort passes its graph's order).
+    rules: order.load_rules (game_rules), so each order is scored as the game loads it.
 
     Returns {"order": movable order, "score_current", "score_recommended" (None unrated), "flipped": [pair index],
     "flipped0": {pair index flipped in the current order}, "rejected": [{"loser", "winner", "why"}],
@@ -352,7 +364,7 @@ def plan(current, movable, fixed, edges, applied, rec, skip=None, blocked_why=BL
     estimate = False
     if rec is not None:
         pairs = rec.get("pairs") or []
-        score = scorer(rec)
+        score = scorer(rec, rules)
         score_cur, f0 = score(_full(current, movable, fixed))
         flipped0 = set(f0)
         best = score(_full(current, order, fixed))[0]
@@ -441,7 +453,8 @@ def run(ctx):
     log.info(SECTION, f"{len(movable)} movable plugins, {len(edges)} constraint edges, {len(applied)} pick(s) applied, "
                       f"records data {'yes' if rated else 'no'}")
     mo2_officials_caution(ctx, lo, _add)
-    pl = plan(current, movable, fixed, edges, applied, rec if rated else None)
+    rules = game_rules(lo)
+    pl = plan(current, movable, fixed, edges, applied, rec if rated else None, rules=rules)
     order, score_cur, score_rec = pl["order"], pl["score_current"], pl["score_recommended"]
     flipped, flipped0, rejected, estimate = pl["flipped"], pl["flipped0"], pl["rejected"], pl["estimate"]
     full = _full(current, order, fixed)
@@ -462,7 +475,7 @@ def run(ctx):
     moves = []
     mv = moved(order, movable)
     mv_low = {x.lower() for x in mv}
-    is_mp = {p.name.lower(): order_check.is_master_plugin(p) for p in lo.plugins}
+    is_mp = dict.fromkeys(order_check.master_block(rules), True)
     for n in mv:
         i = [x.lower() for x in full].index(n.lower())
         after = full[i - 1] if i else None
@@ -578,7 +591,7 @@ def run(ctx):
                                  and not _fixed(lo, n)], "score": None}
             if rated:  # LOOT's order of the plugins it names, the rest after them, fixed files in their slots
                 loot_full = _full(current, loot_c + [n for n in ours if n.lower() not in lset], fixed)
-                vs_loot["score"] = scorer(rec)(loot_full)[0]
+                vs_loot["score"] = scorer(rec, rules)(loot_full)[0]
             log.info(SECTION, f"vs LOOT {lpath}: {len(mvl)} plugin(s) placed differently")
 
     # the summary finding

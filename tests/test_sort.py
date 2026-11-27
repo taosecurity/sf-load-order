@@ -314,6 +314,20 @@ class TypeRuleAndLoop(Base):
         self.assertIn("isn't a master plugin", m["reason"])
 
 
+class HoistedPlainMaster(Base):
+    """0.3.3 code-review round 2: ExampleA.esm needs the plain ExampleE.esp, which the game loads just before
+    ExampleA.esm (libloadorder's hoist_masters): no broken game rule, and ExampleE.esp stays above ExampleA.esm."""
+    PLUGINS = {"ExampleA.esm": {"masters": ["Starfield.esm", "ExampleE.esp"]}, "ExampleE.esp": {},
+               "ExampleB.esm": {}}
+
+    def test_no_problem_and_the_plain_master_stays_with_the_masters(self):
+        no_master_flag(os.path.join(self.data, "ExampleE.esp"))
+        _code, _out, j = self.sort()
+        self.assertEqual([f["text"] for f in j["findings"] if f["level"] == "problem"], [])
+        mods = self.mods()
+        self.assertLess(mods.index("*ExampleE.esp"), mods.index("*ExampleA.esm"))
+
+
 class Fixes031(Base):
     """0.3.1: the review rounds' sort nits (each test fails on 0.3.0)."""
     PLUGINS = {"ExampleE.esp": {}, "ExampleA.esm": {}, "ExampleB.esm": {}, "ExampleC.esm": {}}

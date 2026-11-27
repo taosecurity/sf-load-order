@@ -197,9 +197,10 @@ def soft(ctx, b, rec=None):
             return True
         return False
     arr = arranger(g)
+    rules = recommend.game_rules(lo)
     pl = recommend.plan(b.current, b.movable, b.fixed, [], applied, rec if rated else None, skip=skip,
                         blocked_why="it would break a rule the sort must keep (a master, a mod's own plugin order, "
-                                    "a pick or a rules-file rule)", arranger=arr)
+                                    "a pick or a rules-file rule)", arranger=arr, rules=rules)
     order = pl["order"]
     pairs = (rec or {}).get("pairs") or []
     # only the climb's own pairs are record-conflict choices: a pair a master, LOOT or rules edge flipped (or one
@@ -209,7 +210,7 @@ def soft(ctx, b, rec=None):
     chosen = {k for k in pl["flipped"] if k not in pl["flipped0"] and k not in pl["flipped_start"] and k in cand}
     newly = [k for k in pl["flipped"] if k in chosen]
     soft_edges = [(pairs[k]["winner"], pairs[k]["loser"]) for k in newly]
-    score = recommend.scorer(rec) if rated else None
+    score = recommend.scorer(rec, rules) if rated else None
     best = pl["score_recommended"]
 
     # the Vortex tie-break: keep a rule's plugin order when the record score stays the same

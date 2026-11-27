@@ -575,6 +575,8 @@ rule won and why; nothing is silently dropped.
 
 1. **The game's own rules**, read from the plugins on every run: the official plugins load first in their own order,
    BlueprintShips files last, a plugin loads after each of its masters, and master plugins load before the others.
+   A plain plugin that a master plugin needs loads with the master plugins, just before that master plugin (the
+   rule LOOT and Vortex use).
    A plugin is a master when it has the master flag or its name ends in `.esm` or `.esl` (source: esplugin 6.1.4,
    the library LOOT uses); the light and medium flags never change a plugin's place.
 2. **Your picks** (`--picks`), **your rules file**, **the patches' targets** (a patch loads after the plugins it

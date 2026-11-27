@@ -323,6 +323,37 @@ class GameRulesWin(Base):
         self.assertEqual(len(r["picks"]["not_applied"]), 1)
         self.assertIn("master plugin", r["picks"]["not_applied"][0]["why"])
 
+    def test_current_order_is_scored_as_the_game_loads_it(self):
+        # 0.3.3 code-review round 2: B.esp is listed above A.esm, but the game loads A.esm first, so A.esm loses to
+        # B.esp now (score 3), and listing A.esm first changes nothing (3); before, the current order scored 0
+        lo = make_lo(["B.esp", "A.esm"])
+        lost_ = [entry("1", "A.esm", "B.esp", [("Keywords", "Forwardable")])]
+        ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("A.esm", "B.esp", [0], lost_)]))
+        self.assertEqual(mods_of(r["order"]), ["A.esm", "B.esp"])
+        self.assertEqual((r["score_current"], r["score_recommended"]), (3, 3))
+
+    def test_plain_master_of_a_master_plugin_counts_as_a_master_plugin(self):
+        # 0.3.3 code-review round 2: X.esm needs the plain Y.esp, which the game loads just before X.esm. Y.esp keeps
+        # its place among the master plugins whatever the list order, and Z.esm can't be moved below it for a
+        # conflict (the game would still load Z.esm first: a flip that changes nothing)
+        for names in (["X.esm", "Y.esp", "Z.esm"], ["Y.esp", "Z.esm", "X.esm"]):
+            lo = make_lo(names, masters={"X.esm": ["Y.esp"]})
+            lost_ = [entry("1", "Z.esm", "Y.esp", [("Keywords", "Forwardable")])]
+            ctx, st, r = self.run_rec(lo, rec_data(lost_, [pair("Z.esm", "Y.esp", [0], lost_)]))
+            order = mods_of(r["order"])
+            self.assertLess(order.index("Y.esp"), order.index("X.esm"), names)
+            self.assertEqual(r["flipped"], [], names)
+            for m in r["moves"]:
+                self.assertNotIn("the game loads master plugins", m["reason"], (names, m))
+
+    def test_type_only_reason_needs_the_games_direction(self):
+        is_mp = {"x.esm": True}
+        # a plain plugin moving up past a master plugin isn't where the game loads it
+        self.assertFalse(recommend._type_only("y.esp", ["X.esm", "Y.esp"], ["Y.esp", "X.esm"], is_mp))
+        self.assertTrue(recommend._type_only("y.esp", ["Y.esp", "X.esm"], ["X.esm", "Y.esp"], is_mp))
+        self.assertTrue(recommend._type_only("x.esm", ["Y.esp", "X.esm"], ["X.esm", "Y.esp"], is_mp))
+        self.assertFalse(recommend._type_only("x.esm", ["X.esm", "Y.esp"], ["Y.esp", "X.esm"], is_mp))
+
     def test_master_loop_still_leaves_the_order_alone(self):
         lo = make_lo(["A.esm", "B.esm", "C.esp"], masters={"A.esm": ["B.esm"], "B.esm": ["A.esm"]})
         ctx, st, r = self.run_rec(lo)

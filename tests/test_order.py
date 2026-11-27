@@ -166,15 +166,25 @@ class OrderTests(unittest.TestCase):
         texts = [f.text for f in self.findings(ctx, "problem")]
         self.assertEqual(texts, ["X.esp loads before its master Y.esp."])
 
-    def test_master_plugin_needing_a_plain_plugin_says_no_order_fixes_it(self):
-        ctx = make_ctx(self.tmp, self.base() + [self.p("Y.esp", masters=["Starfield.esm"]),
-                                                self.p("X.esm", masters=["Starfield.esm", "Y.esp"])])
-        self.plain(ctx, "Y.esp")
-        order.run(ctx)
-        fs = self.findings(ctx, "problem")
-        self.assertEqual(len(fs), 1)
-        self.assertIn("the game loads master plugins first", fs[0].text)
-        self.assertIn("No load order fixes this", fs[0].fix)
+    def test_master_plugin_needing_a_plain_plugin_is_fine_in_either_order(self):
+        # 0.3.3 code-review round 2: the game loads a plain plugin that a master plugin needs just before that master
+        # plugin (libloadorder's hoist_masters), so neither list order is a problem
+        for first, second in (("Y.esp", "X.esm"), ("X.esm", "Y.esp")):
+            ps = {"Y.esp": self.p("Y.esp", masters=["Starfield.esm"]),
+                  "X.esm": self.p("X.esm", masters=["Starfield.esm", "Y.esp"])}
+            ctx = make_ctx(self.tmp, self.base() + [ps[first], ps[second]])
+            self.plain(ctx, "Y.esp")
+            order.run(ctx)
+            self.assertEqual(self.findings(ctx, "problem"), [], first)
+
+    def test_game_order_hoists_a_plain_master_of_a_master_plugin(self):
+        ps = [Plugin("Starfield.esm", True, official=True), Plugin("X.esm", True, masters=["Y.esp"]),
+              Plugin("Z.esm", True), Plugin("P.esp", True), Plugin("Y.esp", True)]
+        self.assertEqual([p.name for p in order.game_order(ps)],
+                         ["Starfield.esm", "Y.esp", "X.esm", "Z.esm", "P.esp"])
+        # its own plain master isn't hoisted with it (one level, as libloadorder does)
+        ps = [Plugin("X.esm", True, masters=["Y.esp"]), Plugin("W.esp", True), Plugin("Y.esp", True, masters=["W.esp"])]
+        self.assertEqual([p.name for p in order.game_order(ps)], ["Y.esp", "X.esm", "W.esp"])
 
     def test_game_order_keeps_blueprints_last(self):
         ps = [Plugin("Starfield.esm", True, official=True), Plugin("B.esp", True), Plugin("A.esm", True),
