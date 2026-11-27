@@ -42,7 +42,7 @@ before each release.
    python -m pip install lz4
    ```
 
-   For sf-mod-check, unzip its release and put its folder on PATH, or pass `--sf-mod-check` (see 5).
+   For sf-mod-check, unzip its release and put its folder on PATH, or pass `--sf-mod-check` (see 5). Programs are never searched for in the current folder (0.3.3).
 
 ## 4. Prove the install works
 
@@ -55,7 +55,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -135,7 +135,7 @@ there changes what "changed since the last run" reports.
   `sf-mod-check check` on the build's plugins (a plugin whose master is another part of the build is skipped with a
   caution). A note names the installed mods left out as the build's older copy. With a plain Plugins.txt and that
   older copy installed, Data's loose files aren't compared, and one caution (kind `data-unsorted`) says so.
-  A `.7z` or `.rar` is read through 7-Zip's `7z.exe` (on PATH or in Program Files\7-Zip), and each `candidate.zips[]` entry has `format` (`zip`, `7z` or `rar`). Exit 2 for a missing file, a `.7z` or `.rar` with no 7-Zip, an unsafe member path, or a file that isn't an archive. In report.json the key
+  A `.7z` or `.rar` is read through 7-Zip's `7z.exe` (on PATH, never the current folder, or in Program Files\7-Zip), and each `candidate.zips[]` entry has `format` (`zip`, `7z` or `rar`). Exit 2 for a missing file, a `.7z` or `.rar` with no 7-Zip, an unsafe member path, or a file that isn't an archive. In report.json the key
   `candidate` has the counts; the findings are in `findings` with section `candidate`.
 - The options `candidate` takes: `.\sf-load-order.cmd candidate --help`
 - Record conflicts with an sf-mod-check that isn't on PATH:

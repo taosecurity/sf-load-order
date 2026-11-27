@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.3.3 (unreleased)
+
+### What's new
+
+A fix-up release for 0.3.2. No option was removed or renamed, the exit codes are the same, and report.json has no new keys.
+
+- **A mod's own plugin order no longer overrides the game's master rules.** When a mod lists a patch above its master, the recommended order now puts the master first and still applies your picks. Before, that mod got no recommendation and its picks were judged against an order the game never uses.
+- **The recommended order never puts a master plugin (an .esm, .esl or a plugin with the master flag) below a plain one.** The game loads master plugins first whatever the list says, so such a move never changed anything. A move made only for that rule says the game loads the plugin there anyway.
+- **The order check judges the order the game really loads.** A plain plugin listed above its master plugin is no longer reported as "loads before its master". A master plugin that needs a plain plugin gets "No load order fixes this".
+- **Programs are found only on PATH, or at a path you give.** `sf-mod-check`, `7z` and `taskkill` were looked up in a way that could find a file of that name in the folder you started the tool from. Now the tool walks PATH itself, skips empty, `.` and relative entries, and never looks in the current folder. A path given with `--sf-mod-check` or a full path still works as before. `taskkill` runs from `%SystemRoot%\System32`. With `--verbose` the log says which program path was used.
+
+### Example
+
+The same made-up `sort` run as 0.3.2's; only the version in the byline differs.
+
+    > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
+    sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+
+The "Sorted order" part of the report:
+
+    Sorting moves 2 plugins; the order wasn't rated (no record-conflict data).
+    Moves (2):
+       1. Load ExampleArmor.esm after ExampleLights.esm. Why: Your rule (my-rules.json, entry 1) says
+          ExampleArmorRetexture.esm loads after ExampleArmor.esm.
+       2. Load ExampleQuests.esm after ExampleArmorRetexture.esm. Why: ExampleQuestsPatch.esm has ExampleQuests.esm as a
+          master.
+    Rules not met (1):
+       1. Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but
+          ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+
+### Second example: the order check
+
+A made-up Data folder holds `ExampleBase.esm` (a master plugin) and `ExamplePatch.esp` (a plain plugin that has `ExampleBase.esm` as a master). Plugins.txt lists the patch first:
+
+    ExamplePatch.esp
+    ExampleBase.esm
+
+Run on it:
+
+    > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
+
+0.3.2 ended with `RESULT: 1 problem(s), 0 caution(s), 1 note(s)` and the top finding
+
+    1. [Problem] ExamplePatch.esp loads before its master ExampleBase.esm.
+       Fix: Move ExamplePatch.esp below ExampleBase.esm in the load order.
+
+0.3.3 ends with `RESULT: 0 problem(s), 0 caution(s), 1 note(s)`: the game loads the master plugin first anyway, so the order is fine.
+
+### How it works
+
+The recommend step ranks its ordering rules the way `sort` does: master edges first, then master plugins before plain ones, then each mod's own plugin order (an edge that contradicts those is dropped). The order check reads the list in the game's real order. Program lookup is one small PATH walk shared by the sf-mod-check and 7-Zip lookups.
+
 ## 0.3.2 (2026-11-25)
 
 ### What's new

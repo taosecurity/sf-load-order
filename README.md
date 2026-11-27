@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -85,7 +85,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -111,12 +111,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.3.2.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.2.zip SHA256`.
+2. Download `sf-load-order-0.3.3.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.3.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.2 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.3 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -503,7 +503,7 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -544,7 +544,7 @@ ITMs and errors are cautions. It reads each plugin's masters from the Data folde
 another part of the same build is skipped with a caution (install the build and run `sf-mod-check check` on it).
 Output it can't read is a caution, never "nothing to clean".
 
-A `.7z` or `.rar` is read through 7-Zip's `7z.exe` when it is installed (on PATH or in Program Files\7-Zip); the
+A `.7z` or `.rar` is read through 7-Zip's `7z.exe` when it is installed (on PATH, never the current folder, or in Program Files\7-Zip); the
 files are unpacked into `<out>\work\candidate\unpacked` and `report.json` names the format of each zip (`zip`,
 `7z` or `rar`). A member path that is absolute or holds `..` stops the run. Without 7-Zip, or with a missing file or
 a file that isn't an archive, the run stops with exit 2 and the message names the fix.
@@ -597,7 +597,7 @@ after `ExampleArmor.esm`. Its second rule, that `ExampleQuests.esm` loads after 
 
 ```
 > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
-sf-load-order 0.3.2 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -735,7 +735,7 @@ These are the options `.\sf-load-order.cmd --help` lists, and the ones marked `s
 | `--vortex-staging FOLDER` | Vortex's mod staging folder, for loose-file checks (default: `%APPDATA%\Vortex\starfield\mods`). |
 | `--data FOLDER` | The game's Data folder (default: Steam's, then Game Pass's XboxGames folder on each drive). |
 | `--depth {light,medium,heavy}` | How much to check (see [Depth](#depth)). |
-| `--sf-mod-check EXE` | The sf-mod-check program (default: `sf-mod-check` on PATH, then `sfmodcheck`, its old name). |
+| `--sf-mod-check EXE` | The sf-mod-check program (default: `sf-mod-check` on PATH, then `sfmodcheck`, its old name; the current folder is never searched, 0.3.3). |
 | `--conflicts FILE` | Reuse a conflicts.json from an earlier `sf-mod-check conflict` run (nothing is run). |
 | `--max-memory GB` | Passed to `sf-mod-check conflict`. |
 | `--loot-masterlist FILE` | LOOT's Starfield masterlist.yaml (default: `%LOCALAPPDATA%\LOOT\games\Starfield\masterlist.yaml`). |
