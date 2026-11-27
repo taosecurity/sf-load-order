@@ -22,11 +22,10 @@ it runs anything, and says how to do this when they aren't.
 """
 import os
 import re
-import shutil
 import subprocess
 import time
 
-from . import log
+from . import log, progfind
 
 SECTION = "records"
 MIN_VERSION = (0, 8, 0)
@@ -75,14 +74,14 @@ def find(args, path=None):
         if os.path.isfile(given):
             log.info(SECTION, f"sf-mod-check from --sf-mod-check: {given}")
             return _program(os.path.abspath(given), "--sf-mod-check"), None
-        hit = shutil.which(given, path=path)
+        hit = progfind.which(given, path=path)
         if hit:
             log.info(SECTION, f"sf-mod-check from --sf-mod-check {given} on PATH: {hit}")
             return _program(hit, "--sf-mod-check"), None
         return None, (f"--sf-mod-check {given} doesn't exist. Fix: give the full path of sf-mod-check.exe "
                       f"(download it from {RELEASES}).")
     for name in NAMES:
-        hit = shutil.which(name, path=path)
+        hit = progfind.which(name, path=path)
         if hit:
             log.info(SECTION, f"found {name} on PATH: {hit}")
             return _program(hit, f"PATH {name}"), None
@@ -366,7 +365,7 @@ def _kill_tree(proc, job):
         _close_job(job, kill=True)
     elif os.name == "nt":
         try:
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL,
+            subprocess.run([progfind.system_tool("taskkill.exe"), "/T", "/F", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, timeout=30)
         except (OSError, subprocess.SubprocessError):
             pass

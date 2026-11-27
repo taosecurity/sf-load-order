@@ -35,7 +35,7 @@ import zipfile
 import zlib
 from collections import defaultdict
 
-from . import archives, log, loose, paths, sfmodcheck
+from . import archives, log, loose, paths, progfind, sfmodcheck
 from .model import Finding
 from .plugin_header import header
 
@@ -107,8 +107,9 @@ def _hash_member(zf, info, path):
 def find_7z():
     """The 7-Zip command line program: 7z.exe (or 7z) on PATH, else in the 7-Zip folder of Program Files. None when not found."""
     for name in ("7z.exe", "7z"):
-        found = shutil.which(name)
+        found = progfind.which(name)
         if found:
+            log.info(SECTION, f"7-Zip from PATH: {found}")
             return found
     for var in ("ProgramFiles", "ProgramFiles(x86)"):
         base = os.environ.get(var)
