@@ -1025,6 +1025,47 @@ class Program(unittest.TestCase):
         self.assertTrue(any("found 2 error(s) in B.esm" in t for t in texts))
         self.assertTrue(any("couldn't check 1 plugin(s): C.esm" in t for t in texts))
 
+    def test_heavy_progress_line_goes_to_stderr(self):
+        """0.3.4: --depth heavy prints one progress line per plugin to stderr (never stdout), unless --quiet."""
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        exe = self.fake(check={})
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            records.run(ctx_for(self.t, self.lo, sf_mod_check=exe, depth="heavy"))
+        self.assertEqual(out.getvalue(), "")
+        lines = err.getvalue().splitlines()
+        self.assertEqual(len(lines), 5)
+        self.assertIn("1/5: A.esm", lines[0])
+        self.assertIn("5/5: E.esm", lines[4])
+        err = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            records.run(ctx_for(self.t, self.lo, sf_mod_check=exe, depth="heavy", quiet=True))
+        self.assertEqual(err.getvalue(), "")
+
+    def test_mo2_skip_caution_names_only_dropped_plugins(self):
+        """0.3.4: sf-mod-check loaded a dropped name and a plugin that simply isn't in this list; the caution names
+        only the dropped one as dropped."""
+        exe, lo = self.mo2_case(more_cj=["Foo-ShatteredSpace.esm", "Stray.esm"], more_lo=["Foo-ShatteredSpace.esm"])
+        [p for p in lo.plugins if p.name == "Foo-ShatteredSpace.esm"][0].dropped = True
+        ctx = ctx_for(self.t, lo, sf_mod_check=exe)
+        st = records.run(ctx)
+        self.assertEqual(st["status"], "skipped")
+        self.assertIn("2 plugin(s)", st["why"])
+        self.assertIn("1 of them names the game drops", st["why"])
+        self.assertNotIn("(names the game drops)", st["why"])
+        hits = [f for f in ctx.report.findings if "Record conflicts weren't checked" in f.text]
+        self.assertEqual([f.plugins for f in hits], [["Foo-ShatteredSpace.esm"]])
+
+    def test_mo2_old_sf_mod_check_offers_conflicts_file(self):
+        """0.3.4: the old-sf-mod-check MO2 skip says how to go on with a --conflicts file, like the other skips."""
+        exe = self.fake(version="sf-mod-check 0.15.0 by someone - GPL-3.0")
+        lo = make_lo(["A.esm", "OnlyInMO2.esm"], data=self.data, source="mo2")
+        lo.mo2_instance, lo.profile = os.path.join(self.t, "MO2"), "Default"
+        ctx = ctx_for(self.t, lo, sf_mod_check=exe)
+        records.run(ctx)
+        self.assertTrue(any("--conflicts" in (f.fix or "") and "0.16.0" in (f.fix or "") for f in ctx.report.findings))
+
     def test_through_cli(self):
         import io
         from contextlib import redirect_stdout

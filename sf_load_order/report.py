@@ -320,7 +320,9 @@ def _detail_lists(ctx, section):
     res = ctx.results.get(section) or {}
     out = []
     if section == "order" and res.get("effective"):
-        out.append(("The order the game loads", list(res["effective"])))
+        # the game's own order (master plugins first), not the list's: they differ when a plain plugin is listed
+        # above a master plugin
+        out.append(("The order the game loads", list(res.get("game_order") or res["effective"])))
     elif section == "archives" and res.get("pairs"):
         out.append(("Plugin pairs sharing archive paths", res["pairs"]))
     elif section == "loose":

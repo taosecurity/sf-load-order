@@ -75,6 +75,7 @@ Field weights are recommend.py's: 0 bookkeeping or No effect, 1 cosmetic (lighti
 """
 import json
 import os
+import sys
 
 from . import inputs, log, sfmodcheck
 from .model import Finding
@@ -632,7 +633,11 @@ def heavy(ctx, prog, res):
     lo = ctx.load_order
     out = {}
     failed = []
-    for p in _mod_plugins(lo):
+    todo = _mod_plugins(lo)
+    quiet = getattr(ctx.args, "quiet", False)
+    for i, p in enumerate(todo, 1):
+        if not quiet:  # stderr, never stdout (stdout holds only the byline-free RESULT line); a long run isn't a hang
+            print(f"[records] sf-mod-check check {i}/{len(todo)}: {p.name}", file=sys.stderr, flush=True)
         path = os.path.join(lo.data, p.name)
         if not os.path.isfile(path):
             failed.append(f"{p.name} (not in the Data folder)")
@@ -695,7 +700,8 @@ def _mo2_why(lo, prog):
                 "on this system)", "start sf-load-order from MO2 (add it as an executable), or run sf-mod-check "
                 "conflict from MO2 and pass its conflicts.json with --conflicts.")
     return ("this sf-mod-check is older than 0.16.0, so it can't read MO2's mod folders itself",
-            "update sf-mod-check to 0.16.0 or later, or start sf-load-order from MO2 (add it as an executable).")
+            "update sf-mod-check to 0.16.0 or later, or start sf-load-order from MO2 (add it as an executable), or "
+            "run sf-mod-check conflict yourself from MO2 and pass its conflicts.json with --conflicts.")
 
 
 def _not_visible(lo):
@@ -794,11 +800,18 @@ def run(ctx):
         if d and d["extra"]:
             case = {(e.get("FileName") or "").lower(): e.get("FileName") for e in cj.get("loadOrder") or []}
             names = [case.get(n, n) for n in d["extra"]]
-            why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that don't load in the game "
-                   "(names the game drops).")
+            gone = {p.name.lower() for p in lo.plugins if p.dropped}
+            drops = [n for n in names if n.lower() in gone]  # only these are names the game drops
+            if len(drops) == len(names):
+                why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that don't load in the "
+                       "game (names the game drops).")
+            else:
+                why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that this load order "
+                       f"doesn't load ({len(drops)} of them names the game drops).")
             ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + why,
                                    fix="Rename or turn off those plugins (see the finding about their names), or "
-                                       "start sf-load-order from MO2, and run again.", plugins=names[:20], data=d))
+                                       "start sf-load-order from MO2, and run again.",
+                                   plugins=(drops or names)[:20], data=d))
             return _skip(why, program=prog.to_dict(), exit=r.exit, result_line=r.result)
 
     res = analyse(cj, lo)

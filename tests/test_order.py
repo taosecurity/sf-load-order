@@ -198,6 +198,19 @@ class OrderTests(unittest.TestCase):
         order.run(ctx)
         self.assertEqual(self.findings(ctx, "problem"), [])
 
+    def test_results_hold_the_game_order_for_the_report(self):
+        # 0.3.4 (row 24): report.html's "The order the game loads" reads game_order, not the list's order
+        ctx = make_ctx(self.tmp, self.base() + [self.p("M.esm", masters=["Starfield.esm", "Late.esp"]),
+                                                self.p("Late.esp")])
+        self.plain(ctx, "Late.esp")
+        order.run(ctx)
+        res = ctx.results["order"]
+        self.assertEqual(res["effective"], ["Starfield.esm", "M.esm", "Late.esp"])
+        self.assertEqual(res["game_order"], ["Starfield.esm", "Late.esp", "M.esm"])
+        from sf_load_order import report
+        lists = report._detail_lists(ctx, "order")
+        self.assertEqual(lists, [("The order the game loads", ["Starfield.esm", "Late.esp", "M.esm"])])
+
     def test_game_order_hoists_a_master_plugin_only_when_listed_below(self):
         ps = [Plugin("Starfield.esm", True, official=True), Plugin("M.esm", True, masters=["N.esm"]),
               Plugin("A.esm", True), Plugin("N.esm", True)]

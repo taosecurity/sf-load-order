@@ -211,5 +211,6 @@ def run(ctx):
                                  "(base game included).",
                  f"Leave room before adding more {KIND[k]} plugins.", [], kind=k, count=counts[k], limit=LIMITS[k])
     log.info(SECTION, f"{len(order)} plugins load: {counts}")
-    ctx.results[SECTION] = {"effective": [p.name for p in order], "kinds": {p.name: p.kind for p in lo.plugins}}
+    ctx.results[SECTION] = {"effective": [p.name for p in order], "game_order": [p.name for p in game],
+                            "kinds": {p.name: p.kind for p in lo.plugins}}
     return {"status": "done", "counts": counts, "limits": dict(LIMITS)}

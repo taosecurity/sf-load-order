@@ -106,6 +106,31 @@ class Base(unittest.TestCase):
         return [f.text for f in ctx.report.findings if f.section == "recommend"]
 
 
+class DiffersFix(Base):
+    """0.3.4 (row 20): the record-conflict caution only says "without --conflicts" when a --conflicts file was given."""
+
+    def caution(self, source):
+        lo = make_lo(["A.esm", "B.esm"])
+        p = fixtures.conflicts_json(os.path.join(self.t, "conflicts.json"),
+                                    [(n, n in OFFICIAL, []) for n in lo.enabled()],
+                                    lost=[lost("000100:Starfield.esm", "A.esm", "B.esm", [field("Keywords")],
+                                               edid="SomeNpc")])
+        rec = records.analyse(records.load(p)[0], lo)
+        rec["differs"] = {"missing": ["a.esm"], "extra": [], "order": False}
+        rec["source"] = source
+        ctx, st, res = self.run_rec(lo, rec)
+        return [f for f in ctx.report.findings if f.level == "caution" and "different load order" in f.text]
+
+    def test_file_source_says_leave_out_conflicts(self):
+        [f] = self.caution("file")
+        self.assertIn("without --conflicts", f.fix)
+
+    def test_run_source_does_not(self):
+        [f] = self.caution("run")
+        self.assertNotIn("without --conflicts", f.fix)
+        self.assertIn("--conflicts", f.fix)  # it offers one made for this order
+
+
 class Scoring(Base):
     def test_move_that_lowers_the_score(self):
         # via sf-mod-check's file shape: A loses Keywords (functional, Forwardable) to C

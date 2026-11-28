@@ -641,8 +641,13 @@ def run(ctx):
              "Apply the files in the output folder (HOW-TO-APPLY.txt), after backing up your current order.",
              [m["plugin"] for m in moves], estimate=estimate)
     if rated and rec.get("differs"):
+        if rec.get("source") == "file":
+            fix = "Run again without --conflicts so sf-mod-check checks this order."
+        else:  # sf-mod-check ran in this run (MO2 profile order), so there is no --conflicts file to leave out
+            fix = ("Run sf-mod-check conflict on this load order yourself and check its plugin list against this "
+                   "one, or run again with a --conflicts file made for this order.")
         _add(ctx, "caution", "The record-conflict data was made for a different load order than this one, so the "
-                             "scores may be off.", "Run again without --conflicts so sf-mod-check checks this order.")
+                             "scores may be off.", fix)
 
     res ={"order": full, "moves": moves, "score_current": score_cur, "score_recommended": score_rec,
            "estimate": estimate, "same_as_current": same, "rated": rated, "label": LABEL_CURRENT,
