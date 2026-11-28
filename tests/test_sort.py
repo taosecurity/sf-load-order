@@ -328,6 +328,22 @@ class HoistedPlainMaster(Base):
         self.assertLess(mods.index("*ExampleE.esp"), mods.index("*ExampleA.esm"))
 
 
+
+class HoistedPlainMasterExplain(Base):
+    """0.3.4 (PMTW6 row 22): with a plain plugin about (so the type rule is used), the type rule's reason for
+    ExampleE.esp names the master plugin that needs it instead of calling it a master plugin."""
+    PLUGINS = {"ExampleA.esm": {"masters": ["Starfield.esm", "ExampleE.esp"]}, "ExampleE.esp": {},
+               "ExampleF.esp": {}, "ExampleB.esm": {}}
+
+    def test_explain_doesnt_call_the_plain_master_a_master_plugin(self):
+        no_master_flag(os.path.join(self.data, "ExampleE.esp"))
+        no_master_flag(os.path.join(self.data, "ExampleF.esp"))
+        code, out = run("rules", "explain", "ExampleE.esp", *self.src, "--no-loot", "--state", self.state)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("ExampleE.esp is a master plugin", out)
+        self.assertIn("ExampleE.esp isn't a master plugin, but the master plugin ExampleA.esm needs it", out)
+
+
 class Fixes031(Base):
     """0.3.1: the review rounds' sort nits (each test fails on 0.3.0)."""
     PLUGINS = {"ExampleE.esp": {}, "ExampleA.esm": {}, "ExampleB.esm": {}, "ExampleC.esm": {}}

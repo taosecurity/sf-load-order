@@ -308,5 +308,47 @@ class Textures(unittest.TestCase):
             self.assertEqual(ctx.results["archives"]["pairs"][0]["unknown"], 1)
 
 
+class GameOrder(unittest.TestCase):
+    """0.3.4 (PMTW6 row 27): winners follow the order the game loads the plugins, not the list's order."""
+
+    def test_plain_plugin_listed_above_a_master_plugin_wins(self):
+        with tempfile.TemporaryDirectory() as d:
+            data = os.path.join(d, "Data")
+            for n in ("Starfield.esm", "X.esp", "A.esm"):
+                fixtures.plugin(os.path.join(data, n))
+            fixtures.ba2(os.path.join(data, "X - Main.ba2"), {"textures\\x.dds": b"x"})
+            fixtures.ba2(os.path.join(data, "A - Main.ba2"), {"textures\\x.dds": b"a"})
+            # X.esp is listed first, but the game loads the master plugin A.esm first, so X.esp's copy wins
+            lo = model.LoadOrder(source="plugins.txt", data=data, plugins=[
+                P("Starfield.esm", os.path.join(data, "Starfield.esm"), official=True),
+                P("X.esp", os.path.join(data, "X.esp")), P("A.esm", os.path.join(data, "A.esm"))])
+            for p in lo.plugins:
+                p.master = not p.name.endswith(".esp")
+            ctx = ctx_for(lo, d, no_state=True)
+            archives.run(ctx)
+            r = ctx.results["archives"]
+            self.assertEqual([(p["loser"], p["winner"]) for p in r["pairs"]], [("A.esm", "X.esp")])
+            self.assertEqual(r["paths"]["textures\\x.dds"], ["A.esm", "X.esp"])
+            f = [x for x in ctx.report.findings if x.level == "caution" and "both ship" in x.text]
+            self.assertEqual(len(f), 1)
+            self.assertIn("X.esp loads later", f[0].text)
+            self.assertIn("can't change this", f[0].fix)
+
+    def test_master_plugin_hoisted_by_a_master_plugin(self):
+        # M.esm needs N.esm, listed below it: the game loads N.esm first, so M.esm's copy wins
+        with tempfile.TemporaryDirectory() as d:
+            data = os.path.join(d, "Data")
+            for n, m in (("Starfield.esm", ()), ("M.esm", ("N.esm",)), ("N.esm", ())):
+                fixtures.plugin(os.path.join(data, n), masters=list(m))
+            fixtures.ba2(os.path.join(data, "M - Main.ba2"), {"textures\\x.dds": b"m"})
+            fixtures.ba2(os.path.join(data, "N - Main.ba2"), {"textures\\x.dds": b"n"})
+            lo = model.LoadOrder(source="plugins.txt", data=data, plugins=[
+                P("Starfield.esm", os.path.join(data, "Starfield.esm"), official=True),
+                P("M.esm", os.path.join(data, "M.esm"), masters=["N.esm"]), P("N.esm", os.path.join(data, "N.esm"))])
+            r = archives.analyse(lo, archives.Cache())
+            self.assertEqual([(p["loser"], p["winner"], p["advice"]) for p in r["pairs"]],
+                             [("N.esm", "M.esm", "built")])
+
+
 if __name__ == "__main__":
     unittest.main()

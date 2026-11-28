@@ -243,7 +243,8 @@ def _edges(lo, movable):
     is master), the first that applies."""
     low = {n.lower(): n for n in movable}
     pos = {n.lower(): i for i, n in enumerate(movable)}
-    block = order_check.master_block(game_rules(lo))
+    rules = game_rules(lo)
+    block, up = order_check.master_block(rules), order_check.plain_hoisted(rules)
     g = Graph(movable)
     edges, why, masters_of, is_master = [], {}, {}, {}
     for p in lo.plugins:
@@ -260,7 +261,8 @@ def _edges(lo, movable):
                 if w[0] == "master":
                     w[1].append(low[m.lower()])  # every movable master; the move reason names one that moved
     g.add_masters(masters_of)
-    g.add_type_rule(is_master)
+    names = {p.name.lower(): p.name for p in lo.plugins}
+    g.add_type_rule(is_master, {low[n]: names.get(m, m) for n, m in up.items() if n in low})
     edges += [(e.before, e.after) for e in g.edges.values() if e.source == "type"]
     for m in lo.mods or []:
         mine = sorted({x.lower() for x in (m.plugins or []) if x.lower() in low}, key=pos.get)
@@ -487,6 +489,14 @@ def run(ctx):
     mv = moved(order, movable)
     mv_low = {x.lower() for x in mv}
     is_mp = dict.fromkeys(order_check.master_block(rules), True)
+    up = order_check.plain_hoisted(rules)
+    names_of = {p.name.lower(): p.name for p in lo.plugins}
+    cur_keys = order_check.load_keys(current, rules)
+
+    def met_in_game(low, ms):
+        """The game already loads every master in ms before low in the current order, and none of them moved."""
+        return all(m.lower() not in mv_low and m.lower() in cur_keys and low in cur_keys
+                   and cur_keys[m.lower()] < cur_keys[low] for m in ms)
     for n in mv:
         i = [x.lower() for x in full].index(n.lower())
         after = full[i - 1] if i else None
@@ -502,15 +512,19 @@ def run(ctx):
         elif g:
             reason = (f"so {g['loser']}'s changes to {g['records']} record(s) ({g['what']}) win over it"
                       + (" (estimated)" if not g["cost_complete"] else ""))
-        elif low in edge_why and edge_why[low][0] == "master":
+        elif low in edge_why and edge_why[low][0] == "master" and not met_in_game(low, edge_why[low][1]):
             ms = edge_why[low][1]
             hit = next((m for m in ms if m.lower() in mv_low), None)
             reason = (f"it needs {hit} as a master, which moved" if hit else
                       f"it must load after its master{'s' if len(ms) > 1 else ''} {', '.join(ms)}")
         elif low in edge_why and edge_why[low][0] == "mod":
             reason = f"it keeps its mod's own plugin order ({edge_why[low][1]})"
-        elif low in edge_why and edge_why[low][0] == "type" and _type_only(low, movable, order, is_mp):
-            reason = ("the game loads master plugins (.esm, .esl or the master flag) before the others whatever the "
+        elif low in edge_why and edge_why[low][0] in ("type", "master") and _type_only(low, movable, order, is_mp):
+            # a master edge the game already meets: the move only lists the plugin where the game loads it
+            reason = (f"it isn't a master plugin, but the master plugin {names_of.get(up[low], up[low])} needs it, "
+                      "so the game loads it with the master plugins whatever the list says; this only lists it "
+                      "where the game loads it" if low in up else
+                      "the game loads master plugins (.esm, .esl or the master flag) before the others whatever the "
                       "list says, so this only lists it where the game loads it")
         else:
             reason = "its master order needed fixing" if not rated else "it moves along with the moves above"

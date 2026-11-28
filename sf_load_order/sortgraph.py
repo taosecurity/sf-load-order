@@ -145,12 +145,17 @@ class _Builder:
         lo, movable_low = self.lo, {n.lower() for n in self.b.movable}
         masters_of = {p.name: p.masters for p in lo.plugins if p.name.lower() in movable_low and p.masters}
         self.g.add_masters(masters_of)
-        is_master, block = {}, order_check.master_block(recommend.game_rules(lo))
+        rules = recommend.game_rules(lo)
+        is_master, block, up = {}, order_check.master_block(rules), order_check.plain_hoisted(rules)
+        name = {p.name.lower(): p.name for p in lo.plugins}
+        hoisted_by = {}
         for p in lo.plugins:
             if p.name.lower() in movable_low:
                 # a plain plugin a master plugin needs loads with the master plugins (order.load_rules)
                 is_master[p.name] = p.name.lower() in block
-        self.g.add_type_rule(is_master)
+                if p.name.lower() in up:
+                    hoisted_by[p.name] = name.get(up[p.name.lower()], up[p.name.lower()])
+        self.g.add_type_rule(is_master, hoisted_by)
 
     def mods(self):
         low = {n.lower(): n for n in self.b.movable}

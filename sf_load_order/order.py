@@ -47,15 +47,16 @@ def is_master_plugin(p):
 def load_rules(plugins):
     """What the game's load order depends on besides the list, read once from plugins (effective_order):
     {lower name: (rank, needed_by)}. rank 0 is a master plugin, 1 a plain one, 2 a BlueprintShips file. needed_by
-    lists (lower names) the master plugins that have a plain plugin as a master: the game loads that plain plugin with
-    the master plugins, just before the first one in the list that needs it (libloadorder's hoist_masters, which LOOT
-    and Vortex use for Starfield)."""
+    lists (lower names) the master plugins that have this plugin as a master. The game loads a plain plugin that a
+    master plugin needs with the master plugins, just before the first one in the list that needs it; a master plugin
+    listed below a master plugin that needs it loads just before that one (libloadorder's hoist_masters, which LOOT
+    and Vortex use for Starfield; one level: what a hoisted plugin needs itself isn't hoisted with it)."""
     rules = {p.name.lower(): (2 if is_blueprint(p.name) else 0 if is_master_plugin(p) else 1, []) for p in plugins}
     for p in plugins:
         if rules[p.name.lower()][0] == 0:
             for m in p.masters or []:
                 r = rules.get(m.lower())
-                if r is not None and r[0] == 1 and p.name.lower() not in r[1]:
+                if r is not None and r[0] in (0, 1) and m.lower() != p.name.lower() and p.name.lower() not in r[1]:
                     r[1].append(p.name.lower())
     return rules
 
@@ -66,16 +67,55 @@ def master_block(rules):
     return {n for n, (rank, by) in rules.items() if rank == 0 or (rank == 1 and by)}
 
 
+def plain_hoisted(rules):
+    """{lower name: lower name of the first master plugin in the list that needs it} for each plain plugin that loads
+    with the master plugins (load_rules)."""
+    return {n: by[0] for n, (rank, by) in rules.items() if rank == 1 and by}
+
+
 def load_keys(names, rules):
     """{lower name: key} for names in list order: sorting by key gives the order the game loads them (load_rules).
-    A name load_rules doesn't know is ranked by its extension."""
+    A name load_rules doesn't know is ranked by its extension. A key (0, d, 0, i) is a hoisted plugin: it loads
+    just before names[d], the first master plugin in the list that needs it."""
     pos = {n.lower(): i for i, n in enumerate(names)}
     keys = {}
     for n, i in pos.items():
         rank, by = rules.get(n) or (2 if is_blueprint(n) else 0 if n.endswith((".esm", ".esl")) else 1, [])
         deps = [pos[d] for d in by if d in pos]
-        keys[n] = (0, min(deps), 0, i) if deps else (rank, i, 1, 0)
+        # a plain plugin always loads with the master plugins it's needed by; a master plugin moves only when a
+        # master plugin above it in the list needs it
+        hoist = deps and (rank == 1 or min(deps) < i)
+        keys[n] = (0, min(deps), 0, i) if hoist else (rank, i, 1, 0)
     return keys
+
+
+def master_fix(p, q, names, rules):
+    """The fix for plugin p loading before its master q in the game (names: the list, rules: load_rules), checked
+    against the game's rules: "Move p below q", else "Move q above X" (X the master plugin that makes the game load p
+    early), else None: no list order fixes it (p is a plain plugin the game loads with the master plugins, and q a
+    plain plugin no master plugin needs, which always loads after them)."""
+    pl, ql = p.lower(), q.lower()
+
+    def moved(who, to, after):
+        rest = [n for n in names if n.lower() != who.lower()]
+        i = [n.lower() for n in rest].index(to.lower()) + (1 if after else 0)
+        return rest[:i] + [who] + rest[i:]
+
+    def works(cand):
+        k = load_keys(cand, rules)
+        return k[ql] < k[pl]
+
+    below = f"Move {p} below {q} in the load order."
+    if works(moved(p, q, True)):
+        return below
+    k = load_keys(names, rules)[pl]
+    anchor = names[k[1]] if k[2] == 0 else p
+    if anchor.lower() != ql and works(moved(q, anchor, False)):
+        return f"Move {q} above {anchor} in the load order."
+    qr = rules.get(ql) or (1, [])
+    if k[2] == 0 and qr[0] == 1 and not qr[1]:
+        return None
+    return below  # anything else (a master loop, say): the plain fix, as before
 
 
 def game_order(plugins):
@@ -97,12 +137,18 @@ def run(ctx):
     order = effective_order(lo)
     # "loads before its master" is judged where the game loads each plugin: master plugins before the others, and
     # a plain plugin a master plugin needs just before that master plugin
-    game = game_order(order)
+    names = [p.name for p in order]
+    rules = load_rules(order)
+    keys = load_keys(names, rules)
+    game = sorted(order, key=lambda p: keys[p.name.lower()])
     gpos = {p.name.lower(): i for i, p in enumerate(game)}
-    for n, (rank, by) in load_rules(order).items():
-        if rank == 1 and by:
-            log.info(SECTION, f"{n} isn't a master plugin, but the master plugin {by[0]} needs it, so the game loads "
-                              f"it with the master plugins, just before {by[0]}")
+    for n, (rank, by) in rules.items():
+        if keys.get(n, (1, 0, 1))[2] == 0:
+            first = names[keys[n][1]]
+            log.info(SECTION, (f"{n} isn't a master plugin, but the master plugin {first} needs it, so the game loads "
+                               f"it with the master plugins, just before {first}") if rank == 1 else
+                     f"the master plugin {first} needs {n}, which is listed below it, so the game loads {n} just "
+                     f"before {first}")
     pos = {p.name.lower(): i for i, p in enumerate(order)}
     by_name = {p.name.lower(): p for p in lo.plugins}
     counts = {"F": 0, "M": 0, "L": 0, "?": 0}
@@ -124,8 +170,18 @@ def run(ctx):
                     if is_blueprint(m):
                         log.info(SECTION, f"{p.name} masters {m}, which the game always loads last; no order fixes it")
                         continue
-                    _add(ctx, "problem", f"{p.name} loads before its master {q.name}.",
-                         f"Move {p.name} below {q.name} in the load order.", [p.name, q.name], master=q.name)
+                    fix = master_fix(p.name, q.name, names, rules)
+                    if fix:
+                        _add(ctx, "problem", f"{p.name} loads before its master {q.name}.", fix, [p.name, q.name],
+                             master=q.name)
+                    else:
+                        first = names[keys[p.name.lower()][1]]
+                        _add(ctx, "problem", f"{p.name} loads before its master {q.name}: the master plugin {first} "
+                                             f"needs {p.name}, so the game loads {p.name} with the master plugins, "
+                                             f"but {q.name} isn't a master plugin, so the game loads it after them.",
+                             f"No load order fixes this. Ask the author of {p.name} for a version whose master "
+                             f"{q.name} is a master plugin, or disable {first}.", [p.name, q.name, first],
+                             master=q.name, hoisted_by=first)
                 elif q.path is None:
                     _add(ctx, "problem", f"{p.name} needs {q.name}, which is enabled but its file isn't in the Data "
                                          "folder.", f"Reinstall the mod that provides {q.name}, or disable {p.name}.",

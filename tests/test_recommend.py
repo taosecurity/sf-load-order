@@ -317,6 +317,27 @@ class GameRulesWin(Base):
         self.assertEqual(len(r["moves"]), 1)
         self.assertIn("the game loads master plugins", r["moves"][0]["reason"])
 
+    def test_master_edge_the_game_already_meets_gets_the_type_reason(self):
+        # 0.3.4 (PMTW6 row 22): B.esp needs A.esm and is listed above it and D.esm. The game loads both master
+        # plugins first anyway, so the move only lists B.esp where it loads; 0.3.3 said "it must load after its
+        # master A.esm"
+        lo = make_lo(["B.esp", "A.esm", "D.esm"], masters={"B.esp": ["A.esm"]})
+        ctx, st, r = self.run_rec(lo)
+        self.assertEqual(mods_of(r["order"]), ["A.esm", "D.esm", "B.esp"])
+        self.assertEqual([m["plugin"] for m in r["moves"]], ["B.esp"])
+        self.assertIn("the game loads master plugins", r["moves"][0]["reason"])
+        self.assertNotIn("must load after", r["moves"][0]["reason"])
+
+    def test_hoisted_plain_plugin_reason_names_the_master_plugin_that_needs_it(self):
+        # 0.3.4 (row 22): Y.esp isn't a master plugin; the game loads it with them because X.esm needs it. Its move
+        # reason says so instead of calling it a master plugin
+        lo = make_lo(["Q.esp", "R.esp", "S.esp", "Y.esp", "X.esm"], masters={"X.esm": ["Y.esp"]})
+        ctx, st, r = self.run_rec(lo)
+        self.assertEqual(mods_of(r["order"]), ["Y.esp", "X.esm", "Q.esp", "R.esp", "S.esp"])
+        m = {x["plugin"]: x["reason"] for x in r["moves"]}
+        self.assertIn("Y.esp", m, r["moves"])
+        self.assertIn("isn't a master plugin, but the master plugin X.esm needs it", m["Y.esp"])
+
     def test_master_order_fix_is_not_called_a_type_only_move(self):
         # 0.3.3 code-review round 1: B.esm needs A.esm, listed below it with a plain X.esp between. A.esm's move is
         # a real master fix (both are master plugins, so the game keeps the list's B-before-A order), not a move

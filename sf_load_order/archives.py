@@ -1,7 +1,8 @@
 """Archive overlap: files inside mods' .ba2 archives that overwrite each other (section "archives").
 
 Mods pack textures, meshes, sounds and scripts in .ba2 archives. When two enabled plugins' archives hold a file with
-the same path, the game uses the copy from the archive that loads last, and archives follow plugin order. A loose
+the same path, the game uses the copy from the archive that loads last, and archives follow the order the game loads
+the plugins (master plugins first, order.game_order), not the list's own order. A loose
 file in the Data folder beats every archive (loose.py checks those). Vortex's own conflict check compares loose
 files only, so it never reports archive clashes.
 
@@ -40,6 +41,7 @@ import zlib
 from collections import defaultdict
 
 from . import log, paths
+from . import order as order_check
 from .model import Finding
 
 SECTION = "archives"
@@ -469,8 +471,10 @@ def analyse(lo, cache):
     ctx.results["archives"] (keys described in run's docstring)."""
     official_stems = {os.path.splitext(n)[0] for n in BASE} | {
         os.path.splitext(p.name)[0].lower() for p in lo.plugins if is_official(p)}
-    mine = [p for p in lo.plugins if p.enabled and not p.dropped and not is_official(p) and p.path
-            and p.kind != "?"]
+    # in the order the game loads them (order.game_order: master plugins first), so the later one wins a path
+    loading = order_check.effective_order(lo)
+    mine = [p for p in order_check.game_order(loading) if not is_official(p) and p.path and p.kind != "?"]
+    block = order_check.master_block(order_check.load_rules(loading))
     data = lo.data if lo.data and os.path.isdir(lo.data) else None
     trusted = lo.source != "vortex" or data_matches(lo)
     data_view = ba2s_in(data)
@@ -593,6 +597,8 @@ def analyse(lo, cache):
             pr["advice"] = "same"
         else:
             pr["advice"] = "overlap"
+        # the loser loads with the master plugins and the winner doesn't: no list order lets the loser win
+        pr["type_locked"] = ll in block and wl not in block
         pr["sample"] = (pr["sample"] + pr.pop("_rest"))[:SAMPLES]
         pr["cats"] = dict(sorted(pr["cats"].items(), key=lambda kv: (-kv[1], kv[0])))
     pos = {p.name: i for i, p in enumerate(mine)}
@@ -699,7 +705,9 @@ def _add_findings(report, r):
             "caution", SECTION,
             f"{los} and {w} both ship {pr['files']} file(s) in their archives ({_cats(pr)}; {what}). {w} loads later, "
             f"so its copies are used and {los}'s never show up in the game.",
-            f"Order decides here. If you want {los}'s versions, load {los} after {w}; if {w}'s are right, leave it.",
+            (f"The list's order can't change this: the game loads {los} with the master plugins, before {w}, "
+             f"whatever the list says. If {w}'s versions are right, leave it." if pr.get("type_locked") else
+             f"Order decides here. If you want {los}'s versions, load {los} after {w}; if {w}'s are right, leave it."),
             [los, w], {k: pr[k] for k in ("files", "same", "differ", "unknown", "sample", "cats")}))
     if quiet:
         label = {"built": "built on it", "samemod": "same mod", "same": "identical copies"}
@@ -720,7 +728,8 @@ def run(ctx):
       pairs          [{loser, winner, files, same, differ, unknown, cats, sample, advice[, mod]}], advice one of
                      built, samemod, same, overlap ("order decides"); overlap pairs first
       order_decides  plugin names in at least one overlap pair (load order)
-      paths          {shared path: [plugins shipping it, load order]}; digests {path: {plugin: digest or None}}
+      paths          {shared path: [plugins shipping it, in the order the game loads them]}; digests {path: {plugin:
+                     digest or None}}
       misnamed, orphans, unreadable, lz4_missing, loaded [(plugin, archive full path)], data_checked
     """
     lo = ctx.load_order

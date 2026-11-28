@@ -203,18 +203,24 @@ class Graph:
                     self.add(Edge(m, p, "masters", 1, (text or "{p} has {m} as a master").format(p=p, m=m)),
                              force=True)
 
-    def add_type_rule(self, is_master):
+    def add_type_rule(self, is_master, hoisted_by=None):
         """Rank 1: every master plugin before every plugin that isn't one, through the virtual node MASTERS_END
-        (2n edges, not n squared). is_master: {plugin: bool}. Add it after add_masters: a master plugin that lists
-        a non-master as its master can't meet both, and the master edge wins (the type edge is rejected and kept
-        in self.rejected for a problem finding)."""
+        (2n edges, not n squared). is_master: {plugin: bool}. hoisted_by: {plugin: master plugin} for a plain plugin
+        counted as a master plugin because that master plugin needs it (order.load_rules). Add it after
+        add_masters: a master plugin that lists a non-master as its master can't meet both, and the master edge
+        wins (the type edge is rejected and kept in self.rejected for a problem finding)."""
         if not any(is_master.values()) or all(is_master.values()):
             return
         self.add_node(MASTERS_END)
+        hoisted_by = hoisted_by or {}
         for p, m in is_master.items():
             if not self.has(p):
                 continue
-            if m:
+            if m and p in hoisted_by:
+                self.add(Edge(p, MASTERS_END, "type", 1, f"{p} isn't a master plugin, but the master plugin "
+                                                          f"{hoisted_by[p]} needs it, so the game loads it with the "
+                                                          "master plugins, before every plugin that isn't one"))
+            elif m:
                 self.add(Edge(p, MASTERS_END, "type", 1, f"{p} is a master plugin, and the game loads master plugins "
                                                           "before every plugin that isn't one"))
             else:

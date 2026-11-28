@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.4 (unreleased)
+
+### What's new
+
+A fix-up release for 0.3.3. No option was removed or renamed, the exit codes are the same, and report.json has no new keys.
+
+- **A master plugin that another master plugin needs is no longer reported when it is listed below it.** The game loads it just before the first master plugin in the list that needs it (the rule LOOT and Vortex use), so a list such as `ExampleQuestsPatch.esm`, `ExampleQuests.esm`, with the patch needing `ExampleQuests.esm`, is fine in game. 0.3.3 called it a problem with a move that changed nothing.
+- **Every "loads before its master" fix is checked before it is given.** The tool tries the move it suggests against the game's rules. When moving the plugin down doesn't help, it suggests moving the master up above the plugin that makes the game load it early. When no order helps (a plain plugin that a master plugin needs, whose own master is a plain plugin no master plugin needs), the problem says so and names the master plugin to disable or the author to ask.
+- **The archives section picks each file's winner in the order the game loads the plugins.** A plain plugin listed above a master plugin loads after it, so its archived files win. 0.3.3 used the list's order there and could name the wrong winner. When the loser loads with the master plugins and the winner doesn't, the fix says the list's order can't change it.
+- **Clearer reasons.** A plain plugin that the game loads with the master plugins is no longer called "a master plugin" in `sort`, `rules explain` and the recommended order; the reason names the master plugin that needs it. A recommended move for a master the game already loads first gives the "lists it where the game loads it" reason instead of "it must load after its master".
+
+### Example
+
+The `sort` run of the README on its made-up load order. `ExampleQuestsPatch.esm` is listed above its master `ExampleQuests.esm`; 0.3.3 counted that as a problem, but the game loads `ExampleQuests.esm` first, so the run now has no problem. The sort still lists the master first.
+
+    > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
+    sf-load-order 0.3.4 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+    RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+
+The "Sorted order" part of the report:
+
+    Sorting moves 2 plugins; the order wasn't rated (no record-conflict data).
+    Moves (2):
+       1. Load ExampleArmor.esm after ExampleLights.esm. Why: Your rule (my-rules.json, entry 1) says
+          ExampleArmorRetexture.esm loads after ExampleArmor.esm.
+       2. Load ExampleQuests.esm after ExampleArmorRetexture.esm. Why: ExampleQuestsPatch.esm has ExampleQuests.esm as a
+          master.
+    Rules not met (1):
+       1. Your rule (my-rules.json, entry 2) says ExampleQuests.esm loads after ExampleQuestsPatch.esm, but
+          ExampleQuestsPatch.esm has ExampleQuests.esm as a master. The rule wasn't used.
+
 ## 0.3.3 (2026-11-27)
 
 ### What's new

@@ -246,7 +246,9 @@ and manage the order through Plugins.txt or your mod manager.
 
 ### Load order and masters
 
-- Each mod plugin's masters: missing, turned off, dropped by the game, or loading after the plugin that needs them.
+- Each mod plugin's masters: missing, turned off, dropped by the game, or loading after the plugin that needs them,
+  judged in the order the game loads them (master plugins first, and a master that a master plugin needs just
+  before it). Each fix is checked against the game's rules; when no order of the list fixes it, the problem says so.
 - Plugins whose header can't be read (the file isn't a plugin).
 - Plugin counts per kind, base game included: full up to 253, medium up to 256, light up to 4,096. A caution comes
   within 5% of a limit, a problem past it.
@@ -351,7 +353,8 @@ its own master isn't applied, and a pick whose plugins aren't both enabled is re
 ### Archives (.ba2 files)
 
 Mods pack textures, meshes, sounds and scripts in .ba2 archives. When two mods' archives hold a file with the same
-path, the game uses the copy from the archive that loads last, and archives follow plugin order. Vortex's own
+path, the game uses the copy from the archive that loads last, and archives follow the order the game loads the
+plugins (master plugins first, whatever the list says). Vortex's own
 conflict view checks loose files only, so it never shows these.
 
 - **Which archives load**: the game loads only `<plugin> - Main.ba2`, `- Main01.ba2`, `- Main02.ba2` and so on (it
@@ -575,8 +578,9 @@ rule won and why; nothing is silently dropped.
 
 1. **The game's own rules**, read from the plugins on every run: the official plugins load first in their own order,
    BlueprintShips files last, a plugin loads after each of its masters, and master plugins load before the others.
-   A plain plugin that a master plugin needs loads with the master plugins, just before that master plugin (the
-   rule LOOT and Vortex use).
+   A plain plugin that a master plugin needs loads with the master plugins, just before that master plugin, and a
+   master plugin listed below a master plugin that needs it loads just before that one (the rule LOOT and Vortex use;
+   it goes one level deep).
    A plugin is a master when it has the master flag or its name ends in `.esm` or `.esl` (source: esplugin 6.1.4,
    the library LOOT uses); the light and medium flags never change a plugin's place.
 2. **Your picks** (`--picks`), **your rules file**, **the patches' targets** (a patch loads after the plugins it
@@ -600,7 +604,7 @@ after `ExampleArmor.esm`. Its second rule, that `ExampleQuests.esm` loads after 
 ```
 > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
 sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
-RESULT: 1 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
+RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
 The "Sorted order" part of `out\report.txt`:
@@ -626,8 +630,9 @@ Proposed rules:
   0 proposed rules in out\rules-proposed.json.
 ```
 
-(The one problem in the run's top 10 is the current order, with the patch above its master; the caution is the rule
-that wasn't used.) To see why one plugin is where it is:
+(The current order has no problem: the game loads a master plugin that a master plugin above it needs just before
+that one, so `ExampleQuests.esm` already loads before its patch, and the sort only lists it there. The caution is the
+rule that wasn't used.) To see why one plugin is where it is:
 
 ```
 > .\sf-load-order.cmd rules explain ExampleQuests.esm --plugins-txt Plugins.txt --data Data --no-loot --rules my-rules.json

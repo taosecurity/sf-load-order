@@ -46,13 +46,18 @@ class OrderTests(unittest.TestCase):
         self.assertEqual(ctx.results["order"]["effective"], ["Starfield.esm", "A.esm", "B.esm"])
 
     def test_missing_disabled_and_late_masters(self):
+        # 0.3.4: Late.esm, a master plugin listed below the master plugin Patch.esm that needs it, loads just before
+        # Patch.esm (libloadorder's hoist_masters), so it isn't "loads before its master" any more; a plain patch is
         ctx = make_ctx(self.tmp, self.base() + [
             self.p("Patch.esm", masters=["Starfield.esm", "Late.esm", "Off.esm", "Gone.esm"]),
-            self.p("Late.esm"), self.p("Off.esm", enabled=False)])
+            self.p("Late.esm"), self.p("Off.esm", enabled=False),
+            self.p("Patch2.esp", masters=["Starfield.esm", "Late2.esp"]), self.p("Late2.esp")])
+        self.plain(ctx, "Patch2.esp", "Late2.esp")
         order.run(ctx)
         texts = [f.text for f in self.findings(ctx, "problem")]
         self.assertEqual(len(texts), 3, texts)
-        self.assertTrue(any("loads before its master Late.esm" in t for t in texts))
+        self.assertFalse(any("loads before its master Late.esm" in t for t in texts))
+        self.assertTrue(any("Patch2.esp loads before its master Late2.esp" in t for t in texts))
         self.assertTrue(any("Off.esm, which is disabled" in t for t in texts))
         self.assertTrue(any("Gone.esm, which isn't installed" in t for t in texts))
         self.assertTrue(all(f.fix for f in self.findings(ctx)))
@@ -185,6 +190,73 @@ class OrderTests(unittest.TestCase):
         # its own plain master isn't hoisted with it (one level, as libloadorder does)
         ps = [Plugin("X.esm", True, masters=["Y.esp"]), Plugin("W.esp", True), Plugin("Y.esp", True, masters=["W.esp"])]
         self.assertEqual([p.name for p in order.game_order(ps)], ["Y.esp", "X.esm", "W.esp"])
+
+    def test_master_plugin_listed_below_a_master_plugin_that_needs_it_is_fine(self):
+        # 0.3.4 (PMTW6 row 23): [M.esm, N.esm] with M needing N: the game hoists N just before M, so no problem
+        ctx = make_ctx(self.tmp, self.base() + [self.p("M.esm", masters=["Starfield.esm", "N.esm"]),
+                                                self.p("N.esm", masters=["Starfield.esm"])])
+        order.run(ctx)
+        self.assertEqual(self.findings(ctx, "problem"), [])
+
+    def test_game_order_hoists_a_master_plugin_only_when_listed_below(self):
+        ps = [Plugin("Starfield.esm", True, official=True), Plugin("M.esm", True, masters=["N.esm"]),
+              Plugin("A.esm", True), Plugin("N.esm", True)]
+        self.assertEqual([p.name for p in order.game_order(ps)], ["Starfield.esm", "N.esm", "M.esm", "A.esm"])
+        # N.esm listed above A.esm and M.esm stays where it is
+        ps = [Plugin("N.esm", True), Plugin("A.esm", True), Plugin("M.esm", True, masters=["N.esm"])]
+        self.assertEqual([p.name for p in order.game_order(ps)], ["N.esm", "A.esm", "M.esm"])
+
+    def test_chain_of_master_plugins_gets_a_fix_that_works(self):
+        # 0.3.4 (row 21): A.esm needs B.esm, B.esm needs C.esm, listed A, B, C. The game hoists B before A, one level,
+        # so B loads before C. "Move B.esm below C.esm" changes nothing (A still hoists B); moving C above A does.
+        ctx = make_ctx(self.tmp, self.base() + [self.p("A.esm", masters=["Starfield.esm", "B.esm"]),
+                                                self.p("B.esm", masters=["Starfield.esm", "C.esm"]),
+                                                self.p("C.esm", masters=["Starfield.esm"])])
+        order.run(ctx)
+        f = self.findings(ctx, "problem")
+        self.assertEqual([x.text for x in f], ["B.esm loads before its master C.esm."])
+        self.assertEqual(f[0].fix, "Move C.esm above A.esm in the load order.")
+
+    def test_nested_hoisting_says_no_order_fixes_it(self):
+        # 0.3.4 (row 21): X.esm needs the plain Y.esp, which needs the plain W.esp. The game loads Y.esp with the
+        # master plugins (just before X.esm) and W.esp after them, whatever the list says: 0.3.3 said "Move Y.esp
+        # below W.esp", which changes nothing
+        for names in (("W.esp", "X.esm", "Y.esp"), ("X.esm", "Y.esp", "W.esp")):
+            ps = {"W.esp": self.p("W.esp", masters=["Starfield.esm"]),
+                  "X.esm": self.p("X.esm", masters=["Starfield.esm", "Y.esp"]),
+                  "Y.esp": self.p("Y.esp", masters=["Starfield.esm", "W.esp"])}
+            ctx = make_ctx(self.tmp, self.base() + [ps[n] for n in names])
+            self.plain(ctx, "W.esp", "Y.esp")
+            order.run(ctx)
+            f = self.findings(ctx, "problem")
+            self.assertEqual(len(f), 1, [x.text for x in f])
+            self.assertTrue(f[0].text.startswith("Y.esp loads before its master W.esp: the master plugin X.esm"),
+                            f[0].text)
+            self.assertTrue(f[0].fix.startswith("No load order fixes this."), f[0].fix)
+            self.assertIn("disable X.esm", f[0].fix)
+
+    def test_every_suggested_master_fix_works(self):
+        # whatever fix master_fix gives, applying it to the list makes p load after q
+        from itertools import permutations
+        specs = {"A.esm": ["B.esm"], "B.esm": ["C.esm"], "C.esm": [], "P.esp": ["Q.esp"], "Q.esp": [],
+                 "X.esm": ["P.esp"]}
+        for names in permutations(specs):
+            ps = [Plugin(n, True, masters=specs[n]) for n in names]
+            rules = order.load_rules(ps)
+            keys = order.load_keys(list(names), rules)
+            for p in names:
+                for q in specs[p]:
+                    if keys[q.lower()] < keys[p.lower()]:
+                        continue
+                    fix = order.master_fix(p, q, list(names), rules)
+                    if fix is None:
+                        continue
+                    who, to = fix.split(" in the load order")[0][5:].split(" below " if " below " in fix else " above ")
+                    rest = [n for n in names if n != who]
+                    i = rest.index(to) + (1 if " below " in fix else 0)
+                    new = rest[:i] + [who] + rest[i:]
+                    k = order.load_keys(new, rules)
+                    self.assertLess(k[q.lower()], k[p.lower()], (names, p, q, fix))
 
     def test_game_order_keeps_blueprints_last(self):
         ps = [Plugin("Starfield.esm", True, official=True), Plugin("B.esp", True), Plugin("A.esm", True),
