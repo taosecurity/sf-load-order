@@ -108,6 +108,9 @@ def _make_out_path_test(case, option):
             self.skipTest("a case-sensitive file system")
         if case.get("clean_dir"):
             self.skipTest("not applicable: see ADOPTION.json")
+        if ":" in case["out"] and not WINDOWS:
+            # a colon names an NTFS stream only on Windows; elsewhere it is a legal file name
+            self.skipTest("a colon in a file name is a stream only on Windows")
         T = self.T
         for d in case.get("dirs", []):
             os.makedirs(os.path.join(T, d), exist_ok=True)
