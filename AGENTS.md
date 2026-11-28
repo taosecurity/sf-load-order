@@ -6,8 +6,8 @@ before each release.
 
 ## 1. What it is for
 
-1. sf-load-order reads a Starfield load order (the game's Plugins.txt, a Mod Organizer 2 profile, or a file exported
-   from Vortex's Load Order page) and writes a report: missing or late masters, plugin limits, patches built for an
+1. sf-load-order reads a Starfield load order (the game's Plugins.txt, a Mod Organizer 2 profile, or a load order
+   file from Vortex's Modlist Backup extension) and writes a report: missing or late masters, plugin limits, patches built for an
    older version of a master, known clashes (LOOT's masterlist and the person's own files), archive (.ba2) and
    loose-file overlap, Vortex mod rules, merged patches that are out of date, and record conflicts through
    sf-mod-check. `sf-load-order candidate <zip>` checks a new mod build before it is installed.
@@ -55,7 +55,7 @@ Run in the unzipped folder:
 Expect exit code 0 and these four lines (the byline, then three credit lines):
 
 ```
-sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.4 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 Reads LOOT's Starfield masterlist (CC0 1.0) from your own LOOT install when it's there.
 Record conflicts come from sf-mod-check (https://github.com/taosecurity/sf-mod-check), when installed.
 This is free software: you may share and change it under the GPL-3.0. It comes with no warranty.
@@ -103,10 +103,12 @@ there changes what "changed since the last run" reports.
 - Check another Plugins.txt: `.\sf-load-order.cmd --plugins-txt "<Plugins.txt>" --data "<Data folder>"`
 - Mod Organizer 2, its selected profile: `.\sf-load-order.cmd --mo2 "<MO2 instance folder>"`
 - Mod Organizer 2, a named profile: `.\sf-load-order.cmd --mo2 "<MO2 instance folder>" --profile "<profile name>"`
-- Vortex: first have the person open Vortex's Load Order page, click Export and save the file. Then:
-  `.\sf-load-order.cmd --vortex-loadorder "<exported file>"`
+- Vortex, plain route: have the person deploy in Vortex (it then writes the game's Plugins.txt) and run the plain
+  command above, or `--plugins-txt` with that file.
+- Vortex with a load order file (the Modlist Backup extension writes one per profile):
+  `.\sf-load-order.cmd --vortex-loadorder "<load order file>"`
 - Vortex with a staging folder that isn't the default (Vortex: Settings, Mods, Mod Staging Folder):
-  `.\sf-load-order.cmd --vortex-loadorder "<exported file>" --vortex-staging "<staging folder>"`
+  `.\sf-load-order.cmd --vortex-loadorder "<load order file>" --vortex-staging "<staging folder>"`
 - Vortex with the Modlist Backup extension: name the profile and the tool reads its newest export set (modlist and
   load order) and checks that Data holds this profile. `--vortex-exports` names the folder the exports are in when it
   isn't the extension's own folder (shown in `%APPDATA%\Vortex\modlist-backup-auto-export.json`); `--vortex-stamp

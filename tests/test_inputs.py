@@ -322,7 +322,7 @@ class Vortex(Base):
         lo, err = self.read("--vortex-loadorder", bad)
         self.assertIsNone(lo)
         self.assertIn(bad, err)
-        self.assertIn("Export", err)
+        self.assertIn("Modlist Backup", err)
 
     def test_wrong_shape(self):
         bad = write(os.path.join(self.t, "obj.json"), json.dumps({"loadOrder": []}))

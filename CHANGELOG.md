@@ -13,6 +13,11 @@ A fix-up release for 0.3.3. No option was removed or renamed, the exit codes are
 - **`--depth heavy` shows its progress.** The cleaning check runs sf-mod-check once per plugin and can take many minutes. It now prints one line per plugin on stderr (`[records] sf-mod-check check 3/40: ExampleQuests.esm`), so a long run doesn't look hung. Stdout still holds only the RESULT line, and `--quiet` turns the lines off.
 - **Clearer cautions.** The caution about record data made for another load order tells you to leave out `--conflicts` only when you gave that file; after a run where sf-mod-check ran in this run, it says what to do instead. The caution about plugins sf-mod-check loaded from an MO2 profile names only the ones the game drops. The skip text for an sf-mod-check older than 0.16.0 under MO2 now also offers `--conflicts`.
 - **report.html lists the game's load order.** The folded list "The order the game loads" now shows the order the game really uses (master plugins first), not the order of your list.
+- **`--log` refuses the wrong file.** A `--log` path that is an input file, a plugin or archive name, a stream name or a link now stops with exit 2 and a message that names `--log`, instead of writing over the file.
+- **Master names in a plugin's header are escaped when printed**, so a damaged or hostile header can't put control characters in the report or terminal.
+- **The Vortex route in the README starts with the Plugins.txt that Vortex writes when it deploys.** The Modlist Backup extension stays the option for `--vortex-loadorder` and `--vortex-profile`. The old text told you to click an Export button on Vortex's Load Order page, which could not be confirmed, so the claim is gone from the README, AGENTS.md, `--help` and the error messages.
+- **A "Known limits" section in the README** lists what is known and left as it is.
+- **Five shared test sets** now run in the tests (output paths, damaged input files, damaged plugins, terminal text, paths and programs). The cases that are left as known limits are in `tests/shared/ADOPTION.json`.
 
 ### Example
 

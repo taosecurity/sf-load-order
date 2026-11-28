@@ -279,8 +279,8 @@ COMMANDS = [
     dict(text=C + ' --mo2 "<MO2 instance folder>"', checks=[source_is("mo2"), profile_is("Default"), loose_done]),
     dict(text=C + ' --mo2 "<MO2 instance folder>" --profile "<profile name>"',
          checks=[source_is("mo2"), profile_is(ALT_PROFILE), mo2_alternate_read]),
-    dict(text=C + ' --vortex-loadorder "<exported file>"', checks=[source_is("vortex"), vortex_file, loose_done]),
-    dict(text=C + ' --vortex-loadorder "<exported file>" --vortex-staging "<staging folder>"',
+    dict(text=C + ' --vortex-loadorder "<load order file>"', checks=[source_is("vortex"), vortex_file, loose_done]),
+    dict(text=C + ' --vortex-loadorder "<load order file>" --vortex-staging "<staging folder>"',
          checks=[source_is("vortex"), vortex_file, loose_done]),
     dict(text=C + ' --vortex-profile "Example-Profile" --vortex-exports "<exports folder>"'
                   ' --vortex-staging "<staging folder>"',
@@ -558,7 +558,7 @@ def run_one(i, cmd, fx, t):
     env = clean_env(t, str(i))
     shutil.copy2(game["plugins_txt"], os.path.join(env["LOCALAPPDATA"], "Starfield", "Plugins.txt"))
     subs = {"<Data folder>": game["data"], "<Plugins.txt>": game["plugins_txt"], "<MO2 instance folder>": fx["mo2"],
-            "<profile name>": ALT_PROFILE, "<exported file>": fx["vortex"], "<staging folder>": fx["staging"],
+            "<profile name>": ALT_PROFILE, "<load order file>": fx["vortex"], "<staging folder>": fx["staging"],
             "<path to sf-mod-check.exe>": fx["smc"], "<conflicts.json>": fx["conflicts"],
             "<masterlist.yaml>": fx["masterlist"], "<userlist.yaml>": fx["userlist"],
             "<LOOT-sorted Plugins.txt>": fx["loot_order"], "<folder>": os.path.join(t, "state-" + str(i)),

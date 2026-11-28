@@ -12,7 +12,7 @@ Source choice (one source; --vortex-profile refuses any other):
                                   it, then deployed_check() says whether Data holds this profile
   --mo2 FOLDER [--profile NAME]   an MO2 instance: profiles\\<profile>\\plugins.txt, loadorder.txt and modlist.txt;
                                   the profile defaults to MO2's selected_profile in ModOrganizer.ini
-  --vortex-loadorder FILE         a Vortex Load Order page export; mod folders from --vortex-staging (default
+  --vortex-loadorder FILE         a Vortex load order file (Modlist Backup); mod folders from --vortex-staging (default
                                   %APPDATA%\\Vortex\\starfield\\mods), one per entry's modId
   --plugins-txt FILE              a Plugins.txt
   (none)                          the game's own %LOCALAPPDATA%\\Starfield\\Plugins.txt
@@ -224,11 +224,11 @@ def from_plugins_txt(path, args, env, drives, registry):
 
 # ---------- source 2: Vortex Load Order export ----------
 def _vortex_entries(path):
-    bad = (f"{path} isn't a Vortex load order export. Fix: on Vortex's Load Order page, click Export and pass "
-           "the file it saves to --vortex-loadorder.")
+    bad = (f"{path} isn't a Vortex load order export. Fix: pass a load order file written by the Modlist Backup "
+           "extension to --vortex-loadorder, or use the game's Plugins.txt after a deploy (--plugins-txt).")
     if not os.path.isfile(path):
-        raise InputError(f"no file at {path}. Fix: on Vortex's Load Order page, click Export and pass the file it "
-                         "saves to --vortex-loadorder.")
+        raise InputError(f"no file at {path}. Fix: pass a load order file written by the Modlist Backup extension "
+                         "to --vortex-loadorder, or use the game's Plugins.txt after a deploy (--plugins-txt).")
     try:
         with open(path, encoding="utf-8-sig") as f:
             d = json.load(f)

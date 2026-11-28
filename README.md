@@ -2,7 +2,7 @@
 
 sf-load-order checks your Starfield load order and tells you, in plain words, what is wrong with it and how to fix
 it. It reads the load order you already have (the game's own Plugins.txt, a Mod Organizer 2 profile, or a file
-exported from Vortex's Load Order page), and it never changes your game, Vortex or MO2.
+written by Vortex's Modlist Backup extension), and it never changes your game, Vortex or MO2.
 
 Download the latest zip from [Releases](https://github.com/taosecurity/sf-load-order/releases), unzip it, open a
 Command Prompt in the folder (see [Install](#install)) and run:
@@ -21,7 +21,7 @@ never loads.
 
 ```
 > .\sf-load-order.cmd --plugins-txt Plugins.txt --data Data --depth light --no-state
-sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.4 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 1 problem(s), 2 caution(s), 1 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -85,7 +85,7 @@ RESULT line like the one below; the counts depend on your load order:
 
 ```
 > .\sf-load-order.cmd
-sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.4 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 5 note(s) (report: sf-load-order-report\report.txt)
 ```
 
@@ -111,12 +111,12 @@ Two details matter only if a script reads the output:
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). On the first screen of the
    installer, tick **Add python.exe to PATH**. To check that it worked, open a new Command Prompt and type
    `python --version`. It should print a version number. (The tool itself needs only Python 3.9 or newer.)
-2. Download `sf-load-order-0.3.3.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
-   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.3.zip SHA256`.
+2. Download `sf-load-order-0.3.4.zip` from the [GitHub releases](https://github.com/taosecurity/sf-load-order/releases).
+   If you like, check it against the `.sha256` file next to it with `certutil -hashfile sf-load-order-0.3.4.zip SHA256`.
 3. Unzip it anywhere, for example into your Documents folder.
 4. Open the unzipped folder in File Explorer, click the address bar at the top, type `cmd` and press Enter. A Command
    Prompt window opens in that folder, ready for the commands in this README.
-5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.3 by Richard Bejtlich`.
+5. Run `.\sf-load-order.cmd --version`. It should print the byline, starting `sf-load-order 0.3.4 by Richard Bejtlich`.
 
 `.\sf-load-order.cmd` works in both Command Prompt and PowerShell. It only starts `python -I sf-load-order.py` with
 the options you give it, so you can also run that line yourself (on Linux you must: see [Linux](#linux)).
@@ -181,17 +181,17 @@ Give one source. When you give none, the game's own Plugins.txt is read.
 |---|---|---|
 | No mod manager, or you just want what the game reads | (none), or `--plugins-txt <file>` | `%LOCALAPPDATA%\Starfield\Plugins.txt` (Steam and Game Pass use the same file), or the file you name. |
 | Mod Organizer 2 | `--mo2 <instance folder>` and, if you like, `--profile <name>` | The folder that holds `ModOrganizer.ini`, `profiles\` and `mods\` (0.3.1: when `ModOrganizer.ini` leaves out `mod_directory`, `profiles_directory` or `overwrite_directory`, the default is that folder under `base_directory`, or under the instance folder when there is none, as MO2 does). The profile's `plugins.txt`, `loadorder.txt` and `modlist.txt` give the order, which plugins are on, and each mod's priority. Without `--profile`, MO2's selected profile is used. The game folder comes from MO2's `gamePath` setting. |
-| Vortex | `--vortex-loadorder <file>`, and `--vortex-staging <folder>` if your staging folder isn't the default | On Vortex's **Load Order** page, click **Export** and save the file. That file gives the order. Each mod's own folder comes from Vortex's staging folder (default `%APPDATA%\Vortex\starfield\mods`; Vortex shows yours under Settings, Mods, Mod Staging Folder). Vortex's deployment record in the Data folder (`vortex.deployment.*.json`) says which mod deployed each loose file, so mods with no plugin are found too. |
+| Vortex | `--plugins-txt <file>` (the Plugins.txt Vortex writes when it deploys), or `--vortex-loadorder <file>` (a load order file from the Modlist Backup extension, below), and `--vortex-staging <folder>` if your staging folder isn't the default | The plain route is the game's own Plugins.txt, which Vortex writes at every deploy (so deploy first), as in the first row. The option route is the load order file that the Modlist Backup extension writes for each profile (below). That file gives the order. Each mod's own folder comes from Vortex's staging folder (default `%APPDATA%\Vortex\starfield\mods`; Vortex shows yours under Settings, Mods, Mod Staging Folder). Vortex's deployment record in the Data folder (`vortex.deployment.*.json`) says which mod deployed each loose file, so mods with no plugin are found too. |
 
 With the Modlist Backup extension for Vortex (it writes a modlist and a load order file for each profile), you can
-name the profile instead of exporting by hand:
+name the profile instead of passing its files by hand:
 
     .\sf-load-order.cmd --vortex-profile "My Profile"
 
 The newest export set of that profile is read from the folder in the extension's own settings file
 (`%APPDATA%\Vortex\modlist-backup-auto-export.json`) and its `old` subfolder. `--vortex-exports <folder>` (may be
 given more than once) reads another folder, `--vortex-stamp YYYYMMDD-HHMMSS` picks an older set, and
-`--vortex-modlist <file>` next to `--vortex-loadorder <file>` pairs a modlist with a load order you exported
+`--vortex-modlist <file>` next to `--vortex-loadorder <file>` pairs a modlist with a load order file you picked
 yourself. The modlist gives each mod's version and archive name, and its rules when the export has them.
 
 With `--vortex-profile`, the tool also checks that the Data folder holds this profile: no mod plugin may be in Data
@@ -506,7 +506,7 @@ its own (OldShipMod), so it is left out of the comparison:
 
 ```
 > .\sf-load-order.cmd candidate ShipMod-0.3.0.zip --mo2 mo2 --data game\Data --no-state --out out
-sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.4 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 2 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -603,7 +603,7 @@ after `ExampleArmor.esm`. Its second rule, that `ExampleQuests.esm` loads after 
 
 ```
 > .\sf-load-order.cmd sort --plugins-txt Plugins.txt --data Data --depth light --no-state --no-loot --rules my-rules.json
-sf-load-order 0.3.3 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
+sf-load-order 0.3.4 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-load-order
 RESULT: 0 problem(s), 1 caution(s), 1 note(s) (report: out\report.txt)
 ```
 
@@ -734,7 +734,7 @@ These are the options `.\sf-load-order.cmd --help` lists, and the ones marked `s
 | `--plugins-txt FILE` | A Plugins.txt to check (default: `%LOCALAPPDATA%\Starfield\Plugins.txt`). |
 | `--mo2 FOLDER` | A Mod Organizer 2 instance folder (it holds `profiles\` and `mods\`). |
 | `--profile NAME` | The MO2 profile (default: MO2's selected profile). |
-| `--vortex-loadorder FILE` | A load order file exported from Vortex's Load Order page (Export button). |
+| `--vortex-loadorder FILE` | A Vortex load order file, such as the ones the Modlist Backup extension writes. |
 | `--vortex-modlist FILE` | A modlist export from the Modlist Backup extension, read next to `--vortex-loadorder`. |
 | `--vortex-profile NAME` | A Vortex profile: its newest export set (modlist and load order) from the Modlist Backup extension, and a check that Data holds this profile. |
 | `--vortex-exports FOLDER` | Where the extension's export sets are (may be given more than once; default: the folder in `%APPDATA%\Vortex\modlist-backup-auto-export.json` and its `old` subfolder). |
@@ -840,6 +840,22 @@ before you post it.
 | 1 | The report was written, `--strict` was given, and it lists at least one problem. |
 | 2 | It couldn't run: a bad option, no Python found by the launcher, no load order found, a folder it can't write to, or no report file could be written. The `RESULT: CANNOT CHECK` line says why and what to do. |
 
+## Known limits
+
+These are known and left as they are in 0.3.4, because they need an unusual setup or cause no harm:
+
+- A file with JSON nested very deep (thousands of levels) gives a RecursionError line instead of a message that names the file. Nothing is lost.
+- A sort that crashes after it wrote its order files says "No order was sorted", but the files stay in `--out`.
+- With another Vortex profile deployed, LOOT conditions on files that aren't plugins (three LOOT entries name SFSE DLLs) are judged against the files in Data, which belong to the deployed profile.
+- A rules file or LOOT file with a value that can't be read in an unusual way (an integer of more than 4,300 digits, or a LOOT YAML value made of a bare `&` or `*`) gives a traceback instead of `CANNOT CHECK`. LOOT itself refuses such a LOOT file.
+- No caution is given when the `--mo2` order differs from the profile's files; that needs malformed MO2 files.
+- Drive-letter folder values in a `ModOrganizer.ini` copied to Linux are not refused.
+- A bare `--sf-mod-check sf-mod-check.exe` (a name, not a path) is looked up in the current folder, because you named it.
+- A plugin that lists itself as a master is not reported as a problem; the master rules ignore the self-reference.
+- Only a plugin's header is read, so a plugin cut short after its header, or a header whose size marker claims more bytes than the record holds, is not noticed.
+- A Windows long-path prefix (`\\?\`) is not treated as the same folder as the plain spelling.
+- Hoisting is one level, as in libloadorder, so a hoisted plain plugin's own plain master can still give a "loads before its master" problem. That is a real problem in game.
+
 ## Traps
 
 - **A plugin's kind can change in an update.** Full to light is common. Every patch for that plugin then has to be
@@ -851,7 +867,7 @@ before you post it.
 - **Plugins.txt is what the game reads.** Vortex writes the game's Plugins.txt when it deploys. MO2 keeps its own
   `plugins.txt` in the profile, rewrites it whenever you change the plugin list, and shows it to the game in place
   of the real file when you start the game from MO2. A Vortex export made before you deployed, or an old MO2
-  profile, can differ from what the game loads. Export again
+  profile, can differ from what the game loads. Deploy and export again
   after each change, and don't copy a plugins.txt into the game folder while a mod manager manages it (it rewrites
   the file).
 - **MO2's view also holds one folder this tool doesn't read.** MO2 builds the Data folder it shows the game from

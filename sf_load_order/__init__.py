@@ -1,10 +1,10 @@
 """sf-load-order: a Starfield load order advisor.
 
-Reads a load order (the game's Plugins.txt, an MO2 profile, or a load order file exported from Vortex's Load Order
-page), reports what is wrong with it, rates it, suggests a better order and writes files the player can apply.
+Reads a load order (the game's Plugins.txt, an MO2 profile, or a load order file written by Vortex's Modlist Backup
+extension), reports what is wrong with it, rates it, suggests a better order and writes files the player can apply.
 It only reads the game, Vortex and MO2; it writes only to its own output folder.
 """
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 AUTHOR = "Richard Bejtlich"
 LICENSE = "GPL-3.0"
 URL = "https://github.com/taosecurity/sf-load-order"

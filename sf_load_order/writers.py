@@ -132,7 +132,7 @@ def how_to(lo, same, files, estimate=False, intro=None):
     elif src == "vortex":
         lines += ["You use Vortex. Use vortex-loadorder-recommended.json:", "",
                   "1. Open Vortex and go to the Load Order page.",
-                  "2. Back up first: click Export and save the file somewhere safe (this is your current order).",
+                  "2. Back up first: copy the load order file you gave to --vortex-loadorder somewhere safe (this is your current order).",
                   "3. Click Import and pick vortex-loadorder-recommended.json from this folder.",
                   "4. Check the Load Order page shows the new order, then start the game from Vortex.",
                   "5. To go back, Import the file you saved in step 2.", "",

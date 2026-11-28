@@ -145,7 +145,7 @@ class Vortex(unittest.TestCase):
             if e["locked"]:
                 self.assertEqual(new[i], e)                                  # locked entries in place
         self.assertIn("Import", read(ctx.report.outputs["how_to"]).decode("utf-8"))
-        self.assertIn("Export", read(ctx.report.outputs["how_to"]).decode("utf-8"))
+        self.assertIn("--vortex-loadorder", read(ctx.report.outputs["how_to"]).decode("utf-8"))
         self.assertIn("plugins_txt", ctx.report.outputs)
 
     def test_byte_identical_when_nothing_moves(self):

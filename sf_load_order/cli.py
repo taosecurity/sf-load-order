@@ -181,7 +181,7 @@ def _source_options(p):
     src.add_argument("--mo2", metavar="FOLDER", help="a Mod Organizer 2 instance folder (holds profiles\\ and mods\\)")
     src.add_argument("--profile", metavar="NAME", help="the MO2 profile (default: MO2's selected profile)")
     src.add_argument("--vortex-loadorder", metavar="FILE",
-                     help="a load order file exported from Vortex's Load Order page (Export button)")
+                     help="a Vortex load order file, such as the ones the Modlist Backup extension writes")
     src.add_argument("--vortex-modlist", metavar="FILE",
                      help="a modlist export from the Modlist Backup extension, read next to --vortex-loadorder")
     src.add_argument("--vortex-profile", metavar="NAME",
