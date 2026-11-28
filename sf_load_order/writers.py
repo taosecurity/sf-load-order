@@ -130,9 +130,13 @@ def how_to(lo, same, files, estimate=False, intro=None):
                   "Don't copy plugins.txt into the game folder while you use Vortex: Vortex rewrites that file when "
                   "it deploys."]
     elif src == "vortex":
+        read = lo.files.get("vortex_loadorder")
+        backup = (f"2. Back up first: copy the load order file this run read ({read}) somewhere safe "
+                  "(this is your current order)." if read else
+                  "2. Back up first: save your current load order somewhere safe.")
         lines += ["You use Vortex. Use vortex-loadorder-recommended.json:", "",
                   "1. Open Vortex and go to the Load Order page.",
-                  "2. Back up first: copy the load order file you gave to --vortex-loadorder somewhere safe (this is your current order).",
+                  backup,
                   "3. Click Import and pick vortex-loadorder-recommended.json from this folder.",
                   "4. Check the Load Order page shows the new order, then start the game from Vortex.",
                   "5. To go back, Import the file you saved in step 2.", "",

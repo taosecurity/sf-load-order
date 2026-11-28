@@ -603,7 +603,8 @@ def analyse(lo, cache):
         pr["cats"] = dict(sorted(pr["cats"].items(), key=lambda kv: (-kv[1], kv[0])))
     pos = {p.name: i for i, p in enumerate(mine)}
     out = sorted(pairs.values(), key=lambda pr: (pr["advice"] != "overlap", pos[pr["winner"]], pos[pr["loser"]]))
-    decides = sorted({n for pr in out if pr["advice"] == "overlap" for n in (pr["loser"], pr["winner"])},
+    decides = sorted({n for pr in out if pr["advice"] == "overlap" and not pr["type_locked"]
+                      for n in (pr["loser"], pr["winner"])},
                      key=lambda n: pos[n])
     loaded = [(p.name, a) for p in mine for a in owned[p.name]]
     lz4_missing = sorted(cache.lz4_missing)

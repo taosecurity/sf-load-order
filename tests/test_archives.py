@@ -333,6 +333,7 @@ class GameOrder(unittest.TestCase):
             self.assertEqual(len(f), 1)
             self.assertIn("X.esp loads later", f[0].text)
             self.assertIn("can't change this", f[0].fix)
+            self.assertEqual(r["order_decides"], [])  # the list's order decides nothing for this pair
 
     def test_master_plugin_hoisted_by_a_master_plugin(self):
         # M.esm needs N.esm, listed below it: the game loads N.esm first, so M.esm's copy wins

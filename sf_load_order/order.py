@@ -108,10 +108,15 @@ def master_fix(p, q, names, rules):
     below = f"Move {p} below {q} in the load order."
     if works(moved(p, q, True)):
         return below
-    k = load_keys(names, rules)[pl]
+    keys = load_keys(names, rules)
+    k = keys[pl]
     anchor = names[k[1]] if k[2] == 0 else p
     if anchor.lower() != ql and works(moved(q, anchor, False)):
         return f"Move {q} above {anchor} in the load order."
+    kq = keys[ql]
+    q_anchor = names[kq[1]] if kq[2] == 0 else None  # the master plugin that makes the game load q early
+    if q_anchor and q_anchor.lower() not in (anchor.lower(), pl) and works(moved(q_anchor, anchor, False)):
+        return f"Move {q_anchor} above {anchor} in the load order."
     qr = rules.get(ql) or (1, [])
     if k[2] == 0 and qr[0] == 1 and not qr[1]:
         return None

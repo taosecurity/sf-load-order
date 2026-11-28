@@ -4,6 +4,7 @@ Every part logs through log.info("section", "what was read or decided"). Nothing
 """
 import datetime
 import os
+import re
 import sys
 
 _sinks = []
@@ -11,6 +12,8 @@ _sinks = []
 # A troubleshooting log is text: it must never be written over a plugin, an archive or a mod's files.
 MOD_FILE_EXTENSIONS = {".esm", ".esp", ".esl", ".ba2", ".zip", ".7z", ".rar", ".strings", ".dlstrings", ".ilstrings",
                        ".pex", ".psc", ".dll"}
+LOAD_ORDER_FILE_NAMES = {"plugins.txt", "loadorder.txt", "modlist.txt"}
+VORTEX_EXPORT_RE = re.compile(r"^vortex-starfield-.*-(modlist|loadorder|plugins)\b", re.I)
 
 
 def _input_files(args):
@@ -40,6 +43,10 @@ def refusal(log_file, args=None):
         ext = os.path.splitext(name.split(":")[0])[1].lower()
         if ext in MOD_FILE_EXTENSIONS:
             return f"it names a {ext} file, and the log is plain text"
+        if name.lower() in LOAD_ORDER_FILE_NAMES or VORTEX_EXPORT_RE.match(name):
+            # files a source reads without the command line naming them: the game's own Plugins.txt (no source
+            # option), an MO2 profile's files (--mo2 names the folder) and the exports --vortex-profile finds
+            return "it names a load order file, which a run may read"
         if os.name == "nt" and ":" in os.path.splitdrive(name)[1]:
             return "its name holds a colon (a Windows file stream)"
         if os.path.islink(log_file):

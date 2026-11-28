@@ -805,12 +805,16 @@ def run(ctx):
             if len(drops) == len(names):
                 why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that don't load in the "
                        "game (names the game drops).")
+            elif drops:
+                why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that this load order "
+                       f"doesn't load; the game drops the names of {len(drops)} of them.")
             else:
                 why = (f"sf-mod-check loaded {len(names)} plugin(s) from the MO2 profile that this load order "
-                       f"doesn't load ({len(drops)} of them names the game drops).")
-            ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + why,
-                                   fix="Rename or turn off those plugins (see the finding about their names), or "
-                                       "start sf-load-order from MO2, and run again.",
+                       "doesn't load.")
+            fix = ("Rename or turn off those plugins (see the finding about their names), or start sf-load-order "
+                   "from MO2, and run again." if drops else
+                   "Turn those plugins off in the MO2 profile, or start sf-load-order from MO2, and run again.")
+            ctx.report.add(Finding("caution", SECTION, "Record conflicts weren't checked: " + why, fix=fix,
                                    plugins=(drops or names)[:20], data=d))
             return _skip(why, program=prog.to_dict(), exit=r.exit, result_line=r.result)
 

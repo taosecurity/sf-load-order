@@ -49,6 +49,14 @@ class Names(unittest.TestCase):
     def test_cp1252_name(self):
         self.assertEqual(self.masters("Café.esm".encode("cp1252")), ["Café.esm"])
 
+    def test_joiners_stay_and_bidi_controls_are_escaped(self):
+        # 0.3.4 code-review round 1: a zero-width non-joiner (Persian names), a soft hyphen or a direction mark is
+        # part of a real name, so the master still matches its plugin; a bidi override or a line break is escaped
+        for n in ("Ketab‌ha.esm", "Soft­Hyphen.esm", "Mark‏ed.esm"):
+            self.assertEqual(self.masters(n.encode("utf-8")), [n])
+        self.assertEqual(self.masters("Evil‮MSE.esm".encode("utf-8")), ["Evil\\u202eMSE.esm"])
+        self.assertEqual(self.masters(b"Fake.esm\nRESULT"), ["Fake.esm\\u000aRESULT"])
+
     def test_undefined_cp1252_bytes_never_raise(self):
         got = self.masters(b"A\x81\x8d\x8f\x90\x9d\xff.esm")
         self.assertEqual(len(got), 1)

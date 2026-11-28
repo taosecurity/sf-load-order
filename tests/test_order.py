@@ -271,6 +271,28 @@ class OrderTests(unittest.TestCase):
                     k = order.load_keys(new, rules)
                     self.assertLess(k[q.lower()], k[p.lower()], (names, p, q, fix))
 
+    def test_master_fix_moves_the_masters_master_plugin(self):
+        # 0.3.4 code-review round 1: q is hoisted for another master plugin listed below p's, so neither p nor q can
+        # move far enough; the checked fix moves q's master plugin above p's
+        from itertools import permutations
+        specs = {"A.esm": ["P.esp"], "B.esm": ["Q.esp"], "P.esp": ["Q.esp"], "Q.esp": []}
+        ps = [Plugin(n, True, masters=specs[n]) for n in specs]
+        rules = order.load_rules(ps)
+        self.assertEqual(order.master_fix("P.esp", "Q.esp", list(specs), rules),
+                         "Move B.esm above A.esm in the load order.")
+        for names in permutations(specs):
+            rules = order.load_rules([Plugin(n, True, masters=specs[n]) for n in names])
+            keys = order.load_keys(list(names), rules)
+            if keys["q.esp"] < keys["p.esp"]:
+                continue
+            fix = order.master_fix("P.esp", "Q.esp", list(names), rules)
+            self.assertIsNotNone(fix, names)
+            who, to = fix.split(" in the load order")[0][5:].split(" below " if " below " in fix else " above ")
+            rest = [n for n in names if n != who]
+            i = rest.index(to) + (1 if " below " in fix else 0)
+            k = order.load_keys(rest[:i] + [who] + rest[i:], rules)
+            self.assertLess(k["q.esp"], k["p.esp"], (names, fix))
+
     def test_game_order_keeps_blueprints_last(self):
         ps = [Plugin("Starfield.esm", True, official=True), Plugin("B.esp", True), Plugin("A.esm", True),
               Plugin("BlueprintShips-Starfield.esm", True, official=True)]

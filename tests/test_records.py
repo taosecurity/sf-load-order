@@ -1052,10 +1052,23 @@ class Program(unittest.TestCase):
         st = records.run(ctx)
         self.assertEqual(st["status"], "skipped")
         self.assertIn("2 plugin(s)", st["why"])
-        self.assertIn("1 of them names the game drops", st["why"])
+        self.assertIn("the game drops the names of 1 of them", st["why"])
         self.assertNotIn("(names the game drops)", st["why"])
         hits = [f for f in ctx.report.findings if "Record conflicts weren't checked" in f.text]
         self.assertEqual([f.plugins for f in hits], [["Foo-ShatteredSpace.esm"]])
+
+    def test_mo2_skip_caution_with_no_dropped_names(self):
+        """0.3.4 code-review round 1: when none of them is a dropped name, the caution doesn't point at a name
+        finding that isn't there."""
+        exe, lo = self.mo2_case(more_cj=["Stray.esm"])
+        ctx = ctx_for(self.t, lo, sf_mod_check=exe)
+        st = records.run(ctx)
+        self.assertEqual(st["status"], "skipped")
+        self.assertNotIn("drops", st["why"])
+        hits = [f for f in ctx.report.findings if "Record conflicts weren't checked" in f.text]
+        self.assertEqual(len(hits), 1)
+        self.assertNotIn("their names", hits[0].fix)
+        self.assertIn("Turn those plugins off in the MO2 profile", hits[0].fix)
 
     def test_mo2_old_sf_mod_check_offers_conflicts_file(self):
         """0.3.4: the old-sf-mod-check MO2 skip says how to go on with a --conflicts file, like the other skips."""

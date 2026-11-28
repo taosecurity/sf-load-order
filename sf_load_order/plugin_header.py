@@ -24,12 +24,18 @@ def is_master(name, flags):
     return bool(flags & FLAG_MASTER) or name.lower().endswith(MASTER_EXTENSIONS)
 
 
+# The bidi embedding, override and isolate characters: they reorder the text after them on a terminal. Other format
+# characters (zero-width joiners, soft hyphens, direction marks) occur in real names and stay, so a master named
+# with one still matches its plugin (a Plugins.txt name keeps them too).
+BIDI_CONTROLS = set("‪‫‬‭‮⁦⁧⁨⁩")
+
+
 def _printable(text):
-    """Text from a plugin header made safe to print: every control, format (bidi, zero-width), line and paragraph
-    separator character becomes \\uXXXX, so a master name can't fake a line or rewrite the terminal."""
+    """Text from a plugin header made safe to print: every control, bidi embedding, override and isolate, line and
+    paragraph separator character becomes \\uXXXX, so a master name can't fake a line or rewrite the terminal."""
     out = []
     for c in text:
-        if unicodedata.category(c) not in ("Cc", "Cf", "Zl", "Zp"):
+        if unicodedata.category(c) not in ("Cc", "Zl", "Zp") and c not in BIDI_CONTROLS:
             out.append(c)
         elif ord(c) < 0x10000:
             out.append(f"\\u{ord(c):04x}")

@@ -85,6 +85,21 @@ class BadPaths(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("can't write the log file", out)
 
+    def test_log_refuses_load_order_files_no_option_names(self):
+        # 0.3.4 code-review round 1: the game's own Plugins.txt (read with no source option), an MO2 profile's
+        # files and the Vortex exports are read without the command line naming them, so --log refuses their names
+        with tempfile.TemporaryDirectory() as t:
+            for name in ("Plugins.txt", "loadorder.txt", "modlist.txt",
+                         "vortex-starfield-My Profile-loadorder-20261121-190400.json"):
+                target = os.path.join(t, name)
+                with open(target, "w", encoding="utf-8") as f:
+                    f.write("*ModA.esm\n")
+                code, out, _ = run_cli("--out", os.path.join(t, "out"), "--log", target)
+                with open(target, encoding="utf-8") as f:
+                    self.assertEqual(f.read(), "*ModA.esm\n", name)
+                self.assertEqual(code, 2, name)
+                self.assertIn("load order file", out, name)
+
     def test_log_outside_out_records_the_out_failure(self):
         with tempfile.TemporaryDirectory() as t:
             blocker = os.path.join(t, "file")
