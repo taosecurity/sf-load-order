@@ -855,6 +855,9 @@ These are known and left as they are in 0.3.4, because they need an unusual setu
 - Only a plugin's header is read, so a plugin cut short after its header, or a header whose size marker claims more bytes than the record holds, is not noticed.
 - A Windows long-path prefix (`\\?\`) is not treated as the same folder as the plain spelling.
 - Hoisting is one level, as in libloadorder, so a hoisted plain plugin's own plain master can still give a "loads before its master" problem. That is a real problem in game.
+- Plugins that the game loads early for the same master plugin keep the list's order, where the game reverses them, and in a chain of three master plugins listed in reverse the last one can be placed differently. The "loads before its master" problems are the same; only an archive or record winner between two such plugins could differ.
+- A master name in a plugin's header that holds a bidi embedding, override or isolate character is printed escaped, so it doesn't match a plugin file of that name, and the master is reported as not installed.
+- `--log` refuses the files the command line names and the load order file names, but not other files a run reads by default, such as LOOT's `userlist.yaml` or MO2's `ModOrganizer.ini`. Give `--log` a new file name.
 
 ## Traps
 
