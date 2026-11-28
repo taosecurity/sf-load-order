@@ -5,6 +5,7 @@ Subrecords are a 4-byte signature, a 16-bit size and the data. An XXXX subrecord
 of the subrecord after it, whose own 16-bit size is then 0; a long ONAM list in a big plugin's header uses it.
 """
 import struct
+import unicodedata
 
 from . import log
 
@@ -23,13 +24,27 @@ def is_master(name, flags):
     return bool(flags & FLAG_MASTER) or name.lower().endswith(MASTER_EXTENSIONS)
 
 
+def _printable(text):
+    """Text from a plugin header made safe to print: every control, format (bidi, zero-width), line and paragraph
+    separator character becomes \\uXXXX, so a master name can't fake a line or rewrite the terminal."""
+    out = []
+    for c in text:
+        if unicodedata.category(c) not in ("Cc", "Cf", "Zl", "Zp"):
+            out.append(c)
+        elif ord(c) < 0x10000:
+            out.append(f"\\u{ord(c):04x}")
+        else:
+            out.append(f"\\U{ord(c):08x}")
+    return "".join(out)
+
+
 def _name(raw):
     """A master's file name: UTF-8 when it is valid UTF-8, else Windows-1252 (bytes it lacks become U+FFFD)."""
     raw = raw.rstrip(b"\0")
     try:
-        return raw.decode("utf-8")
+        return _printable(raw.decode("utf-8"))
     except UnicodeDecodeError:
-        return raw.decode("cp1252", errors="replace")
+        return _printable(raw.decode("cp1252", errors="replace"))
 
 
 def masters_of(data):

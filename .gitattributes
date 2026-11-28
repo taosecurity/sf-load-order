@@ -9,3 +9,5 @@
 *.esm binary
 *.esp binary
 *.esl binary
+# Shared test sets (tools/pmt/shared-tests): a byte-for-byte copy, never changed by line-ending rules.
+tests/shared/** -text

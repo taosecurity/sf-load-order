@@ -1,0 +1,34 @@
+{
+  "tool": "sf-load-order",
+  "shared_version": 1,
+  "sets": [
+    "out-paths",
+    "damaged-inputs",
+    "damaged-plugins",
+    "terminal-text",
+    "paths-and-programs"
+  ],
+  "skipped_sets": {},
+  "exit_codes": {
+    "ok": [
+      0
+    ],
+    "finding": [
+      1
+    ],
+    "refuse": [
+      2
+    ]
+  },
+  "not_applicable": {
+    "out-inside-cleaned-folder": "the tool empties no folder it did not make itself, and --out is its only folder option"
+  },
+  "known_limits": {
+    "json-deep-arrays.json": "C: a file nested 20,000 deep makes its check fail with a RecursionError line in the report instead of a message naming the file; nothing is lost.",
+    "json-deep-objects.json": "C: a file nested 20,000 deep makes its check fail with a RecursionError line in the report instead of a message naming the file; nothing is lost.",
+    "SharedTest-SelfMaster.esm": "C: a plugin that lists itself as a master is not reported as a problem; the master rules ignore the self-reference and the run is not harmed.",
+    "SharedTest-CutBody.esm": "C: only the plugin header is read, so a plugin cut short after its header is not noticed.",
+    "s-long-path-prefix": "C: a Windows long-path prefix (\\\\?\\) is not treated as the same folder as the plain spelling.",
+    "SharedTest-OversizeCut.esm": "C: a plugin header whose XXXX size marker claims more bytes than the record holds is read as far as it goes, with no warning."
+  }
+}

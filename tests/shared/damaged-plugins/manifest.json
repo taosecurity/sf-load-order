@@ -1,0 +1,233 @@
+{
+  "set": "damaged-plugins",
+  "set_version": 1,
+  "date": "2026-11-27",
+  "about": "Header-only Starfield plugins written by make_plugins.py from made-up bytes. Give the folder to the tool as its Data folder (or each file as its plugin input). 'answer' is the expected answer, 'masters' the master list a header reader must return (null when the header can't be read), 'kind' full, light, medium or light_or_warn.",
+  "answers": {
+    "read": "The tool reads the file as normal and gives its normal answer.",
+    "finding": "The tool's normal 'problem found' answer (its finding exit code) with a message that names the plugin and the problem.",
+    "refuse": "A plain refusal: the tool's refusal exit code (usually 2 or 3) and a message that names the file. Nothing else is lost.",
+    "read_or_finding": "Either answer, as the tool documents it.",
+    "finding_or_refuse": "Either answer, as long as the message names the file."
+  },
+  "never": [
+    "a Python traceback",
+    "a .NET unhandled exception or stack overflow",
+    "an exit code of 128 or more, or a negative one",
+    "running past the case's time limit",
+    "reading a file outside the folder it was given"
+  ],
+  "time_limit_s": 10,
+  "files": [
+    {
+      "file": "SharedTest-Plain.esm",
+      "answer": "read",
+      "masters": [],
+      "kind": "full",
+      "why": "The control: a plain full master with no masters. Every tool must read it normally.",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-SelfMaster.esm",
+      "answer": "finding",
+      "masters": [
+        "SharedTest-SelfMaster.esm"
+      ],
+      "kind": "full",
+      "why": "The plugin lists itself as a master. A checker names that as a problem and ends with its result line; a master walk must stop on a name it has already seen.",
+      "round3": [
+        "sf-mod-check B1 (stack overflow in check and release)"
+      ]
+    },
+    {
+      "file": "SharedTest-CycleA.esm",
+      "answer": "finding",
+      "masters": [
+        "SharedTest-CycleB.esm"
+      ],
+      "kind": "full",
+      "why": "CycleA masters CycleB and CycleB masters CycleA. The run must end, with the loop named or at least a result line.",
+      "round3": [
+        "sf-mod-check B1",
+        "sf-load-order C1 (a master loop stopped every recommendation)"
+      ]
+    },
+    {
+      "file": "SharedTest-CycleB.esm",
+      "answer": "finding",
+      "masters": [
+        "SharedTest-CycleA.esm"
+      ],
+      "kind": "full",
+      "why": "The other half of the CycleA pair.",
+      "round3": [
+        "sf-mod-check B1"
+      ]
+    },
+    {
+      "file": "SharedTest-MissingMaster.esm",
+      "answer": "finding",
+      "masters": [
+        "SharedTest-Plain.esm",
+        "SharedTest-NotThere.esm"
+      ],
+      "kind": "full",
+      "why": "The second master does not exist in the folder. The message names SharedTest-NotThere.esm as missing, not the plugin itself.",
+      "round3": [
+        "BuildKit C5 (Open said the plugin itself is not in Data)"
+      ]
+    },
+    {
+      "file": "SharedTest-DuplicateMaster.esm",
+      "answer": "read_or_finding",
+      "masters": [
+        "SharedTest-Plain.esm",
+        "SharedTest-Plain.esm"
+      ],
+      "kind": "full",
+      "why": "The same master is listed twice. Read it or name it, but never crash or count the master twice (Mutagen's test data has the same case).",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-Light.esm",
+      "answer": "read",
+      "masters": [],
+      "kind": "light",
+      "why": "A light (small) master, flags 0x101, as most real light masters have.",
+      "round3": [
+        "sf-patch-day C3 (a light master counted as full)"
+      ]
+    },
+    {
+      "file": "SharedTest-Medium.esm",
+      "answer": "read",
+      "masters": [],
+      "kind": "medium",
+      "why": "A medium master, flags 0x401.",
+      "round3": [
+        "sf-patch-day C3"
+      ]
+    },
+    {
+      "file": "SharedTest-LightMedium.esm",
+      "answer": "read_or_finding",
+      "masters": [],
+      "kind": "light_or_warn",
+      "why": "Both the light and the medium bit (flags 0x501). Plugins made by the game rarely have it, but LOOT's Creation Kit-made small master does. Read it as light or warn about the two bits; never call it full.",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-UsesLightMedium.esm",
+      "answer": "read",
+      "masters": [
+        "SharedTest-Plain.esm",
+        "SharedTest-Light.esm",
+        "SharedTest-Medium.esm"
+      ],
+      "kind": "full",
+      "master_kinds": {
+        "SharedTest-Plain.esm": "full",
+        "SharedTest-Light.esm": "light",
+        "SharedTest-Medium.esm": "medium"
+      },
+      "why": "Depends on one master of each kind, so a tool that numbers FormIDs or counts masters sees all three kinds.",
+      "round3": [
+        "sf-patch-day C3"
+      ]
+    },
+    {
+      "file": "SharedTest-Oversize.esm",
+      "answer": "read",
+      "masters": [
+        "SharedTest-Plain.esm"
+      ],
+      "kind": "full",
+      "why": "The header ends with an XXXX marker and a 65,536-byte ONAM. A reader must take the size from XXXX; one that ignores it reads the ONAM bytes as subrecords.",
+      "round3": [
+        "BuildKit C3 (the header reader does not handle XXXX)"
+      ]
+    },
+    {
+      "file": "SharedTest-OversizeCut.esm",
+      "answer": "finding_or_refuse",
+      "masters": null,
+      "kind": null,
+      "why": "XXXX claims 1,000,000 bytes but the record holds 64. Name the file as damaged; never read past the record.",
+      "round3": [
+        "BuildKit C3"
+      ]
+    },
+    {
+      "file": "SharedTest-Empty.esm",
+      "answer": "finding_or_refuse",
+      "masters": null,
+      "kind": null,
+      "why": "A zero-length file. Refuse it, or report it as damaged, by name. A checker reports it (sf-mod-check 0.27.0: ERROR, exit 1).",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-CutHeader.esm",
+      "answer": "finding_or_refuse",
+      "masters": null,
+      "kind": null,
+      "why": "Only the first 10 of the 24 record-header bytes.",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-CutBody.esm",
+      "answer": "finding_or_refuse",
+      "masters": null,
+      "kind": null,
+      "why": "The record header promises more bytes than the file holds.",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-NotAPlugin.esm",
+      "answer": "finding_or_refuse",
+      "masters": null,
+      "kind": null,
+      "why": "A zip renamed to .esm (it does not start with TES4).",
+      "round3": []
+    },
+    {
+      "file": "SharedTest-MasterOutside.esm",
+      "answer": "finding_or_refuse",
+      "masters": [
+        "..\\SharedTest-Outside.esm"
+      ],
+      "kind": "full",
+      "setup": "Put a copy of SharedTest-Plain.esm named SharedTest-Outside.esm in the parent of the test folder; the tool must not read it.",
+      "why": "A master name with a folder part. It must not lead the tool to a file outside the folder it was given.",
+      "round3": [
+        "sf-mod-check S1 (note: master names such as ..\\x.esm)"
+      ]
+    },
+    {
+      "file": "SharedTest-BidiMaster.esm",
+      "answer": "finding",
+      "masters": [
+        "SharedTest-Evil\u202eMSE.esm"
+      ],
+      "kind": "full",
+      "text_rule": "terminal-text",
+      "why": "A missing master whose name holds U+202E. The finding must print it escaped (see terminal-text), so the line is not reordered.",
+      "round3": [
+        "sf-mod-check B2 (check printed finding text without SafeText.OneLine)"
+      ]
+    },
+    {
+      "file": "SharedTest-FakeLineMaster.esm",
+      "answer": "finding",
+      "masters": [
+        "SharedTest-Fake.esm\nRESULT: OK\u001b[0m"
+      ],
+      "kind": "full",
+      "text_rule": "terminal-text",
+      "why": "A missing master whose name holds a line break, a made-up RESULT line and an escape code. The output must stay one line per finding with no raw control characters.",
+      "round3": [
+        "papyrus-log-check C1 (a newline in a name added a fake PASS line)",
+        "sf-load-order S1"
+      ]
+    }
+  ]
+}

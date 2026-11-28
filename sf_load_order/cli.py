@@ -333,7 +333,7 @@ def main(argv=None):
     except (OSError, ValueError) as e:
         out_err = (f"can't create the output folder {args.out}: {getattr(e, 'strerror', None) or e}. "
                    "Fix: give --out a folder you can write to.")
-    err = log.setup(args.verbose, args.log)
+    err = log.setup(args.verbose, args.log, args)
     if err:  # when --out failed too (a --log inside it can't open either), the --out problem is the one to fix
         print(f"RESULT: CANNOT CHECK: {out_err or err}")
         return 2

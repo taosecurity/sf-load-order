@@ -694,7 +694,7 @@ def main(argv, env=None):
               "sf-load-order rules --help shows them all.")
         return 2
     args = p.parse_args(argv)
-    err = log.setup(args.verbose, args.log)
+    err = log.setup(args.verbose, args.log, args)
     if err:
         print(f"RESULT: CANNOT CHECK: {err}")
         return 2
